@@ -1,4 +1,4 @@
-# CNC Machine Plugins for gSender
+# Plugins for gSender
 
 Source repository for gSender plugins maintained by Bakstaaj. Plugin version folders hold each current source snapshot and matching install ZIP.
 
