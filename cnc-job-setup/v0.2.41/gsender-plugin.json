@@ -1,0 +1,51 @@
+{
+  "id": "com.bakstaaj.cnc-job-setup",
+  "name": "CNC Job Setup",
+  "version": "0.2.41",
+  "description": "A configurable step-by-step CNC job preparation workflow with machine profiles.",
+  "engine": "1.7.0-Edge-2",
+  "ui": {
+    "entry": "ui/index.html",
+    "contributions": [
+      {
+        "slot": "tools-page",
+        "route": "cnc-job-setup",
+        "label": "CNC Job Setup"
+      },
+      {
+        "slot": "visualizer-overlay",
+        "label": "Job Setup",
+        "icon": "✓"
+      }
+    ]
+  },
+  "permissions": [
+    "machine:read",
+    "machine:command",
+    "machine:query",
+    "machine:parse",
+    "redux:read",
+    "workspace:read",
+    "storage"
+  ],
+  "capabilities": {
+    "requestTypes": [
+      "machine:get:context",
+      "machine:command",
+      "machine:query",
+      "machine:parser:register",
+      "machine:parser:unregister",
+      "redux:get:state",
+      "workspace:get:state",
+      "storage:get",
+      "storage:set"
+    ],
+    "topics": [],
+    "allowedFunctions": [
+      "machine",
+      "redux",
+      "workspace",
+      "storage"
+    ]
+  }
+}
