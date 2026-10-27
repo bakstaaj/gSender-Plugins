@@ -1,0 +1,28 @@
+{
+  "id": "com.bakstaaj.camera-align-print-registration",
+  "name": "Camera Align & Print Registration",
+  "version": "0.2.10",
+  "description": "Use a calibrated live camera to establish work zero and register a G-code toolpath to printed marks.",
+  "engine": "1.7.0-Edge-2",
+  "permissions": ["camera", "media", "machine:read", "machine:command", "machine:query", "redux:read", "storage"],
+  "ui": {
+    "entry": "ui/index.html",
+    "contributions": [
+      { "slot": "tools-page", "route": "camera-align-print-registration", "label": "Camera Align & Print Registration" }
+    ]
+  },
+  "capabilities": {
+    "requestTypes": [
+      "machine:get:context",
+      "machine:command",
+      "machine:query",
+      "machine:busy:set",
+      "redux:get:state",
+      "storage:get",
+      "storage:set",
+      "storage:delete"
+    ],
+    "topics": [],
+    "allowedFunctions": ["machine", "redux", "storage"]
+  }
+}
