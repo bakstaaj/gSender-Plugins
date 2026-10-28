@@ -4,12 +4,14 @@ Source repository for gSender plugins maintained by Bakstaaj. Plugin version fol
 
 ## Plugins
 
+- [Machine Event Notifications](machine-event-notifier/v0.1.20/README.md) — version 0.1.20; background gSender Wireless Control event monitoring with email and ntfy alerts. The single-download helper package includes the plugin ZIP and supports automatic local pairing.
 - [CNC Job Setup](cnc-job-setup/v0.2.46/README.md) — version 0.2.46; configurable gSender streaming or Makera Z1 SD-card playback, with improved probe/tool prompts and alarm recovery.
 - [Spindle Tramming](spindle-tramming/README.md) — version 0.4.4; persistent local setup settings, tilt and nod measurements for gSender 1.7.0-Edge-2.
 - [Surface Height Map](surface-height-map/v0.1.22/README.md) — version 0.1.22; probe-based surface calibration and G-code compensation.
 - [Surface Height Map (File First)](surface-height-map-file-first/v0.1.6/README.md) — version 0.1.6; contour-aware probing, rectangular fallback, and selectable work-zero compensation.
 - [Camera Align & Print Registration](camera-align-print-registration/v0.2.0/README.md) — version 0.2.0; live camera, selectable G54–G59 work zero, and two-point printed-artwork registration.
 - [CNC Camera Monitor](camera-monitor/v0.1.9/README.md) — prototype 0.1.9; USB/network camera monitoring, optional second camera, and a persistent Carve overlay with feed controls.
+- [Makera Z1 File Transfer](makera-z1-upload/v0.1.9/README.md) — prototype 0.1.9; single installer bundles NSSM, installs the bridge service to `C:\gsender_file_bridge`, and updates the gSender plugin.
 - [CNC Machine Diagnostics](cnc-machine-diagnostics/v0.3.2/README.md) — configurable machine profiles, controller command controls, and live sensor indicators. Includes a Makera Z1 profile.
 - [CNC Camera Monitor Local Bridge](camera-monitor-local-bridge/v0.1.0/README.md) — Windows companion installer for named ONVIF/RTSP streams through go2rtc.
 - [G-code Job Cost Estimator](job-cost-estimator/v0.1.0/README.md) — prototype 0.1.0; local runtime and job-cost estimates, safe-height review, and read-only XY path analysis.
@@ -19,6 +21,7 @@ Source repository for gSender plugins maintained by Bakstaaj. Plugin version fol
 
 | Plugin | Preview |
 | --- | --- |
+| [Machine Event Notifications](machine-event-notifier/v0.1.20/README.md) | <img src="machine-event-notifier/v0.1.20/screenshots/ntfy-alert-on-iphone.png" alt="Machine alarm notification delivered to the ntfy app on iPhone" width="300"> <img src="machine-event-notifier/v0.1.20/screenshots/gsender-wireless-control-settings.png" alt="gSender Wireless Control configuration used by the event monitor" width="300"> |
 | [CNC Job Setup](cnc-job-setup/v0.2.46/README.md) | <img src="cnc-job-setup/v0.2.46/screenshots/job-setup-assists.jpg" alt="CNC Job Setup Assist Options in gSender" width="300"> |
 | [Spindle Tramming](spindle-tramming/README.md) | <img src="spindle-tramming/docs/images/09-persistent-settings.png" alt="Spindle tramming settings restored from local gSender storage" width="300"> <img src="spindle-tramming/docs/images/tilt-nod.png" alt="Diagram showing tilt across X and nod across Y" width="300"> |
 | [Surface Height Map](surface-height-map/v0.1.22/README.md) | <img src="surface-height-map/v0.1.22/docs/screenshots/01-map-setup.jpg" alt="Surface height map calibration setup" width="300"> |
@@ -59,5 +62,5 @@ The same workflow applies to the other plugins that provide an npm project and p
 
 ## GitHub Releases
 
-Use a separate tag and GitHub Release for each plugin or companion package version, such as `surface-height-map-v0.1.22`, `camera-monitor-v0.1.9`, or `camera-monitor-local-bridge-v0.1.0`. Attach the matching install ZIP from that version folder to its GitHub Release. The ZIP can also be downloaded directly from the repository's version folder.
+Use a separate tag and GitHub Release for each plugin or companion package version, such as `surface-height-map-v0.1.22`, `camera-monitor-v0.1.9`, or `machine-event-notifier-v0.1.20`. Attach the matching install ZIP from that version folder to its GitHub Release. Machine Event Notifications uses one combined download containing the Windows helper and its gSender plugin ZIP. The ZIP can also be downloaded directly from the repository's version folder.
 
