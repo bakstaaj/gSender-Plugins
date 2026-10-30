@@ -1,0 +1,16 @@
+{
+  "id": "com.bakstaaj.stock-fixture-planner",
+  "name": "Stock & Fixture Planner",
+  "version": "0.2.0",
+  "description": "Configure billets, tools, fixtures, and workholding plans; choose low-volume stock blanks from a part NC envelope.",
+  "engine": "1.7.0-Edge-2",
+  "permissions": ["storage", "visualizer:load"],
+  "ui": {
+    "entry": "ui/index.html",
+    "contributions": [{ "slot": "tools-page", "route": "stock-fixture-planner", "label": "Stock & Fixture Planner" }]
+  },
+  "capabilities": {
+    "requestTypes": ["storage:get", "storage:get:all", "storage:set", "gcode:load:to:visualizer"],
+    "allowedFunctions": ["storage", "gcode"]
+  }
+}
