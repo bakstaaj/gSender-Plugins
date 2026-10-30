@@ -1,0 +1,16 @@
+{
+  "id": "com.bakstaaj.stock-fixture-planner",
+  "name": "Roughing Blank Planner",
+  "version": "0.2.1",
+  "description": "Analyze a part NC envelope, compare billet and workholding clearance, and generate a low-volume roughing blank preparation plan.",
+  "engine": "1.7.0-Edge-2",
+  "permissions": ["storage", "visualizer:load"],
+  "ui": {
+    "entry": "ui/index.html",
+    "contributions": [{ "slot": "tools-page", "route": "stock-fixture-planner", "label": "Roughing Blank Planner" }]
+  },
+  "capabilities": {
+    "requestTypes": ["storage:get", "storage:get:all", "storage:set", "gcode:load:to:visualizer"],
+    "allowedFunctions": ["storage", "gcode"]
+  }
+}
