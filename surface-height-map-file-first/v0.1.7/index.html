@@ -50,7 +50,7 @@
           <label class="inline" title="Puck: use a conductive puck on non-conductive material. The plugin pauses at each point so you can move it; enter its thickness above."><input type="radio" name="surfaceType" value="puck"> Puck</label>
           <label class="inline" title="Switch: use a controller-connected probe switch. It probes like Conductive, without a clip confirmation prompt."><input type="radio" name="surfaceType" value="switch"> Switch</label>
         </fieldset>
-        <p class="hint">The imported project's X/Y dimensions and sample counts are calculated automatically. Probe speeds, travel, retract, surface type, and puck thickness stay at their saved values. The map origin is derived from the file and selected machine-zero or centered alignment. Start calibration moves to each generated point while preserving the current Z.</p>
+        <p class="hint">The imported project's X/Y dimensions and sample counts are calculated automatically. Probe speeds, travel, retract, probe type, and puck thickness stay at their saved values. The map origin is derived from the file and selected machine-zero or centered alignment. Start calibration moves to each generated point while preserving the current Z.</p>
         <h3>1. Confirm machine is homed</h3>
         <p>If gSender reports the machine already homed, the plugin keeps the current machine Z as its retract baseline and skips re-homing. Confirm Z is clear and safe before calibration.</p>
         <div class="row"><button id="home" title="Home the machine if it has not already been homed. The plugin records the resulting Z baseline and uses the selected alignment to derive the map origin." disabled>Home machine</button><span id="homeLabel">Machine not homed</span></div>
