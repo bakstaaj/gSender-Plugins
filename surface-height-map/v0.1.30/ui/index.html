@@ -18,7 +18,7 @@
     "react/jsx-dev-runtime": "./vendor/react-jsx-dev-runtime.js"
   }
 }</script>
-    <script type="module" crossorigin src="./assets/index-BoXIILDN.js"></script>
+    <script type="module" crossorigin src="./assets/index-DYvm29n4.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-7GR98Teb.css">
   </head>
   <body>
@@ -41,12 +41,13 @@
           <label title="Feed rate used for the slower, more repeatable touch after the fast probe retracts.">Slow feed (mm/min)<input id="slowFeed" type="number" min="1" step="1"></label>
           <label title="Maximum downward travel for the slow touch, starting after the interim retract. It must be long enough to reach the surface again.">Slow probe travel (mm)<input id="slowTravel" type="number" min="0.1" step="0.1"></label>
           <label title="Small upward move between the fast touch and slow touch. This releases probe pressure before the more precise second reading.">Retract (mm)<input id="retract" type="number" min="0.1" step="0.1"></label>
-          <label id="puckThicknessField" title="Non-conductive probing only: enter the thickness of the puck placed between the probe and material. This value is subtracted from each measured contact height. It is ignored for conductive-surface probing." hidden>Probe puck thickness (mm, non-conductive only)<input id="puckThickness" type="number" min="0" step="0.01"></label>
+          <label id="puckThicknessField" title="Puck probing only: enter the thickness of the puck placed between the probe and material. This value is subtracted from each measured contact height." hidden>Probe puck thickness (mm, Puck only)<input id="puckThickness" type="number" min="0" step="0.01"></label>
         </div>
         <p id="mapSizeHint" class="hint map-size-hint">Set Length X and Width Y to cover the complete project toolpath from the captured origin. Use values equal to or larger than the project’s machine-coordinate X and Y extents; compensation stops if any move falls outside the mapped area.</p>
-        <fieldset title="Choose how the probe makes electrical contact at each measured point."><legend>Surface type</legend>
-          <label class="inline" title="Use on conductive material. Attach the clip once and leave it connected for the whole calibration."><input type="radio" name="surfaceType" value="conductive" checked> Conductive surface (clip stays attached)</label>
-          <label class="inline" title="Use on non-conductive material. The plugin pauses at every point so you can move the probe puck; enter its thickness above."><input type="radio" name="surfaceType" value="puck"> Non-conductive (move the puck to each point)</label>
+        <fieldset title="Choose how the probe makes contact at each measured point."><legend>Probe type</legend>
+          <label class="inline" title="Conductive surface: attach the clip once and leave it connected for the whole calibration. The plugin prompts you to confirm the clip is attached."><input type="radio" name="surfaceType" value="conductive" checked> Conductive</label>
+          <label class="inline" title="Puck: use a conductive probe puck on non-conductive material. The plugin pauses at every point so you can move it; enter its thickness above."><input type="radio" name="surfaceType" value="puck"> Puck</label>
+          <label class="inline" title="Switch: use a controller-connected probe switch. It probes like Conductive, without the clip confirmation prompt."><input type="radio" name="surfaceType" value="switch"> Switch</label>
         </fieldset>
         <p class="hint">If gSender reports the machine already homed, the plugin uses the current machine Z as its retract baseline; confirm that Z is clear and safe before moving. Start calibration moves to the entered map start X/Y while preserving Z, captures the resulting machine position as the map origin, then begins probing. After the final probe, the plugin retracts to machine Z0, then parks at machine X0 Y0. The map must fit within the controller’s reported machine travel.</p>
         <h3>1. Confirm machine is homed</h3>

@@ -43,11 +43,12 @@
           <label title="Feed rate for the repeat touch, in mm/min.">Slow feed (mm/min)<input id="slowFeed" type="number" min="1" step="1"></label>
           <label title="Maximum downward travel for the slow touch. It must exceed the interim retract distance.">Slow probe travel (mm)<input id="slowTravel" type="number" min="0.1" step="0.1"></label>
           <label title="Small upward move between fast and slow probing.">Retract (mm)<input id="retract" type="number" min="0.1" step="0.1"></label>
-          <label id="puckThicknessField" title="Used only for non-conductive probing; subtracted from each contact height." hidden>Probe puck thickness (mm)<input id="puckThickness" type="number" min="0" step="0.01"></label>
+          <label id="puckThicknessField" title="Puck probing only; this thickness is subtracted from each contact height." hidden>Probe puck thickness (mm, Puck only)<input id="puckThickness" type="number" min="0" step="0.01"></label>
         </div>
-        <fieldset title="Choose how the probe makes electrical contact at each point."><legend>Surface type</legend>
-          <label class="inline" title="Keep the probe clip attached for the entire map run."><input type="radio" name="surfaceType" value="conductive" checked> Conductive surface (clip stays attached)</label>
-          <label class="inline" title="The plugin pauses at each point so you can move the puck."><input type="radio" name="surfaceType" value="puck"> Non-conductive (move the puck to each point)</label>
+        <fieldset title="Choose how the probe makes contact at each point."><legend>Probe type</legend>
+          <label class="inline" title="Conductive surface: attach the probe clip for the full calibration. The plugin prompts you once to confirm it is attached."><input type="radio" name="surfaceType" value="conductive" checked> Conductive</label>
+          <label class="inline" title="Puck: use a conductive puck on non-conductive material. The plugin pauses at each point so you can move it; enter its thickness above."><input type="radio" name="surfaceType" value="puck"> Puck</label>
+          <label class="inline" title="Switch: use a controller-connected probe switch. It probes like Conductive, without a clip confirmation prompt."><input type="radio" name="surfaceType" value="switch"> Switch</label>
         </fieldset>
         <p class="hint">The imported project's X/Y dimensions and sample counts are calculated automatically. Probe speeds, travel, retract, surface type, and puck thickness stay at their saved values. The map origin is derived from the file and selected machine-zero or centered alignment. Start calibration moves to each generated point while preserving the current Z.</p>
         <h3>1. Confirm machine is homed</h3>

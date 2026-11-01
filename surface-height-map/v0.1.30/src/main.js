@@ -98,7 +98,8 @@ function populateSettings(saved = {}) {
             && Number(value) <= Number(saved.retract ?? DEFAULTS.retract);
         $(id).value = String(missingOrInvalid || invalidSlowTravel ? DEFAULTS[id] : value);
     }
-    document.querySelector(`input[name="surfaceType"][value="${saved.surfaceType ?? DEFAULTS.surfaceType}"]`).checked = true;
+    const surfaceType = ['conductive', 'puck', 'switch'].includes(saved.surfaceType) ? saved.surfaceType : DEFAULTS.surfaceType;
+    document.querySelector(`input[name="surfaceType"][value="${surfaceType}"]`).checked = true;
     updatePuckThicknessVisibility();
 }
 
@@ -455,6 +456,7 @@ function validateSettings(s, limits) {
     if (s.slowTravel <= s.retract) throw new Error('Slow probe travel must be greater than the retract distance.');
     if (s.fastFeed <= 0 || s.slowFeed <= 0 || s.retract <= 0) throw new Error('Feeds and retract must be greater than zero.');
     if (s.puckThickness < 0) throw new Error('Probe puck thickness cannot be negative.');
+    if (!['conductive', 'puck', 'switch'].includes(s.surfaceType)) throw new Error('Choose Conductive, Puck, or Switch as the probe type.');
 }
 
 async function homeMachine() {

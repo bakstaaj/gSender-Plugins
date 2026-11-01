@@ -8,8 +8,8 @@ Source repository for gSender plugins maintained by Bakstaaj. Plugin version fol
 - [CNC Job Setup](cnc-job-setup/v0.2.46/README.md) — version 0.2.46; configurable gSender streaming or Makera Z1 SD-card playback, with improved probe/tool prompts and alarm recovery.
 - [Roughing Blank Planner](roughing-blank-planner/v0.2.1/README.md) — version 0.2.1; analyzes a part NC envelope, compares billet and workholding clearances, selects a low-volume roughing blank, and generates stock-preparation G-code for Carve review.
 - [Spindle Tramming](spindle-tramming/README.md) — version 0.4.4; persistent local setup settings, tilt and nod measurements for gSender 1.7.0-Edge-2.
-- [Surface Height Map](surface-height-map/v0.1.30/README.md) — version 0.1.30; homing-aware surface calibration, automatic map-origin capture, and G-code compensation.
-- [Surface Height Map (File First)](surface-height-map-file-first/v0.1.7/README.md) — version 0.1.7; homing-aware probing, Z travel-limited probes, contour-aware mapping, and selectable work-zero compensation.
+- [Surface Height Map](surface-height-map/v0.1.30/README.md) — version 0.1.30; homing-aware surface calibration, automatic map-origin capture, Conductive/Puck/Switch probing, and G-code compensation.
+- [Surface Height Map (File First)](surface-height-map-file-first/v0.1.7/README.md) — version 0.1.7; homing-aware probing, Z travel-limited probes, Conductive/Puck/Switch probe types, contour-aware mapping, and selectable work-zero compensation.
 - [Camera Align & Print Registration](camera-align-print-registration/v0.2.0/README.md) — version 0.2.0; live camera, selectable G54–G59 work zero, and two-point printed-artwork registration.
 - [CNC Camera Monitor](camera-monitor/v0.1.9/README.md) — prototype 0.1.9; USB/network camera monitoring, optional second camera, and a persistent Carve overlay with feed controls.
 - [Makera Z1 File Transfer](makera-z1-upload/v0.1.9/README.md) — prototype 0.1.9; single installer bundles NSSM, installs the bridge service to `C:\gsender_file_bridge`, and updates the gSender plugin.

@@ -13,7 +13,7 @@ The plugin creates and loads a **new compensated copy**. It does not edit the se
 ## What it does
 
 - Detects existing gSender homing state or runs the homing cycle, captures a machine-coordinate map origin, checks the planned grid against the controller's reported travel limits, and probes a regular XY grid.
-- Supports a conductive work surface with the clip attached for the full run, or a non-conductive surface with a probe puck moved to each point.
+- Supports three probe types: **Conductive** prompts once to confirm the clip is attached; **Puck** pauses at each point for the probe puck and corrects readings for its thickness; **Switch** probes like Conductive without the clip prompt.
 - Saves the measured map and calibration settings in gSender plugin storage so the map is available after restarting gSender.
 - Shows the sampled surface as a color-coded 3D-style grid, with minimum, maximum, range, and a vertical exaggeration control.
 - Prepares a true-scale STL surface mesh in millimetres and stores the generated text in gSender plugin storage for copying into a local `.stl` file; vertical exaggeration affects the preview only.
@@ -78,7 +78,7 @@ The package includes the README screenshots so the relative image links work whe
 | Slow feed | 20 mm/min | Feed for the repeat touch. |
 | Slow probe travel | 3 mm | Maximum downward travel for the slow touch. It must exceed the interim retract distance. |
 | Retract | 2 mm | Upward move between the fast and slow touches. |
-| Probe puck thickness | 1.53 mm | Shown and used only for non-conductive probing; subtracted from each puck contact reading. |
+| Probe puck thickness | 1.53 mm | Shown and used only for Puck probing; subtracted from each puck contact reading. |
 
 Settings are saved in gSender plugin storage as they are changed. More samples improve spatial detail but increase the number of machine moves and calibration time. A 15 × 11 grid requires 165 measured points.
 
@@ -90,12 +90,13 @@ Set Length X and Width Y to at least the planned project's full machine-coordina
 2. If gSender reports the machine is already homed, the plugin skips the homing cycle and records the current machine Z as its retract baseline. Make sure the tool is at a clear, safe Z before continuing. Otherwise, click **Home machine**; the plugin records the resulting machine Z for its retract checks.
 3. Enter the machine-coordinate lower-left corner in **Start X machine** and **Start Y machine**. Both default to `0`. **Start calibration** moves to those coordinates while preserving the current Z, then captures the resulting machine position as the map origin. Check the whole XY path is clear before starting.
 
-### 3. Select the contact method
+### 3. Select the probe type
 
-- **Conductive surface:** connect the probe clip to the conductive material and leave it attached for the entire calibration. The plugin pauses once before the first point so you can confirm the clip is attached.
-- **Non-conductive surface:** choose this for an insulating surface and use a probe puck. Set **Probe puck thickness** to the puck's actual thickness. The plugin moves to a point, pauses for you to place the puck, probes, then asks you to move it to the next point. Keep hands clear before continuing each prompt.
+- **Conductive:** connect the probe clip to the conductive material and leave it attached for the entire calibration. The plugin pauses once before the first point so you can confirm the clip is attached.
+- **Puck:** use a probe puck on an insulating surface. Set **Probe puck thickness** to its actual thickness. The plugin pauses at every point so you can place or move the puck; keep hands clear before continuing each prompt.
+- **Switch:** use a probe switch connected to the controller's probe input. It runs the same automatic probing sequence as Conductive without asking for clip confirmation.
 
-The puck-thickness value applies only to the non-conductive method; it is ignored for conductive probing.
+The puck-thickness value applies only to Puck probing; it is ignored for Conductive and Switch.
 
 ### 4. Start and supervise probing
 
