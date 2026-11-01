@@ -1,4 +1,5 @@
 # CNC Camera Monitor
+**Latest release package:** [Download camera-monitor-v0.1.9.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/camera-monitor-v0.1.9/camera-monitor-v0.1.9.zip)
 
 **Prototype 0.1.8 · gSender 1.7.0-Edge-2 · Plugin SDK 0.2.2**
 

@@ -1,4 +1,5 @@
 # Surface Height Map (File First)
+**Latest release package:** [Download surface-height-map-file-first-v0.1.6.zip](https://github.com/bakstaaj/gSender-Plugins/raw/refs/heads/main/surface-height-map-file-first/v0.1.6/surface-height-map-file-first-v0.1.6.zip)
 
 This is a separate experimental gSender plugin that keeps the surface-map probing, visualization, STL preparation, and G-code compensation workflow while changing the order of operations. The project G-code is imported first so the plugin can derive the calibration area and sampling grid from the actual toolpath. The existing **Surface Height Map** plugin is unchanged by this experiment.
 

@@ -1,4 +1,5 @@
 # Roughing Blank Planner v0.2.1
+**Latest release package:** [Download roughing-blank-planner-v0.2.1.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/roughing-blank-planner-v0.2.1/roughing-blank-planner-v0.2.1.zip)
 
 Roughing Blank Planner is a gSender plugin for sizing a billet around a part NC program, recording machine workholding resources, and generating a stock-preparation program for review in Carve.
 

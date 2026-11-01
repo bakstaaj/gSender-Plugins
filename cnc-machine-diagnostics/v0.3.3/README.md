@@ -1,4 +1,5 @@
 # CNC Machine Diagnostics for gSender
+**Latest release package:** [Download cnc-machine-diagnostics-v0.3.3.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/cnc-machine-diagnostics-v0.3.3/cnc-machine-diagnostics-v0.3.3.zip)
 
 A configurable diagnostics tool for CNC machines using gSender. Create and save machine profiles to show supported controls and sensors, assign each control its G-code commands, and map controller status fields to sensor indicators.
 

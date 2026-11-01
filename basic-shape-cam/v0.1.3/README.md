@@ -1,4 +1,5 @@
 # Basic Shape CAM
+**Latest release package:** [Download basic-shape-cam-v0.1.3.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/basic-shape-cam-v0.1.3/basic-shape-cam-v0.1.3.zip)
 
 **Prototype version 0.1.3 · gSender 1.7.0-Edge-2 · Plugin SDK 0.2.2**
 

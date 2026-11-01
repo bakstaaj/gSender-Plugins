@@ -1,4 +1,5 @@
 # CNC Job Setup for gSender
+**Latest release package:** [Download cnc-job-setup-v0.2.46.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/cnc-job-setup-v0.2.46/cnc-job-setup-v0.2.46.zip)
 
 A configurable machine-profile page plus a per-job workflow launched from the gSender Carve visualizer. The included Makera Z1 profile is a starting point; duplicate it for other machines and configure their commands and offsets.
 

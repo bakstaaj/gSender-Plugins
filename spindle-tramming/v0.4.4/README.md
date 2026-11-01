@@ -1,4 +1,5 @@
 # Spindle Tramming for gSender Edge2
+**Latest release package:** [Download gsender-spindle-tramming-0.4.5.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/spindle-tramming-v0.4.5/gsender-spindle-tramming-0.4.5.zip)
 
 **Plugin 0.4.4 | gSender 1.7.0-Edge-2 | SDK 0.2.2**
 

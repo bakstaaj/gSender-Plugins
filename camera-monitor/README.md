@@ -1,4 +1,5 @@
 # CNC Camera Monitor
+**Latest release package:** [Download camera-monitor-v0.1.9.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/camera-monitor-v0.1.9/camera-monitor-v0.1.9.zip)
 
 The latest source snapshot and install package are in [version 0.1.9](v0.1.9/README.md). The plugin shows USB and supported network camera feeds in gSender, including an optional second camera and a view-only overlay over the Carve workspace.
 

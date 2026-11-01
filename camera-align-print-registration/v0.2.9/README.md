@@ -1,4 +1,5 @@
 # Camera Align & Print Registration
+**Latest release package:** [Download camera-align-print-registration-v0.2.11.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/camera-align-print-registration-v0.2.11/camera-align-print-registration-v0.2.11.zip)
 
 **Version 0.2.9 · gSender 1.7.0-Edge-2 · Plugin SDK 0.2.2**
 

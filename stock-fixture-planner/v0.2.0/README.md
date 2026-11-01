@@ -1,4 +1,5 @@
 # Stock & Fixture Planner v0.2.0
+**Latest release package:** [Download stock-fixture-planner-v0.2.0.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/stock-fixture-planner-v0.2.0/stock-fixture-planner-v0.2.0.zip)
 
 Stock & Fixture Planner is a gSender plugin for sizing a billet around a part NC program, recording machine workholding resources, and generating a stock-preparation program for review in Carve.
 

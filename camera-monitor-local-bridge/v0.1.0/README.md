@@ -1,4 +1,5 @@
 # CNC Camera Monitor Local Bridge
+**Latest release package:** [Download camera-monitor-local-bridge-v0.1.0.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/camera-monitor-local-bridge-v0.1.0/camera-monitor-local-bridge-v0.1.0.zip)
 
 **Prototype 0.1.0 · Windows 10+ 64-bit**
 

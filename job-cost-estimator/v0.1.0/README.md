@@ -1,4 +1,5 @@
 # G-code Job Cost Estimator
+**Latest release package:** [Download gcode-job-cost-estimator-v0.1.0.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/job-cost-estimator-v0.1.0/gcode-job-cost-estimator-v0.1.0.zip)
 
 **Version 0.1.0 · Prototype · gSender 1.7.0-Edge-2 · Plugin SDK 0.2.2**
 
