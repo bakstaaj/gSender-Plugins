@@ -29,7 +29,7 @@
         </div>
         <h3 class="settings-group-title">Probe travel and feed</h3>
         <div class="grid fields settings-grid">
-          <label title="Maximum downward distance for the initial fast touch. Set enough travel to reach the surface from the recorded Z baseline while staying within safe machine travel.">Probe travel (mm)<input id="probeTravel" type="number" min="0.1" step="0.1"></label>
+          <label title="Maximum allowed downward probe travel in machine Z for the initial fast touch. Set enough travel to reach the surface while staying within safe machine travel.">Max Allowed Probe Travel (Z Max)<input id="probeTravel" type="number" min="0.1" step="0.1"></label>
           <label title="Maximum downward travel for the slow touch, starting after the interim retract. It must be long enough to reach the surface again.">Slow probe travel (mm)<input id="slowTravel" type="number" min="0.1" step="0.1"></label>
           <label title="Feed rate used for the initial fast touch, in millimeters per minute.">Fast feed (mm/min)<input id="fastFeed" type="number" min="1" step="1"></label>
           <label title="Feed rate used for the slower, more repeatable touch after the fast probe retracts.">Slow feed (mm/min)<input id="slowFeed" type="number" min="1" step="1"></label>
@@ -37,7 +37,7 @@
         </div>
         <h3 class="settings-group-title">Retracts</h3>
         <div class="grid fields settings-grid retract-grid">
-          <label class="full-retract-field" title="Machine-coordinate Z position used for XY travel between probe points. For this GRBL setup, 0 is the highest Z and negative values are lower; choose a height that clears the highest part feature.">Full Retract (machine Z mm)<input id="clearanceZ" type="number" step="0.1" value="0"></label>
+          <label class="full-retract-field" title="Machine-coordinate negative Z position used for XY travel between probe points. Positive entries are changed to negative values.">Full Retract (Machine -Z mm)<input id="clearanceZ" type="number" step="0.1" value="0"></label>
           <label title="Short upward move between the fast touch and slow touch. This releases probe pressure before the more precise second reading.">Short Retract (mm)<input id="retract" type="number" min="0.1" step="0.1"></label>
         </div>
         <p id="mapSizeHint" class="hint map-size-hint">Set Length X and Width Y to cover the complete project toolpath from the captured origin. Use values equal to or larger than the project’s machine-coordinate X and Y extents; compensation stops if any move falls outside the mapped area.</p>

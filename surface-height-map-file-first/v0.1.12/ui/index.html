@@ -18,7 +18,7 @@
     "react/jsx-dev-runtime": "./vendor/react-jsx-dev-runtime.js"
   }
 }</script>
-    <script type="module" crossorigin src="./assets/index-6D2JkKgm.js"></script>
+    <script type="module" crossorigin src="./assets/index-8lumeUPK.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-BPaYHLpS.css">
   </head>
   <body>
@@ -57,7 +57,7 @@
         </div>
         <h3 class="settings-group-title">Probe travel and feed</h3>
         <div class="grid fields settings-grid">
-          <label title="Maximum downward distance for each initial fast touch. Choose enough travel to reach the surface safely.">Probe travel (mm)<input id="probeTravel" type="number" min="0.1" step="0.1"></label>
+          <label title="Maximum allowed downward probe travel in machine Z for each initial fast touch. Choose enough travel to reach the surface safely.">Max Allowed Probe Travel (Z Max)<input id="probeTravel" type="number" min="0.1" step="0.1"></label>
           <label title="Maximum downward travel for the slow touch. It must exceed the interim retract distance.">Slow probe travel (mm)<input id="slowTravel" type="number" min="0.1" step="0.1"></label>
           <label title="Feed rate for the initial fast touch, in mm/min.">Fast feed (mm/min)<input id="fastFeed" type="number" min="1" step="1"></label>
           <label title="Feed rate for the repeat touch, in mm/min.">Slow feed (mm/min)<input id="slowFeed" type="number" min="1" step="1"></label>
@@ -65,7 +65,7 @@
         </div>
         <h3 class="settings-group-title">Retracts</h3>
         <div class="grid fields settings-grid retract-grid">
-          <label class="full-retract-field" title="Machine-coordinate Z position used for XY travel between probe points. For this GRBL setup, 0 is the highest Z and negative values are lower; choose a height that clears the highest part feature.">Full Retract (machine Z mm)<input id="clearanceZ" type="number" step="0.1" value="0"></label>
+          <label class="full-retract-field" title="Machine-coordinate negative Z position used for XY travel between probe points. Positive entries are changed to negative values.">Full Retract (Machine -Z mm)<input id="clearanceZ" type="number" step="0.1" value="0"></label>
           <label title="Short upward move between fast and slow probing.">Short Retract (mm)<input id="retract" type="number" min="0.1" step="0.1"></label>
         </div>
         <fieldset title="Choose how the probe makes contact at each point."><legend>Probe type</legend>

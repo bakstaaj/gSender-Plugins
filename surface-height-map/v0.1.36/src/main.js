@@ -8,6 +8,10 @@ const state = { origin: null, homeMachineZ: null, controllerHomed: false, adopti
 const setNotice = (message, kind = '') => { $('notice').textContent = message; $('notice').className = kind; };
 const setApplyStatus = (message, kind = '') => { $('applyStatus').textContent = message; $('applyStatus').className = kind; };
 const n = (id) => Number($(id).value);
+const negativeMachineZ = (value) => {
+    const z = Number(value);
+    return Number.isFinite(z) && z > 0 ? -z : z;
+};
 const round = (v) => Number(v.toFixed(4));
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const calibrationLogKey = 'calibrationLog';
@@ -96,7 +100,7 @@ function drawSurfaceMap() {
 
 function currentSettings() {
     return {
-        ...Object.fromEntries(fields.map((id) => [id, n(id)])),
+        ...Object.fromEntries(fields.map((id) => [id, id === 'clearanceZ' ? negativeMachineZ(n(id)) : n(id)])),
         surfaceType: document.querySelector('input[name="surfaceType"]:checked').value,
     };
 }
@@ -107,7 +111,8 @@ function populateSettings(saved = {}) {
         const missingOrInvalid = value == null || value === '' || !Number.isFinite(Number(value));
         const invalidSlowTravel = id === 'slowTravel'
             && Number(value) <= Number(saved.retract ?? DEFAULTS.retract);
-        $(id).value = String(missingOrInvalid || invalidSlowTravel ? DEFAULTS[id] : value);
+        const selectedValue = missingOrInvalid || invalidSlowTravel ? DEFAULTS[id] : value;
+        $(id).value = String(id === 'clearanceZ' ? negativeMachineZ(selectedValue) : selectedValue);
     }
     const surfaceType = ['conductive', 'puck', 'switch'].includes(saved.surfaceType) ? saved.surfaceType : DEFAULTS.surfaceType;
     document.querySelector(`input[name="surfaceType"][value="${surfaceType}"]`).checked = true;
@@ -681,7 +686,12 @@ async function start() {
         renderStlExport();
         $('exaggeration').addEventListener('input', drawSurfaceMap);
         if (window.ResizeObserver) new ResizeObserver(drawSurfaceMap).observe($('surfaceCanvas'));
-        for (const id of fields) $(id).addEventListener('change', saveSettings);
+        for (const id of fields) {
+            $(id).addEventListener('change', id === 'clearanceZ' ? () => {
+                $('clearanceZ').value = String(negativeMachineZ(n('clearanceZ')));
+                saveSettings();
+            } : saveSettings);
+        }
         for (const input of document.querySelectorAll('input[name="surfaceType"]')) input.addEventListener('change', () => {
             updatePuckThicknessVisibility();
             saveSettings();
