@@ -3,12 +3,11 @@ export const DEFAULTS = Object.freeze({
     lengthY: 110,
     pointsX: 15,
     pointsY: 11,
-    clearanceZ: 0,
+    fullRetract: 10,
     probeTravel: 25.5,
     fastFeed: 100,
     slowFeed: 20,
     slowTravel: 3,
-    retract: 2,
     puckThickness: 1.53,
     surfaceType: 'conductive',
 });

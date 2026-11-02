@@ -8,13 +8,13 @@ The plugin creates and loads a **new compensated copy**. It does not edit the se
 
 ![Surface Height Map calibration setup in gSender Edge](docs/screenshots/01-map-setup.png)
 
-*This earlier setup screenshot shows 140 × 100 mm and 5 × 5 samples. In this branch, calibration starts from the material lower-left corner after WPOS X0 Y0 Z0 is set; fresh-install map defaults are 150 × 110 mm and 15 × 11 points.*
+*This earlier setup screenshot shows 140 × 100 mm and 5 × 5 samples. The current branch adds a homing, jog, WPOS touch-off, and calibration sequence; fresh-install map defaults are 150 × 110 mm and 15 × 11 points.*
 
-The WPOS-first calibration starts at the material's lower-left corner after the operator zeros WPOS X, Y, and Z in gSender. It probes in positive work X and Y, row by row from front-left toward back-right. The machine-coordinate start is captured from the controller position, and the complete grid is checked against signed travel bounds before any probe motion. `$23` determines the signed machine travel limits; it does not reverse the WPOS scan direction. The calibration log retains motion commands, controller replies, probe reports, and errors across restarts. The plugin also retries incomplete controller settings reads.
+The WPOS-first workflow homes (or accepts gSender's existing homed state), provides bounded XYZ jog buttons, and probes the selected work origin before calibration. That touch-off sets G54 to WPOS X0 Y0 Z0 and retracts to a positive height above the measured surface. The map then scans front-left to back-right regardless of whether the chosen WPOS origin is a corner or the center. The complete grid is checked against signed machine travel before probing. `$23` determines the machine travel limits; it does not reverse the work-coordinate scan. The calibration log retains motion commands, controller replies, probe reports, and errors across restarts.
 
 ## What it does
 
-- Detects existing gSender homing state or runs the homing cycle. After you jog to the material lower-left corner and set WPOS X0 Y0 Z0, it captures the machine-coordinate origin, checks the positive-work-coordinate grid against signed machine travel limits, and probes the surface.
+- Detects existing gSender homing state or runs the homing cycle. Bounded XYZ jog controls position the probe; Probe WPOS origin performs a two-touch Z probe and sets G54 WPOS X0 Y0 Z0. Select front-left, front-right, rear-left, rear-right, or center as the work origin. The measured map is always stored and scanned front-left to back-right.
 - Supports three probe types: **Conductive** prompts once to confirm the clip is attached; **Puck** pauses at each point for the probe puck and corrects readings for its thickness; **Switch** probes like Conductive without the clip prompt.
 - Saves the measured map and calibration settings in gSender plugin storage so the map is available after restarting gSender.
 - Shows the sampled surface as a color-coded 3D-style grid, with minimum, maximum, range, and a vertical exaggeration control.
@@ -74,24 +74,24 @@ The package includes the README screenshots so the relative image links work whe
 | Width Y | 110 mm | Map width along machine Y, measured from the captured origin. |
 | X samples | 15 | Number of evenly spaced probe locations along X, including both edges. |
 | Y samples | 11 | Number of evenly spaced probe locations along Y, including both edges. |
-| Full Retract | 0 machine Z mm | Machine-coordinate Z target used after each probe before subsequent XY travel and for the final park. Calibration begins at the current WPOS zero without an initial Z move. For a machine whose Z0 is the top of travel, use a more negative value for a lower clearance; keep it above the highest part feature. |
+| Full Retract Height | 10 mm | Positive clearance above the probed WPOS Z0 surface, used before XY travel between points and for the final park. Increase it for warped parts; it must fit within the available machine Z travel and clear the highest feature. |
 | Probe travel | 25.5 mm | Maximum downward distance for each initial fast touch. Choose enough travel to reach the surface safely. |
 | Fast feed | 100 mm/min | Feed for the first touch. |
 | Slow feed | 20 mm/min | Feed for the repeat touch. |
 | Slow probe travel | 3 mm | Maximum downward travel for the slow touch. It must exceed the interim retract distance. |
-| Retract | 2 mm | Upward move between the fast and slow touches. |
+| Short retract | Fixed 2 mm | Upward move between the fast and slow touches to release the probe switch. |
 | Probe puck thickness | 1.53 mm | Shown and used only for Puck probing; subtracted from each puck contact reading. |
 
 Settings are saved in gSender plugin storage as they are changed. More samples improve spatial detail but increase the number of machine moves and calibration time. A 15 × 11 grid requires 165 measured points.
 
-Set Length X and Width Y to cover the planned project's full X/Y spans from WPOS X0 Y0. The complete positive-work-coordinate grid must also remain inside machine travel reported by `$130`/`$131`/`$132` and interpreted using `$23`. The map dimensions are not the overall machine travel; they describe the rectangular area you intend to measure.
+Set Length X and Width Y to the full material area you want to measure. The selected WPOS corner makes the area extend from that corner across the full dimensions; Center places half the dimensions on either side of WPOS X0 Y0. The plugin scans the physical grid front-left to back-right and checks it against `$130`/`$131`/`$132` interpreted using `$23`.
 
-### 2. Home and set WPOS at the material
+### 2. Home, jog, and probe the WPOS origin
 
-1. Home the machine in gSender or with **Home machine** in the plugin.
-2. Jog the probe to the lower-left corner of the material. Make sure the probe is at the surface's WPOS Z0 and the complete grid is clear.
-3. Zero WPOS X, Y, and Z in gSender. Confirm the position display reads X0 Y0 Z0. Do not jog after zeroing; **Start calibration** captures this exact position and begins the first probe without an initial reposition move.
-4. The scan proceeds toward positive work X and positive work Y, row by row from front-left to back-right. `$23` is used only to determine machine travel limits; it does not set the scan direction.
+1. Home the machine in gSender or click **Home machine**. If gSender already reports it homed, this step is satisfied and the button is disabled.
+2. Select the desired origin: one of the four material corners or the center. The buttons jog by the selected millimetre step and are checked against the reported machine travel. Raise Z clear before jogging X or Y.
+3. Put the probe above the selected origin and click **Probe WPOS origin**. The plugin performs a fast and slow Z touch, using a fixed 2 mm short retract between them, then issues `G21 G90 G10 L20 P1 X0 Y0 Z0` to set G54 WPOS zero. This changes the saved G54 offset; other G54 jobs use the new origin until you set it again. The plugin then retracts to Full Retract Height.
+4. **Start calibration** becomes available after the controller confirms the WPOS zero and retract position. If the machine moves or the selected origin changes, touch off again. The map scans the full area from front-left to back-right, including when WPOS zero is at another corner or the center.
 
 ### 3. Select the probe type
 
@@ -103,9 +103,9 @@ The puck-thickness value applies only to Puck probing; it is ignored for Conduct
 
 ### 4. Start and supervise probing
 
-Before probing, the plugin checks that the controller is idle, WPOS X/Y/Z are all zero, the position did not change while setup was checked, and the entire grid is within signed machine travel. It captures machine coordinates at WPOS zero as the map origin and starts probing there without moving first to machine Z0 or a separate X/Y target.
+Before calibration, the plugin checks that the controller is idle, the machine remains at the verified WPOS touch-off, Full Retract Height is inside Z travel, and the entire XY grid is within signed machine travel. It first moves to Full Retract Height, then to the physical front-left grid point.
 
-At each grid point the plugin checks remaining machine Z travel using the controller's `$23` Z homing direction and `$132` travel limit before each probe. It limits each probe move to the safe travel available at that point, leaving a 0.1 mm margin at the machine Z limit. It performs a fast `G38.2` touch, retracts by the configured Short Retract (limited by the controller's upper Z travel), performs the slower `G38.2` touch, records the stopped machine Z, then moves to the configured Full Retract position before the next XY move. Set that machine-coordinate height above the highest feature on a warped part; flatter parts may use a lower clearance. If a probe contact is already above the configured Full Retract position, calibration stops rather than moving Z downward to reach it. On successful completion it parks at machine X0/Y0 at the configured Full Retract position, saves the completed map, and refreshes the viewer. An incomplete or stopped run is discarded; the previously saved map remains available.
+At each grid point the plugin checks remaining machine Z travel using `$23` and `$132` before probing. It limits each probe move to the available safe travel, leaving a 0.1 mm margin at the machine Z limit. Each point gets a fast touch, fixed 2 mm short retract, and slower touch. It then moves to Full Retract Height before the next XY move. If a probe contact is above the configured retract height, calibration stops rather than moving Z down to reach it. On success it parks at machine X0/Y0 at the calculated Full Retract machine height, saves the completed map, and refreshes the viewer. An incomplete or stopped run is discarded; the previously saved map remains available.
 
 Keep the spindle off and remain at the machine during all automatic motion. If a probe is missed or the controller enters Alarm, resolve the controller state before trying again. Use **Stop after current move** to stop the calibration at a safe point; do not reach into the work area while the controller is moving.
 

@@ -18,8 +18,8 @@
     "react/jsx-dev-runtime": "./vendor/react-jsx-dev-runtime.js"
   }
 }</script>
-    <script type="module" crossorigin src="./assets/index-CxvvWXnB.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-BgAV0QBH.css">
+    <script type="module" crossorigin src="./assets/index-D3BMSc8q.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-BjY_pp7Y.css">
   </head>
   <body>
     <main>
@@ -38,8 +38,8 @@
         <h2>1. Map setup</h2>
         <h3 class="settings-group-title">Map area and sampling</h3>
         <div class="grid fields settings-grid">
-          <label title="Set this to at least the complete toolpath span from the WPOS X0 origin toward positive work X. Any move outside the mapped rectangle cannot be compensated.">Length X (mm)<input id="lengthX" type="number" min="1" step="0.1" aria-describedby="mapSizeHint"></label>
-          <label title="Set this to at least the complete toolpath span from the WPOS Y0 origin toward positive work Y. Any move outside the mapped rectangle cannot be compensated.">Width Y (mm)<input id="lengthY" type="number" min="1" step="0.1" aria-describedby="mapSizeHint"></label>
+          <label title="Total material area width along work X. Any move outside the mapped rectangle cannot be compensated.">Length X (mm)<input id="lengthX" type="number" min="1" step="0.1" aria-describedby="mapSizeHint"></label>
+          <label title="Total material area depth along work Y. Any move outside the mapped rectangle cannot be compensated.">Width Y (mm)<input id="lengthY" type="number" min="1" step="0.1" aria-describedby="mapSizeHint"></label>
           <label title="Number of evenly spaced probe points along X. More points capture smaller variations but increase calibration time.">X samples<input id="pointsX" type="number" min="2" max="101" step="1"></label>
           <label title="Number of evenly spaced probe points along Y. More points capture smaller variations but increase calibration time.">Y samples<input id="pointsY" type="number" min="2" max="101" step="1"></label>
         </div>
@@ -53,22 +53,35 @@
         </div>
         <h3 class="settings-group-title">Retracts</h3>
         <div class="grid fields settings-grid retract-grid">
-          <label class="full-retract-field" title="Machine-coordinate negative Z position used for XY travel between probe points. Positive entries are changed to negative values.">Full Retract (Machine -Z mm)<input id="clearanceZ" type="number" step="0.1" value="0"></label>
-          <label title="Short upward move between the fast touch and slow touch. This releases probe pressure before the more precise second reading.">Short Retract (mm)<input id="retract" type="number" min="0.1" step="0.1"></label>
+          <label class="full-retract-field" title="Clearance height above the probed WPOS Z0 surface, used before moving between XY points. Increase this for warped parts; it must remain within the machine's Z travel.">Full Retract Height (WPOS +Z mm)<input id="fullRetract" type="number" min="0.1" step="0.1" value="10"></label>
         </div>
-        <p id="mapSizeHint" class="hint map-size-hint">Set Length X and Width Y to cover the complete project toolpath from WPOS X0 Y0. The probe grid proceeds toward positive work X and Y; calibration stops if the planned grid exceeds controller machine travel.</p>
+        <p id="mapSizeHint" class="hint map-size-hint">Set Length X and Width Y to the full area to probe. The origin selector places WPOS zero at a corner or center; the measured grid always spans the full area and scans front-left to back-right.</p>
         <fieldset title="Choose how the probe makes contact at each measured point."><legend>Probe type</legend>
           <label class="inline" title="Conductive surface: attach the clip once and leave it connected for the whole calibration. The plugin prompts you to confirm the clip is attached."><input type="radio" name="surfaceType" value="conductive" checked> Conductive</label>
           <label class="inline" title="Puck: use a conductive probe puck on non-conductive material. The plugin pauses at every point so you can move it; enter its thickness above."><input type="radio" name="surfaceType" value="puck"> Puck</label>
           <label class="inline" title="Switch: use a controller-connected probe switch. It probes like Conductive, without the clip confirmation prompt."><input type="radio" name="surfaceType" value="switch"> Switch</label>
         </fieldset>
-        <p class="hint">Home the machine, jog the probe to the material's lower-left corner, and set WPOS X0 Y0 Z0 in gSender. Calibration starts at that exact position, then probes toward positive work X and Y, row by row from front-left to back-right. The entire grid is checked against machine travel using $23 and the controller's travel limits. After each probe, Z moves to Full Retract before the next XY move. After the final probe, the plugin parks at machine X0 Y0 at the Full Retract height.</p>
+        <p class="hint">The selected point becomes WPOS X0 Y0. The plugin touches off Z0, sets G54 WPOS X0 Y0 Z0, and retracts to the configured height. It then scans the complete area front-left to back-right. Machine travel is checked before any automatic map motion.</p>
         <h3>1. Confirm machine is homed</h3>
-        <div class="row"><button id="home" title="Run the controller homing cycle if needed. Probe retracts are bounded by the controller's reported Z travel.">Home machine</button><span id="homeLabel">Machine not homed</span></div>
-        <h3>2. Set WPOS zero at the material</h3>
-        <p>Jog to the material's lower-left corner, then use gSender to zero WPOS X, Y, and Z. Confirm the position display reads X0 Y0 Z0 before starting.</p>
-        <h3>3. Start calibration</h3>
-        <div class="row"><button id="calibrate" class="primary" title="Begin at current WPOS X0 Y0 Z0 and probe the grid toward positive work X and Y." disabled>Start calibration</button><span id="originLabel">Origin captured from current WPOS when calibration starts</span><button id="stop" class="danger" title="Finish the current probe/move safely, then stop without saving an incomplete map." disabled>Stop after current move</button></div>
+        <div class="row"><button id="home" title="Run the controller homing cycle. This step is already satisfied when gSender reports the machine homed.">Home machine</button><span id="homeLabel">Machine not homed</span></div>
+        <h3>2. Select the work origin and jog</h3>
+        <div class="origin-jog-layout">
+          <fieldset id="originSelector" class="origin-picker"><legend>WPOS origin</legend><p class="hint">Choose where X0 Y0 will be on the material.</p><div class="origin-grid" role="radiogroup" aria-label="Work coordinate origin">
+            <label class="origin-point rear-left" title="Rear left origin"><input type="radio" name="wposOrigin" value="rear-left"><span></span><em>Rear left</em></label>
+            <label class="origin-point rear-right" title="Rear right origin"><input type="radio" name="wposOrigin" value="rear-right"><span></span><em>Rear right</em></label>
+            <label class="origin-point center" title="Center origin"><input type="radio" name="wposOrigin" value="center"><span></span><em>Center</em></label>
+            <label class="origin-point front-left" title="Front left origin"><input type="radio" name="wposOrigin" value="front-left" checked><span></span><em>Front left</em></label>
+            <label class="origin-point front-right" title="Front right origin"><input type="radio" name="wposOrigin" value="front-right"><span></span><em>Front right</em></label>
+          </div></fieldset>
+          <fieldset id="jogControls" class="jog-controls" disabled><legend>Jog to the selected point</legend><label for="jogStep">Jog step (mm)</label><select id="jogStep"><option value="0.1">0.1</option><option value="1" selected>1</option><option value="10">10</option></select><div class="jog-pad" aria-label="Machine jog controls">
+            <button id="jogYPlus" title="Jog positive work Y">Y+</button><button id="jogXMinus" title="Jog negative work X">X−</button><button id="jogXPlus" title="Jog positive work X">X+</button><button id="jogYMinus" title="Jog negative work Y">Y−</button><button id="jogZPlus" title="Jog Z up">Z+</button><button id="jogZMinus" title="Jog Z down">Z−</button>
+          </div><p class="hint">Jog buttons move by the selected step. Raise Z clear of the material before moving XY.</p></fieldset>
+        </div>
+        <h3>3. Probe WPOS origin</h3>
+        <p>Move the probe tip directly above the selected origin. The plugin probes Z, sets G54 so the selected point reads X0 Y0 Z0, and retracts to Full Retract Height. This updates the saved G54 offset used by other G54 jobs.</p>
+        <div class="row"><button id="probeWpos" title="Probe the selected origin, set G54 WPOS X0 Y0 Z0, then retract to the configured height." disabled>Probe WPOS origin</button></div>
+        <h3>4. Start calibration</h3>
+        <div class="row"><button id="calibrate" class="primary" title="Probe the map from front-left to back-right after the WPOS origin touch-off." disabled>Start calibration</button><span id="originLabel">Probe the selected WPOS origin to enable calibration</span><button id="stop" class="danger" title="Finish the current probe/move safely, then stop without saving an incomplete map." disabled>Stop after current move</button></div>
         <progress id="progress" max="1" value="0" hidden></progress>
       </section>
       <section>
