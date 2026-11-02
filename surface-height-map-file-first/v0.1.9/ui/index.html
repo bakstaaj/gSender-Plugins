@@ -1,0 +1,137 @@
+<!doctype html>
+<html lang="en">
+  <head>
+
+
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Surface Height Map — File First</title>
+    <script type="importmap">{
+  "imports": {
+    "@sienci/gsender-plugin-sdk": "/plugin-sdk/index.js",
+    "@sienci/gsender-plugin-sdk/react": "/plugin-sdk/react.js",
+    "@sienci/gsender-plugin-sdk/viewer": "/plugin-sdk/viewer.js",
+    "react": "./vendor/react.js",
+    "react-dom": "./vendor/react-dom.js",
+    "react-dom/client": "./vendor/react-dom-client.js",
+    "react/jsx-runtime": "./vendor/react-jsx-runtime.js",
+    "react/jsx-dev-runtime": "./vendor/react-jsx-dev-runtime.js"
+  }
+}</script>
+    <script type="module" crossorigin src="./assets/index-CR4qHK9u.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DPr5-1Vw.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <div><h1>Surface Height Map — File First</h1><p>Import a project, derive its map grid, then calibrate and compensate.</p></div>
+        <span id="connection" class="badge">Checking connection…</span>
+      </header>
+      <div id="notice" role="status" aria-live="polite"></div>
+      <section>
+        <h2>1. Import project G-code</h2>
+        <p class="hint">Connect to the CNC first. The plugin reads a metric, absolute G-code file and checks its XY size against controller travel ($130/$131). Once a scan exists, import another file here; if its full XY extents fit inside the saved scan, you can apply that same map to it.</p>
+        <div class="row project-import">
+          <input id="file" type="file" accept=".nc,.gcode,.tap,.ngc,.txt" title="Select the metric, absolute G-code project to map and compensate.">
+          <button id="checkProject" class="secondary" type="button" disabled>Check project and machine limits</button>
+        </div>
+        <div id="fileLabel">No file selected.</div>
+        <div id="projectStatus" role="status" aria-live="polite"></div>
+        <div id="projectSummary" class="hint"></div>
+        <svg id="contourPreview" class="contour-preview" viewBox="0 0 320 200" role="img" aria-label="Detected closed stock perimeter preview" hidden><polygon id="contourPreviewShape"></polygon></svg>
+      </section>
+      <section>
+        <h2>2. Map setup</h2>
+        <label class="alignment-field" title="Map direction and signed machine-coordinate travel are read from controller setting $23. Zero alignment starts the project minimum at machine X0 Y0; center mode centers the project-sized area on the travel midpoint.">Probe area alignment
+          <select id="mapAlignment">
+            <option value="zero">Start at machine X0 Y0</option>
+            <option value="center">Center project on machine travel</option>
+          </select>
+        </label>
+        <div class="grid fields">
+          <label title="Set automatically from the imported file's absolute X bounds. This value is checked against machine X travel.">Length X (mm)<input id="lengthX" type="number" min="0.001" step="0.001" readonly></label>
+          <label title="Set automatically from the imported file's absolute Y bounds. This value is checked against machine Y travel.">Width Y (mm)<input id="lengthY" type="number" min="0.001" step="0.001" readonly></label>
+          <label title="Calculated to keep adjacent probe points no more than 10 mm apart and the full grid at or above 50 total points.">X samples<input id="pointsX" type="number" min="2" max="101" step="1" readonly></label>
+          <label title="Calculated to keep adjacent probe points no more than 10 mm apart and the full grid at or above 50 total points.">Y samples<input id="pointsY" type="number" min="2" max="101" step="1" readonly></label>
+          <label title="After each completed point, retract this far upward toward the Z position recorded during homing. The move is capped at that position.">Post-probe retract (mm)<input id="postProbeRetract" type="number" min="0.1" step="0.1"></label>
+          <label title="Maximum downward distance for each initial fast touch. Choose enough travel to reach the surface safely.">Probe travel (mm)<input id="probeTravel" type="number" min="0.1" step="0.1"></label>
+          <label title="Feed rate for the initial fast touch, in mm/min.">Fast feed (mm/min)<input id="fastFeed" type="number" min="1" step="1"></label>
+          <label title="Feed rate for the repeat touch, in mm/min.">Slow feed (mm/min)<input id="slowFeed" type="number" min="1" step="1"></label>
+          <label title="Maximum downward travel for the slow touch. It must exceed the interim retract distance.">Slow probe travel (mm)<input id="slowTravel" type="number" min="0.1" step="0.1"></label>
+          <label title="Small upward move between fast and slow probing.">Retract (mm)<input id="retract" type="number" min="0.1" step="0.1"></label>
+          <label id="puckThicknessField" title="Puck probing only; this thickness is subtracted from each contact height." hidden>Probe puck thickness (mm, Puck only)<input id="puckThickness" type="number" min="0" step="0.01"></label>
+        </div>
+        <fieldset title="Choose how the probe makes contact at each point."><legend>Probe type</legend>
+          <label class="inline" title="Conductive surface: attach the probe clip for the full calibration. The plugin prompts you once to confirm it is attached."><input type="radio" name="surfaceType" value="conductive" checked> Conductive</label>
+          <label class="inline" title="Puck: use a conductive puck on non-conductive material. The plugin pauses at each point so you can move it; enter its thickness above."><input type="radio" name="surfaceType" value="puck"> Puck</label>
+          <label class="inline" title="Switch: use a controller-connected probe switch. It probes like Conductive, without a clip confirmation prompt."><input type="radio" name="surfaceType" value="switch"> Switch</label>
+        </fieldset>
+        <p class="hint">The imported project's X/Y dimensions and sample counts are calculated automatically. Probe speeds, travel, retract, probe type, and puck thickness stay at their saved values. The map origin is derived from the file and selected machine-zero or centered alignment. Start calibration moves to each generated point while preserving the current Z.</p>
+        <h3>1. Confirm machine is homed</h3>
+        <p>If gSender reports the machine already homed, the plugin keeps the current machine Z as its retract baseline and skips re-homing. Confirm Z is clear and safe before calibration.</p>
+        <div class="row"><button id="home" title="Home the machine if it has not already been homed. The plugin records the resulting Z baseline and uses the selected alignment to derive the map origin." disabled>Home machine</button><span id="homeLabel">Machine not homed</span></div>
+        <h3>2. Start calibration</h3>
+        <p>Calibration starts at the first point in the grid derived from the imported project. The full grid is checked against machine travel and probe moves stop short of the configured Z limit.</p>
+        <div class="row"><span id="originLabel">Derived from the imported file and alignment setting</span><button id="calibrate" class="primary" title="Move through the calculated probe grid and save the map only after all points succeed." disabled>Start calibration</button><button id="stop" class="danger" title="Stop safely after the current probe or move." disabled>Stop after current move</button></div>
+        <div id="calibrationProgress" class="calibration-progress" hidden>
+          <label for="progress">Probe progress</label>
+          <div class="progress-line"><progress id="progress" max="1" value="0" aria-label="Calibration probe progress"></progress><output id="progressPercent" for="progress">0%</output></div>
+        </div>
+        <div class="readings-panel">
+          <div class="readings-heading"><h4>Recent probe readings</h4><span id="probeReadingCount" aria-live="polite">No readings yet</span></div>
+          <p class="hint readings-hint">Showing the latest 10 points, newest first. Z Abs Reading is controller machine Z; Z Offset is the puck-corrected surface height relative to the first probe point.</p>
+          <div class="readings-scroll" role="region" aria-label="Latest calibration probe readings" tabindex="0">
+            <table>
+              <thead><tr><th scope="col">X Pos (mm)</th><th scope="col">Y Pos (mm)</th><th scope="col">Z Abs Reading (mm)</th><th scope="col">Z Offset (mm)</th></tr></thead>
+              <tbody id="probeReadingsBody"><tr><td colspan="4" class="empty-readings">No readings collected in this calibration yet.</td></tr></tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+      <section>
+        <h2>3. Saved map</h2>
+        <div id="mapSummary">No height map saved.</div>
+        <div id="mapVisual" class="map-visual" hidden>
+          <div class="map-visual-heading">
+            <div><h3>Measured surface</h3><p id="mapStats" class="hint"></p></div>
+            <label class="exaggeration-control" title="Visualization only; it does not change measurements or compensation.">Vertical exaggeration <output id="exaggerationValue">6×</output><input id="exaggeration" type="range" min="1" max="12" step="1" value="6"></label>
+          </div>
+          <canvas id="surfaceCanvas" aria-label="Three-dimensional view of the measured height map"></canvas>
+          <div class="height-legend"><span>Low</span><div></div><span>High</span></div>
+          <p class="hint">The display exaggerates measured Z variation for visibility; it is not a physical-scale drawing.</p>
+          <div class="row export-row"><button id="exportStl" class="secondary" title="Prepare a true-scale STL and store its text in plugin storage." disabled>Prepare STL text</button><span class="hint">The ASCII STL is stored in plugin storage for copying into a local .stl file. It is an open surface mesh at 1:1 scale.</span></div>
+          <div id="stlStatus" role="status" aria-live="polite"></div>
+          <details id="stlExportPanel" hidden>
+            <summary id="stlExportSummary">Saved STL text</summary>
+            <label for="stlText">STL text (manual save fallback)</label>
+            <textarea id="stlText" rows="12" readonly spellcheck="false"></textarea>
+            <div class="row"><button id="copyStlText" class="secondary" type="button">Copy STL text</button><span id="copyStlStatus" role="status" aria-live="polite"></span></div>
+          </details>
+        </div>
+        <button id="clearMap" class="secondary" disabled>Delete saved map</button>
+      </section>
+      <section>
+        <h2>4. Apply map to imported project</h2>
+        <p class="hint">Choose whether to rebase a generated copy around a file point or keep file coordinates and place its origin at a selected machine XY coordinate. For contour maps, the complete compensated path must stay inside the scanned perimeter.</p>
+        <label>Work-zero method
+          <select id="workZeroMode"><option value="rebase">Rebase copy around selected file point</option><option value="machine">Keep file coordinates; place selected point at machine XY</option></select>
+        </label>
+        <div class="grid fields">
+          <label>File zero X (mm)<input id="fileZeroX" type="number" step="0.001" value="0"></label>
+          <label>File zero Y (mm)<input id="fileZeroY" type="number" step="0.001" value="0"></label>
+        </div>
+        <div id="machineZeroFields" class="grid fields" hidden>
+          <label>Selected point machine X (mm)<input id="machineZeroX" type="number" min="0" step="0.001" value="0"></label>
+          <label>Selected point machine Y (mm)<input id="machineZeroY" type="number" min="0" step="0.001" value="0"></label>
+        </div>
+        <div id="fileLabelApply" class="hint">Import a G-code project above.</div>
+        <button id="compensate" class="primary" title="Create a compensated copy and load it in gSender's visualizer." disabled>Apply map and load copy</button>
+        <div id="applyStatus" role="status" aria-live="polite"></div>
+      </section>
+      <dialog id="alignDialog"><h2>Align G54 to machine zero?</h2><p id="alignPrompt"></p><div class="row"><button id="cancelAlign" class="secondary">Cancel</button><button id="confirmAlign" class="primary">Set G54 and load copy</button></div></dialog>
+      <dialog id="puckDialog"><h2 id="dialogTitle">Move the probe puck</h2><p id="puckPrompt"></p><div class="row"><button id="continuePuck" class="primary">Puck is in place</button><button id="cancelPuck" class="danger">Cancel calibration</button></div></dialog>
+      <dialog id="rectangleFallbackDialog"><h2>No closed perimeter found</h2><p>This file has no usable closed G-code contour. Use a rectangular probe area from the file’s minimum and maximum X/Y points? The probe grid may reach outside irregular stock.</p><div class="row"><button id="cancelRectangleFallback" class="secondary">Cancel</button><button id="useRectangleFallback" class="primary">Use rectangle from min/max</button></div></dialog>
+      <footer>Community plugin prototype · Review the loaded toolpath before running it.</footer>
+    </main>
+  </body>
+</html>

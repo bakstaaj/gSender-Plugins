@@ -1,0 +1,35 @@
+{
+  "id": "com.bakstaaj.surface-height-map-file-first",
+  "name": "Surface Height Map (File First)",
+  "description": "Map G-code projects using closed-stock contours or a rectangular grid, choose a work zero, and compensate within the scanned surface.",
+  "version": "0.1.9",
+  "engine": ">=1.7.0-Edge-1",
+  "ui": {
+    "entry": "ui/index.html",
+    "contributions": [
+      { "slot": "tools-page", "route": "surface-height-map-file-first", "label": "Surface Height Map (File First)" }
+    ]
+  },
+  "parsers": [
+    {
+      "id": "probe-report",
+      "label": "Probe contact position",
+      "mode": "line",
+      "match": {
+        "source": "^\\[PRB:(?<x>[-\\d.]+),(?<y>[-\\d.]+),(?<z>[-\\d.]+)(?<rest>(?:,[-\\d.]+)*):(?<success>[01])\\]\\s*$"
+      }
+    }
+  ],
+  "permissions": ["machine:read", "machine:write", "machine:parse", "machine:query", "redux:read", "storage", "visualizer:load"],
+  "capabilities": {
+    "requestTypes": [
+      "machine:get:context", "machine:command", "machine:query", "machine:busy:set",
+      "machine:parser:register", "machine:parser:unregister",
+      "redux:get:state",
+      "storage:get", "storage:set", "storage:delete", "storage:get:all", "storage:set:all",
+      "gcode:load:to:visualizer"
+    ],
+    "topics": ["controller", "parser"],
+    "allowedFunctions": ["machine", "redux", "storage", "gcode"]
+  }
+}
