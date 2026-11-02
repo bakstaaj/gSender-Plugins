@@ -1,6 +1,6 @@
 # Surface Height Map for gSender
 
-**Latest release package:** [Download surface-height-map-v0.1.36.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/surface-height-map-v0.1.36/surface-height-map-v0.1.36.zip)
+**Latest release package:** [Download surface-height-map-v0.1.36.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/surface-height-map-v0.1.36/surface-height-map-v0.1.36.zip?updated=20261102)
 
 Surface Height Map is a community gSender plugin for measuring a work surface at a regular grid of probe points, then applying those readings to a supported G-code toolpath. Calibration is saved independently of any one job, so you can map the material or spoilboard once and use that map to preprocess files whose XY footprint fits inside the mapped area.
 
