@@ -3,7 +3,7 @@ import { DEFAULTS, appendMachineOriginReturn, compensateGcode, computeG54ForMapO
 import './style.css';
 
 const $ = (id) => document.getElementById(id);
-const fields = ['lengthX', 'lengthY', 'pointsX', 'pointsY', 'clearanceZ', 'probeTravel', 'fastFeed', 'slowFeed', 'slowTravel', 'retract', 'puckThickness', 'startX', 'startY'];
+const fields = ['lengthX', 'lengthY', 'pointsX', 'pointsY', 'clearanceZ', 'probeTravel', 'fastFeed', 'slowFeed', 'slowTravel', 'retract', 'puckThickness'];
 const state = { origin: null, homeMachineZ: null, controllerHomed: false, adoptingHomedPosition: false, probeParserSequence: 0, offsetParserSequence: 0, map: null, stlExport: null, file: null, busy: false, stopRequested: false, abortPuck: null };
 const setNotice = (message, kind = '') => { $('notice').textContent = message; $('notice').className = kind; };
 const setApplyStatus = (message, kind = '') => { $('applyStatus').textContent = message; $('applyStatus').className = kind; };
@@ -271,8 +271,6 @@ async function refreshUi() {
     $('connection').textContent = connected ? 'Connected' : 'Not connected';
     $('connection').dataset.connected = String(connected);
     $('home').disabled = !connected || state.busy;
-    $('startX').disabled = !homed || state.busy;
-    $('startY').disabled = !homed || state.busy;
     $('calibrate').disabled = !homed || state.busy;
     $('stop').disabled = !state.busy;
     $('compensate').disabled = !state.map || !state.file || state.busy;
@@ -280,7 +278,7 @@ async function refreshUi() {
     $('exportStl').disabled = !state.map || state.busy;
     $('originLabel').textContent = state.origin ? `Origin X${state.origin.x.toFixed(3)}  Y${state.origin.y.toFixed(3)}` : 'Origin captured automatically when calibration starts';
     $('homeLabel').textContent = homed
-        ? `Machine already homed · safe Z${state.homeMachineZ.toFixed(3)}`
+        ? `Machine already homed · current Z${state.homeMachineZ.toFixed(3)}`
         : state.controllerHomed ? 'Machine homed · waiting for Idle position' : 'Machine not homed';
     $('mapSummary').textContent = state.map
         ? `${state.map.lengthX} × ${state.map.lengthY} mm · ${state.map.pointsX} × ${state.map.pointsY} points · captured at machine X${state.map.originX.toFixed(3)} Y${state.map.originY.toFixed(3)} · ${new Date(state.map.createdAt).toLocaleString()}`
@@ -306,7 +304,7 @@ async function adoptControllerHoming(hasHomed) {
         if (!state.controllerHomed || snapshot.state !== 'Idle') return;
         state.homeMachineZ = round(snapshot.mpos[2]);
         state.origin = null;
-        setNotice('Machine is already homed. Its current machine Z is the retract baseline; confirm it is clear and safe before moving.', 'success');
+        setNotice('Machine is already homed. Set WPOS X0 Y0 Z0 at the material start point; probe moves are bounded by the controller Z travel.', 'success');
     } catch (err) {
         setNotice(`Machine is homed, but its current Z position could not be read: ${err.message}`, 'error');
     } finally {
@@ -441,7 +439,7 @@ async function probeAt(settings, point, index, total, limits, startingZ) {
         ? `Fast probe at ${pointLabel}: limiting travel to ${fastTravel.toFixed(3)} mm to stay inside Z travel. Keep hands clear.`
         : `Fast probe on ${pointLabel}… keep hands clear.`);
     const fastProbe = await queryProbe(`G91 G38.2 Z-${fastTravel} F${settings.fastFeed}`, 45000, `Fast probe on ${pointLabel}`);
-    const interimRetract = computePostProbeRetract(fastProbe.z, state.homeMachineZ, settings.retract);
+    const interimRetract = computePostProbeRetract(fastProbe.z, limits.maxZPosition, settings.retract);
     setNotice(`Fast contact found on ${pointLabel}. Retracting ${interimRetract.toFixed(3)} mm before the slow touch…`);
     await sendAndWait(`G91 G0 Z${interimRetract}`);
     const slowStart = await waitIdle();
@@ -512,7 +510,7 @@ async function homeMachine() {
         state.homeMachineZ = round(homeStatus.mpos[2]);
         state.origin = null;
         await refreshUi();
-        setNotice('Homing complete. Enter the map start X/Y, then start calibration.', 'success');
+        setNotice('Homing complete. Jog to the material lower-left corner, set WPOS X0 Y0 Z0, then start calibration.', 'success');
     } catch (err) { setNotice(err.message, 'error'); }
     finally { state.busy = false; await refreshUi(); }
 }
@@ -530,31 +528,35 @@ async function calibrate() {
         await logCalibration('--- Calibration started ---');
         const initialStatus = await statusSnapshot();
         if (initialStatus.state !== 'Idle') throw new Error(`Machine must be idle before calibration (current state: ${initialStatus.state}).`);
-        const xValue = $('startX').value.trim();
-        const yValue = $('startY').value.trim();
-        if (xValue === '' || yValue === '') throw new Error('Enter machine-coordinate X and Y positions for the map start.');
-        const x = Number(xValue);
-        const y = Number(yValue);
+        const wpos = initialStatus.wpos;
+        if (!wpos || wpos.length < 3 || !wpos.slice(0, 3).every(Number.isFinite)) {
+            throw new Error('Could not read the current WPOS. Wait for a gSender position update and try again.');
+        }
+        const nonzeroIndex = wpos.slice(0, 3).findIndex((value) => Math.abs(value) > 0.05);
+        if (nonzeroIndex >= 0) {
+            const axis = ['X', 'Y', 'Z'][nonzeroIndex];
+            throw new Error(`Set the material lower-left corner to WPOS X0 Y0 Z0 before starting. Current WPOS ${axis} is ${wpos[nonzeroIndex].toFixed(3)} mm.`);
+        }
         const settings = currentSettings();
         const limits = await readTravelLimits();
-        await logCalibration(`Settings: $23=${limits.homingMask}; direction X=${limits.directionX > 0 ? '+X' : '-X'}, Y=${limits.directionY > 0 ? '+Y' : '-Y'}; travel X=${limits.minX}..${limits.maxX}, Y=${limits.minY}..${limits.maxY}; start X${x} Y${y}; safe clearance Z${settings.clearanceZ}; probe travel=${settings.probeTravel} mm.`);
+        const machineOrigin = { x: round(initialStatus.mpos[0]), y: round(initialStatus.mpos[1]) };
+        await logCalibration(`Settings: $23=${limits.homingMask}; WPOS origin X${wpos[0].toFixed(3)} Y${wpos[1].toFixed(3)} Z${wpos[2].toFixed(3)} at machine X${machineOrigin.x.toFixed(3)} Y${machineOrigin.y.toFixed(3)} Z${initialStatus.mpos[2].toFixed(3)}; probe direction WPOS +X/+Y; machine travel X=${limits.minX}..${limits.maxX}, Y=${limits.minY}..${limits.maxY}; Full Retract Z${settings.clearanceZ}; probe travel=${settings.probeTravel} mm.`);
         validateSettings(settings, limits);
         if (initialStatus.mpos[2] < limits.minZ - 0.1 || initialStatus.mpos[2] > limits.maxZPosition + 0.1) throw new Error(`Current machine Z${initialStatus.mpos[2].toFixed(3)} is outside the reported Z travel ${limits.minZ}..${limits.maxZPosition} mm.`);
-        const target = validateMachineTarget({ x, y }, limits);
-        validateMap({ originX: target.x, originY: target.y, lengthX: settings.lengthX, lengthY: settings.lengthY, pointsX: settings.pointsX, pointsY: settings.pointsY }, limits);
+        const grid = validateMap({ originX: machineOrigin.x, originY: machineOrigin.y, lengthX: settings.lengthX, lengthY: settings.lengthY, pointsX: settings.pointsX, pointsY: settings.pointsY, directionX: 1, directionY: 1 }, limits);
         if (settings.surfaceType === 'conductive') {
-            await confirmUser(`The machine will move Z to machine Z0, travel to the entered start X/Y, then probe automatically through the full grid. After each point, it will retract to safe clearance Z${settings.clearanceZ} before the next XY move. Attach the probe clip and keep clear of the machine.`, 'Prepare conductive probe', 'Clip is attached');
+            await confirmUser(`The machine will start at the current WPOS X0 Y0 Z0 and probe toward positive X and Y through the full grid. It will not reposition before the first probe. After each point, it will retract to machine Z${settings.clearanceZ} before the next XY move. Attach the probe clip and keep clear of the machine.`, 'Prepare conductive probe', 'Clip is attached');
+        }
+        const readyStatus = await statusSnapshot();
+        if (readyStatus.state !== 'Idle') throw new Error(`Machine must be idle before calibration (current state: ${readyStatus.state}).`);
+        if (!readyStatus.wpos || !readyStatus.wpos.slice(0, 3).every(Number.isFinite)
+            || readyStatus.wpos.slice(0, 3).some((value) => Math.abs(value) > 0.05)
+            || readyStatus.mpos.slice(0, 3).some((value, index) => Math.abs(value - initialStatus.mpos[index]) > 0.05)) {
+            throw new Error('Machine position changed after checking WPOS zero. Return to the material lower-left corner, set WPOS X0 Y0 Z0 again, and restart calibration.');
         }
         await machine.setBusy(true, 'Move to map start and calibrate surface');
-        setNotice('Moving Z to machine Z0 before traveling to the map start…');
-        await sendAndWait('G90 G53 G0 Z0');
-        await waitIdle();
-        state.homeMachineZ = 0;
-        setNotice(`Moving to map start X${target.x.toFixed(3)} Y${target.y.toFixed(3)} at machine Z0…`);
-        await sendAndWait(`G90 G53 G0 X${target.x} Y${target.y}`);
-        const originStatus = await waitIdle();
-        state.origin = { x: round(originStatus.mpos[0]), y: round(originStatus.mpos[1]) };
-        const grid = validateMap({ originX: state.origin.x, originY: state.origin.y, lengthX: settings.lengthX, lengthY: settings.lengthY, pointsX: settings.pointsX, pointsY: settings.pointsY }, limits);
+        setNotice('Starting from the captured WPOS X0 Y0 Z0. The first probe is at the material lower-left corner…');
+        state.origin = machineOrigin;
         await refreshUi();
         const flat = grid.flat();
         const measured = Array.from({ length: settings.pointsY }, () => Array(settings.pointsX));
@@ -564,7 +566,7 @@ async function calibrate() {
             const point = flat[index];
             const nextPoint = flat[index + 1];
             const directionNote = index === 0
-                ? ` Using $23=${limits.homingMask}: map direction ${limits.directionX > 0 ? '+X' : '−X'}/${limits.directionY > 0 ? '+Y' : '−Y'}; next point ${nextPoint ? `X${nextPoint.x.toFixed(3)} Y${nextPoint.y.toFixed(3)}` : 'none'}.`
+                ? ` Probing from WPOS front-left toward +X/+Y; $23=${limits.homingMask} is used for machine travel limits. Next machine point ${nextPoint ? `X${nextPoint.x.toFixed(3)} Y${nextPoint.y.toFixed(3)}` : 'none'}.`
                 : '';
             if (index === 0) await logCalibration(`Grid first points: ${flat.slice(0, 4).map((p, i) => `${i + 1}=X${p.x.toFixed(3)} Y${p.y.toFixed(3)}`).join('; ')}`);
             setNotice(`Moving to map point ${index + 1}/${flat.length}: X${point.x.toFixed(3)} Y${point.y.toFixed(3)}.${directionNote} Keep hands clear.`);
@@ -593,7 +595,7 @@ async function calibrate() {
         await waitIdle();
         state.map = {
             originX: state.origin.x, originY: state.origin.y,
-            directionX: limits.directionX, directionY: limits.directionY,
+            directionX: 1, directionY: 1,
             lengthX: settings.lengthX, lengthY: settings.lengthY,
             pointsX: settings.pointsX, pointsY: settings.pointsY,
             surfaceType: settings.surfaceType, puckThickness: settings.puckThickness,

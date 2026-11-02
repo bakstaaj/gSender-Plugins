@@ -1,6 +1,4 @@
 export const DEFAULTS = Object.freeze({
-    startX: 0,
-    startY: 0,
     lengthX: 150,
     lengthY: 110,
     pointsX: 15,
@@ -58,10 +56,10 @@ export function validateMachineTarget({ x, y }, limits) {
 
 export function computePostProbeRetract(currentZ, homeZ, requestedDistance) {
     if (![currentZ, homeZ, requestedDistance].every(Number.isFinite) || requestedDistance <= 0) {
-        throw new Error('Could not calculate a valid Z retract from the last probe point to the homed Z position.');
+        throw new Error('Could not calculate a valid Z retract from the last probe point to the safe machine Z limit.');
     }
     const available = homeZ - currentZ;
-    if (available <= 0) throw new Error('Probe position is at or above the recorded homed Z; cannot retract safely. Re-home before calibrating.');
+    if (available <= 0) throw new Error('Probe position is at or above the safe machine Z limit; cannot retract safely.');
     return Number(Math.min(requestedDistance, available).toFixed(4));
 }
 

@@ -1,6 +1,6 @@
 # Surface Height Map for gSender
 
-**Latest release package:** [Download surface-height-map-v0.1.36.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/surface-height-map-v0.1.36/surface-height-map-v0.1.36.zip?updated=20261102)
+**Latest release package:** [Download surface-height-map-v0.1.36.zip?updated=20261102](https://github.com/bakstaaj/gSender-Plugins/releases/download/surface-height-map-v0.1.36/surface-height-map-v0.1.36.zip?updated=20261102)
 
 Surface Height Map is a community gSender plugin for measuring a work surface at a regular grid of probe points, then applying those readings to a supported G-code toolpath. Calibration is saved independently of any one job, so you can map the material or spoilboard once and use that map to preprocess files whose XY footprint fits inside the mapped area.
 
@@ -8,13 +8,13 @@ The plugin creates and loads a **new compensated copy**. It does not edit the se
 
 ![Surface Height Map calibration setup in gSender Edge](docs/screenshots/01-map-setup.png)
 
-*The setup page is shown disconnected, so motion controls are disabled. The map start X/Y fields default to 0/0, and Start calibration moves to that position before capturing the origin automatically. This screenshot shows 140 × 100 mm and 5 × 5 samples; fresh-install map defaults are 150 × 110 mm and 15 × 11 points.*
+*This earlier setup screenshot shows 140 × 100 mm and 5 × 5 samples. In this branch, calibration starts from the material lower-left corner after WPOS X0 Y0 Z0 is set; fresh-install map defaults are 150 × 110 mm and 15 × 11 points.*
 
-Version 0.1.36 adds persistent map start X/Y settings and a configurable Full Retract machine-Z clearance. It moves Z to machine Z0 before the first XY approach, retracts to the selected clearance between probes, and labels the short backoff separately as Short Retract. The Full Retract field label stays on one line. This release also anchors GRBL setting parsing to complete lines so $123 is not mistaken for $23, preserving direction and travel bounds. The calibration log retains motion commands, controller replies, probe reports, and errors across restarts. It also retries incomplete controller settings reads and reports the `$23` mask and chosen X/Y direction in the calibration status before probing. Version 0.1.32 corrects `$23` sign interpretation for this controller coordinate scheme: set X/Y bits extend map points toward positive machine coordinates; clear bits extend them toward negative coordinates. Map bounds, probe grids, and compensation follow each axis direction.
+The WPOS-first calibration starts at the material's lower-left corner after the operator zeros WPOS X, Y, and Z in gSender. It probes in positive work X and Y, row by row from front-left toward back-right. The machine-coordinate start is captured from the controller position, and the complete grid is checked against signed travel bounds before any probe motion. `$23` determines the signed machine travel limits; it does not reverse the WPOS scan direction. The calibration log retains motion commands, controller replies, probe reports, and errors across restarts. The plugin also retries incomplete controller settings reads.
 
 ## What it does
 
-- Detects existing gSender homing state or runs the homing cycle, captures a machine-coordinate map origin, checks the planned grid against the controller's reported travel limits, and probes a regular XY grid.
+- Detects existing gSender homing state or runs the homing cycle. After you jog to the material lower-left corner and set WPOS X0 Y0 Z0, it captures the machine-coordinate origin, checks the positive-work-coordinate grid against signed machine travel limits, and probes the surface.
 - Supports three probe types: **Conductive** prompts once to confirm the clip is attached; **Puck** pauses at each point for the probe puck and corrects readings for its thickness; **Switch** probes like Conductive without the clip prompt.
 - Saves the measured map and calibration settings in gSender plugin storage so the map is available after restarting gSender.
 - Shows the sampled surface as a color-coded 3D-style grid, with minimum, maximum, range, and a vertical exaggeration control.
@@ -32,7 +32,7 @@ The map viewer intentionally exaggerates height variation to make small differen
 
 - gSender Edge with the plugin support required by the manifest (Edge 1.7 or later).
 - A connected controller that accepts standard GRBL-style `G38.2` probing commands, reports successful probe positions as `[PRB:...]`, and exposes a probe state to gSender (commonly `Pn:P`).
-- Valid controller travel settings `$130`, `$131`, `$132`, and homing-direction mask `$23`. The plugin uses `$23` to determine the signed X/Y machine-coordinate travel ranges and map direction, then rejects grid points or start positions outside those ranges.
+- Valid controller travel settings `$130`, `$131`, `$132`, and homing-direction mask `$23`. The plugin uses `$23` to determine signed X/Y machine-coordinate travel ranges, while the scan itself follows positive WPOS X and Y from the manually zeroed material corner.
 - The probe input must be electrically verified before calibration. Check the controller's probe status with the contact open and closed; confirm that contact changes the reported probe signal and that the controller's polarity is configured correctly.
 
 The initial reference machine is a Cubiko running custom V45.4 control-panel and system-board firmware from the [N0JCG Cubiko firmware patches](https://github.com/bakstaaj/N0JCG-Cubiko-FW-Patches). That firmware combines the built-in bed sensor and external probe jack into the same active probe input. **Cubiko firmware is not a plugin dependency.** Other GRBL-compatible machines may work if they provide the probe reporting and coordinate behavior above, but have not been validated here.
@@ -74,7 +74,7 @@ The package includes the README screenshots so the relative image links work whe
 | Width Y | 110 mm | Map width along machine Y, measured from the captured origin. |
 | X samples | 15 | Number of evenly spaced probe locations along X, including both edges. |
 | Y samples | 11 | Number of evenly spaced probe locations along Y, including both edges. |
-| Full Retract | 0 machine Z mm | Machine-coordinate Z target used after each probe before subsequent XY travel and for the final park. The initial approach still moves to machine Z0. For a machine whose Z0 is the top of travel, use a more negative value for a lower clearance; keep it above the highest part feature. |
+| Full Retract | 0 machine Z mm | Machine-coordinate Z target used after each probe before subsequent XY travel and for the final park. Calibration begins at the current WPOS zero without an initial Z move. For a machine whose Z0 is the top of travel, use a more negative value for a lower clearance; keep it above the highest part feature. |
 | Probe travel | 25.5 mm | Maximum downward distance for each initial fast touch. Choose enough travel to reach the surface safely. |
 | Fast feed | 100 mm/min | Feed for the first touch. |
 | Slow feed | 20 mm/min | Feed for the repeat touch. |
@@ -84,13 +84,14 @@ The package includes the README screenshots so the relative image links work whe
 
 Settings are saved in gSender plugin storage as they are changed. More samples improve spatial detail but increase the number of machine moves and calibration time. A 15 × 11 grid requires 165 measured points.
 
-Set Length X and Width Y to at least the planned project's full machine-coordinate X/Y extents from the map origin. The complete grid must also remain inside the machine travel reported by `$130`/`$131`/`$132`. The map dimensions are not the overall machine travel; they describe the rectangular area you intend to measure.
+Set Length X and Width Y to cover the planned project's full X/Y spans from WPOS X0 Y0. The complete positive-work-coordinate grid must also remain inside machine travel reported by `$130`/`$131`/`$132` and interpreted using `$23`. The map dimensions are not the overall machine travel; they describe the rectangular area you intend to measure.
 
-### 2. Confirm homing and set the map start position
+### 2. Home and set WPOS at the material
 
-1. Connect to the CNC and make sure the tool/probe can travel without hitting clamps, stock, or other obstructions.
-2. If gSender reports the machine is already homed, the plugin skips the homing cycle and records the current machine Z as its retract baseline. Make sure the tool is at a clear, safe Z before continuing. Otherwise, click **Home machine**; the plugin records the resulting machine Z for its retract checks.
-3. Enter the machine-coordinate map origin in **Start X machine** and **Start Y machine**. Both default to `0`. Map points extend away from each axis's homing end, using the direction reported by `$23`; a positive-homed axis can therefore have negative machine coordinates. **Start calibration** moves to those coordinates while preserving the current Z, then captures the resulting position as the map origin. Check the whole XY path is clear before starting.
+1. Home the machine in gSender or with **Home machine** in the plugin.
+2. Jog the probe to the lower-left corner of the material. Make sure the probe is at the surface's WPOS Z0 and the complete grid is clear.
+3. Zero WPOS X, Y, and Z in gSender. Confirm the position display reads X0 Y0 Z0. Do not jog after zeroing; **Start calibration** captures this exact position and begins the first probe without an initial reposition move.
+4. The scan proceeds toward positive work X and positive work Y, row by row from front-left to back-right. `$23` is used only to determine machine travel limits; it does not set the scan direction.
 
 ### 3. Select the probe type
 
@@ -102,9 +103,9 @@ The puck-thickness value applies only to Puck probing; it is ignored for Conduct
 
 ### 4. Start and supervise probing
 
-Before moving, the plugin checks the controller is idle, verifies that machine Z is still at its recorded retract baseline, reads the travel limits, and validates the selected start position, whole grid, and probe settings. If you have moved Z since capturing the baseline, return it to that Z before starting. It then moves to the selected start X/Y, captures the current machine X/Y as the map origin, and begins probing.
+Before probing, the plugin checks that the controller is idle, WPOS X/Y/Z are all zero, the position did not change while setup was checked, and the entire grid is within signed machine travel. It captures machine coordinates at WPOS zero as the map origin and starts probing there without moving first to machine Z0 or a separate X/Y target.
 
-At each grid point the plugin checks remaining machine Z travel using the controller's `$23` Z homing direction and `$132` travel limit before each probe. It limits each probe move to the safe travel available at that point, leaving a 0.1 mm margin at the machine Z limit. It performs a fast `G38.2` touch, makes the configured Short Retract, performs the slower `G38.2` touch, records the stopped machine Z, then moves to the configured Full Retract position before the next XY move. Set that machine-coordinate height above the highest feature on a warped part; flatter parts may use a lower clearance. If a probe contact is already above the configured Full Retract position, calibration stops rather than moving Z downward to reach it. On successful completion it parks at machine X0/Y0 at the configured Full Retract position, saves the completed map, and refreshes the viewer. An incomplete or stopped run is discarded; the previously saved map remains available.
+At each grid point the plugin checks remaining machine Z travel using the controller's `$23` Z homing direction and `$132` travel limit before each probe. It limits each probe move to the safe travel available at that point, leaving a 0.1 mm margin at the machine Z limit. It performs a fast `G38.2` touch, retracts by the configured Short Retract (limited by the controller's upper Z travel), performs the slower `G38.2` touch, records the stopped machine Z, then moves to the configured Full Retract position before the next XY move. Set that machine-coordinate height above the highest feature on a warped part; flatter parts may use a lower clearance. If a probe contact is already above the configured Full Retract position, calibration stops rather than moving Z downward to reach it. On successful completion it parks at machine X0/Y0 at the configured Full Retract position, saves the completed map, and refreshes the viewer. An incomplete or stopped run is discarded; the previously saved map remains available.
 
 Keep the spindle off and remain at the machine during all automatic motion. If a probe is missed or the controller enters Alarm, resolve the controller state before trying again. Use **Stop after current move** to stop the calibration at a safe point; do not reach into the work area while the controller is moving.
 
@@ -178,7 +179,7 @@ The map and file are aligned by their XY coordinates: the smallest X/Y in the fi
 | Map exceeds machine travel / invalid `$130`–`$132` | Verify the controller's X/Y/Z travel settings and reduce the grid dimensions or move the origin so every point remains within travel. |
 | Probe did not trigger, or `PRB` reports failure | Check the probe wiring, contact, polarity, travel distance, and whether the controller reports probe contact (often `Pn:P`). Test contact before probing the full grid. |
 | `ok` appears but no `[PRB:...]` report arrives | The plugin waits for the probe position report as well as command acknowledgement. Confirm the controller's probe report reaches gSender's parsed response stream; `ok` alone is not a measured contact. |
-| Calibration says return Z to its recorded baseline | The plugin requires Z to remain at the baseline captured when existing homing was detected or after its **Home machine** cycle. Return Z to that coordinate before starting. |
+| Calibration rejects the start WPOS | Jog back to the material's lower-left corner and zero WPOS X, Y, and Z again. Do not jog after zeroing and before starting the calibration. |
 | Probe misses after its travel is limited | Move to a higher safe Z or reduce **Probe travel** and retry. The plugin limits each move to the available range from `$23` and `$132`. |
 | Toolpath leaves mapped area at X… Y… | Increase Length X/Width Y or capture a new origin/recalibrate to cover the full toolpath. The preprocessor will not extrapolate the surface beyond the sampled rectangle. |
 | Active coordinate system is not G54 | Select G54 in gSender and retry. This version aligns only G54. |
