@@ -8,8 +8,8 @@ Source repository for gSender plugins maintained by Bakstaaj. Plugin version fol
 - [CNC Job Setup](cnc-job-setup/v0.2.46/README.md) — version 0.2.46; configurable gSender streaming or Makera Z1 SD-card playback, with improved probe/tool prompts and alarm recovery.
 - [Roughing Blank Planner](roughing-blank-planner/v0.2.1/README.md) — version 0.2.1; analyzes a part NC envelope, compares billet and workholding clearances, selects a low-volume roughing blank, and generates stock-preparation G-code for Carve review.
 - [Spindle Tramming](spindle-tramming/README.md) — version 0.4.4; persistent local setup settings, tilt and nod measurements for gSender 1.7.0-Edge-2.
-- [Surface Height Map](surface-height-map/v0.1.33/README.md) — version 0.1.33; retries incomplete settings reads and reports `$23` direction before homing-aware surface calibration and G-code compensation.
-- [Surface Height Map (File First)](surface-height-map-file-first/v0.1.10/README.md) — version 0.1.10; retries incomplete settings reads and reports `$23` direction before contour-aware probing and selectable work-zero compensation.
+- [Surface Height Map](surface-height-map/v0.1.36/README.md) — version 0.1.36; persistent map start positions, configurable full retract clearance, and Z0 approach before XY travel.
+- [Surface Height Map (File First)](surface-height-map-file-first/v0.1.12/README.md) — version 0.1.12; persistent map start positions, configurable full retract clearance, and Z0 approach before XY travel.
 - [Camera Align & Print Registration](camera-align-print-registration/v0.2.0/README.md) — version 0.2.0; live camera, selectable G54–G59 work zero, and two-point printed-artwork registration.
 - [CNC Camera Monitor](camera-monitor/v0.1.9/README.md) — prototype 0.1.9; USB/network camera monitoring, optional second camera, and a persistent Carve overlay with feed controls.
 - [Makera Z1 File Transfer](makera-z1-upload/v0.1.9/README.md) — prototype 0.1.9; single installer bundles NSSM, installs the bridge service to `C:\gsender_file_bridge`, and updates the gSender plugin.
@@ -26,8 +26,8 @@ Source repository for gSender plugins maintained by Bakstaaj. Plugin version fol
 | [Machine Event Notifications](machine-event-notifier/v0.1.21/README.md) | <img src="machine-event-notifier/v0.1.21/screenshots/ntfy-alert-on-iphone.png" alt="Machine alarm notification delivered to the ntfy app on iPhone" width="300"> <img src="machine-event-notifier/v0.1.21/screenshots/gsender-wireless-control-settings.png" alt="gSender Wireless Control configuration used by the event monitor" width="300"> |
 | [CNC Job Setup](cnc-job-setup/v0.2.46/README.md) | <img src="cnc-job-setup/v0.2.46/screenshots/job-setup-assists.jpg" alt="CNC Job Setup Assist Options in gSender" width="300"> |
 | [Spindle Tramming](spindle-tramming/README.md) | <img src="spindle-tramming/docs/images/09-persistent-settings.png" alt="Spindle tramming settings restored from local gSender storage" width="300"> <img src="spindle-tramming/docs/images/tilt-nod.png" alt="Diagram showing tilt across X and nod across Y" width="300"> |
-| [Surface Height Map](surface-height-map/v0.1.33/README.md) | <img src="surface-height-map/v0.1.33/docs/screenshots/01-map-setup.png" alt="Surface height map calibration setup" width="300"> |
-| [Surface Height Map (File First)](surface-height-map-file-first/v0.1.10/README.md) | <img src="surface-height-map-file-first/v0.1.10/docs/screenshots/01-map-setup.jpg" alt="File First contour-aware mapping setup" width="300"> |
+| [Surface Height Map](surface-height-map/v0.1.36/README.md) | <img src="surface-height-map/v0.1.36/docs/screenshots/01-map-setup.png" alt="Surface height map calibration setup" width="300"> |
+| [Surface Height Map (File First)](surface-height-map-file-first/v0.1.12/README.md) | <img src="surface-height-map-file-first/v0.1.12/docs/screenshots/01-map-setup.jpg" alt="File First contour-aware mapping setup" width="300"> |
 | [Camera Align & Print Registration](camera-align-print-registration/v0.2.0/README.md) | <img src="camera-align-print-registration/v0.2.0/screenshots/camera-popout-jog.png" alt="Floating camera and attached jog controls" width="300"> |
 | [CNC Camera Monitor](camera-monitor/v0.1.9/README.md) | <img src="camera-monitor/v0.1.9/screenshots/04-carve-camera-view.png" alt="Camera button and live CNC Camera Monitor view in the gSender Carve workspace" width="300"> |
 | [CNC Machine Diagnostics](cnc-machine-diagnostics/v0.3.2/README.md) | <img src="cnc-machine-diagnostics/v0.3.2/screenshots/diagnostics-page.png" alt="CNC Machine Diagnostics controls and sensor status in gSender" width="300"> |
@@ -55,7 +55,7 @@ Keep the matching source, built UI, manifest, README, and install ZIP together i
 Run npm commands from the version folder you are working on. Example:
 
 ```powershell
-cd surface-height-map\v0.1.33
+cd surface-height-map\v0.1.36
 npm ci
 npm test
 npm run build
@@ -66,5 +66,5 @@ The same workflow applies to the other plugins that provide an npm project and p
 
 ## GitHub Releases
 
-Use a separate tag and GitHub Release for each plugin or companion package version, such as `surface-height-map-v0.1.33`, `surface-height-map-file-first-v0.1.10`, `camera-monitor-v0.1.9`, `machine-event-notifier-v0.1.21`, or `roughing-blank-planner-v0.2.1`. Attach the matching install ZIP from that version folder to its GitHub Release. Machine Event Notifications uses one combined download containing the Windows helper and its gSender plugin ZIP. The ZIP can also be downloaded directly from the repository's version folder.
+Use a separate tag and GitHub Release for each plugin or companion package version, such as `surface-height-map-v0.1.36`, `surface-height-map-file-first-v0.1.12`, `camera-monitor-v0.1.9`, `machine-event-notifier-v0.1.21`, or `roughing-blank-planner-v0.2.1`. Attach the matching install ZIP from that version folder to its GitHub Release. Machine Event Notifications uses one combined download containing the Windows helper and its gSender plugin ZIP. The ZIP can also be downloaded directly from the repository's version folder.
 
