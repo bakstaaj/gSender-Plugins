@@ -1,0 +1,25 @@
+{
+  "id": "com.bakstaaj.cubiko-height-map",
+  "name": "Surface Height Map",
+  "description": "Calibrate a surface with a probe and apply the measured height map to supported G-code.",
+  "version": "0.1.33",
+  "engine": ">=1.7.0-Edge-1",
+  "ui": {
+    "entry": "ui/index.html",
+    "contributions": [
+      { "slot": "tools-page", "route": "surface-height-map", "label": "Surface Height Map" }
+    ]
+  },
+  "permissions": ["machine:read", "machine:write", "machine:parse", "machine:query", "redux:read", "storage", "visualizer:load", "workspace:navigate:carve"],
+  "capabilities": {
+    "requestTypes": [
+      "machine:get:context", "machine:command", "machine:query", "machine:busy:set",
+      "machine:parser:register", "machine:parser:unregister",
+      "redux:get:state",
+      "storage:get", "storage:set", "storage:delete", "storage:get:all", "storage:set:all",
+      "gcode:load:to:visualizer", "workspace:navigate:carve"
+    ],
+    "topics": ["controller", "parser"],
+    "allowedFunctions": ["machine", "redux", "storage", "gcode", "workspace"]
+  }
+}
