@@ -1,5 +1,5 @@
 # Machine Event Notifications
-**Latest release package:** [Download v0.1.21 package (includes the gSender plugin)](https://github.com/bakstaaj/CNC-Machine-Plugins/releases/download/machine-event-notifier-v0.1.21/machine-event-email-helper-v0.1.21.zip)
+**Latest release package:** [Download v0.1.21 package (includes the gSender plugin)](https://github.com/bakstaaj/gSender-Plugins/releases/download/machine-event-notifier-v0.1.21/machine-event-email-helper-v0.1.21.zip)
 
 **Version 0.1.21 · gSender 1.7.0-Edge-2 · Plugin SDK 0.2.2**
 
