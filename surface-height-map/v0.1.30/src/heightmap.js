@@ -13,7 +13,7 @@ export const DEFAULTS = Object.freeze({
     surfaceType: 'conductive',
 });
 
-export function makeGrid({ originX, originY, lengthX, lengthY, pointsX, pointsY }) {
+export function makeGrid({ originX, originY, lengthX, lengthY, pointsX, pointsY, directionX = 1, directionY = 1 }) {
     if (![originX, originY, lengthX, lengthY].every(Number.isFinite) || lengthX <= 0 || lengthY <= 0) {
         throw new Error('Map origin and dimensions must be finite; dimensions must be positive.');
     }
@@ -23,17 +23,21 @@ export function makeGrid({ originX, originY, lengthX, lengthY, pointsX, pointsY 
     return Array.from({ length: pointsY }, (_, iy) =>
         Array.from({ length: pointsX }, (_, ix) => ({
             ix, iy,
-            x: originX + (lengthX * ix) / (pointsX - 1),
-            y: originY + (lengthY * iy) / (pointsY - 1),
+            x: originX + (directionX * lengthX * ix) / (pointsX - 1),
+            y: originY + (directionY * lengthY * iy) / (pointsY - 1),
         })),
     );
 }
 
-export function validateMap({ originX, originY, lengthX, lengthY, pointsX, pointsY }, limits) {
-    const grid = makeGrid({ originX, originY, lengthX, lengthY, pointsX, pointsY });
+export function validateMap({ originX, originY, lengthX, lengthY, pointsX, pointsY, directionX, directionY }, limits) {
+    directionX ??= limits.directionX ?? 1;
+    directionY ??= limits.directionY ?? 1;
+    const grid = makeGrid({ originX, originY, lengthX, lengthY, pointsX, pointsY, directionX, directionY });
     if (!(limits.maxX > 0 && limits.maxY > 0 && limits.maxZ > 0)) throw new Error('Could not read valid $130/$131/$132 machine travel limits.');
     const eps = 1e-6;
-    if (originX < -eps || originY < -eps || originX + lengthX > limits.maxX + eps || originY + lengthY > limits.maxY + eps) {
+    const minX = Math.min(originX, originX + directionX * lengthX), maxX = Math.max(originX, originX + directionX * lengthX);
+    const minY = Math.min(originY, originY + directionY * lengthY), maxY = Math.max(originY, originY + directionY * lengthY);
+    if (minX < limits.minX - eps || maxX > limits.maxX + eps || minY < limits.minY - eps || maxY > limits.maxY + eps) {
         throw new Error(`Map exceeds machine XY travel (${limits.maxX} × ${limits.maxY} mm). Move the origin or reduce map dimensions.`);
     }
     return grid;
@@ -44,8 +48,8 @@ export function validateMachineTarget({ x, y }, limits) {
         throw new Error('Could not read valid machine XY travel limits from $130/$131.');
     }
     if (![x, y].every(Number.isFinite)) throw new Error('Enter valid machine-coordinate X and Y positions.');
-    if (x < 0 || x > limits.maxX || y < 0 || y > limits.maxY) {
-        throw new Error(`Start position must be within machine travel: X 0–${limits.maxX} mm, Y 0–${limits.maxY} mm.`);
+    if (x < limits.minX || x > limits.maxX || y < limits.minY || y > limits.maxY) {
+        throw new Error(`Start position must be within machine travel: X ${limits.minX}–${limits.maxX} mm, Y ${limits.minY}–${limits.maxY} mm.`);
     }
     return { x: Number(x.toFixed(4)), y: Number(y.toFixed(4)) };
 }
@@ -62,9 +66,16 @@ export function computePostProbeRetract(currentZ, homeZ, requestedDistance) {
 export function parseTravelLimits(lines) {
     const text = (Array.isArray(lines) ? lines : [lines]).map((line) => String(line)).join('\n');
     const settings = {};
-    const pattern = /\$?(130|131|132)\s*=\s*(-?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)/gi;
+    const pattern = /\$?(23|130|131|132)\s*=\s*(-?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)/gi;
     for (const match of text.matchAll(pattern)) settings[Number(match[1])] = Number(match[2]);
-    const limits = { maxX: settings[130], maxY: settings[131], maxZ: settings[132] };
+    if (!Number.isInteger(settings[23]) || settings[23] < 0) throw new Error('Could not find a valid $23 homing direction mask in the controller\'s $$ response.');
+    const limits = {
+        maxX: settings[130], maxY: settings[131], maxZ: settings[132],
+        directionX: (settings[23] & 1) ? -1 : 1,
+        directionY: (settings[23] & 2) ? -1 : 1,
+    };
+    limits.minX = limits.directionX < 0 ? -limits.maxX : 0;
+    limits.minY = limits.directionY < 0 ? -limits.maxY : 0;
     const missing = [[130, limits.maxX], [131, limits.maxY], [132, limits.maxZ]]
         .filter(([, value]) => !Number.isFinite(value) || value <= 0)
         .map(([setting]) => `$${setting}`);
@@ -138,8 +149,8 @@ export function computeG54ForMapOrigin(mapOrigin, bounds, g92 = [0, 0, 0]) {
 
 export function interpolate(map, x, y) {
     const { originX, originY, lengthX, lengthY, pointsX, pointsY, z } = map;
-    const gx = ((x - originX) / lengthX) * (pointsX - 1);
-    const gy = ((y - originY) / lengthY) * (pointsY - 1);
+    const gx = ((x - originX) / (lengthX * (map.directionX ?? 1))) * (pointsX - 1);
+    const gy = ((y - originY) / (lengthY * (map.directionY ?? 1))) * (pointsY - 1);
     if (gx < -1e-7 || gy < -1e-7 || gx > pointsX - 1 + 1e-7 || gy > pointsY - 1 + 1e-7) {
         throw new Error(`Toolpath leaves mapped area at X${x.toFixed(3)} Y${y.toFixed(3)}.`);
     }

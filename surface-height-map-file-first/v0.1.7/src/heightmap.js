@@ -13,7 +13,7 @@ export const DEFAULTS = Object.freeze({
     surfaceType: 'conductive',
 });
 
-export function makeGrid({ originX, originY, lengthX, lengthY, pointsX, pointsY }) {
+export function makeGrid({ originX, originY, lengthX, lengthY, pointsX, pointsY, directionX = 1, directionY = 1 }) {
     if (![originX, originY, lengthX, lengthY].every(Number.isFinite) || lengthX <= 0 || lengthY <= 0) {
         throw new Error('Map origin and dimensions must be finite; dimensions must be positive.');
     }
@@ -23,17 +23,21 @@ export function makeGrid({ originX, originY, lengthX, lengthY, pointsX, pointsY 
     return Array.from({ length: pointsY }, (_, iy) =>
         Array.from({ length: pointsX }, (_, ix) => ({
             ix, iy,
-            x: originX + (lengthX * ix) / (pointsX - 1),
-            y: originY + (lengthY * iy) / (pointsY - 1),
+            x: originX + (directionX * lengthX * ix) / (pointsX - 1),
+            y: originY + (directionY * lengthY * iy) / (pointsY - 1),
         })),
     );
 }
 
-export function validateMap({ originX, originY, lengthX, lengthY, pointsX, pointsY }, limits) {
-    const grid = makeGrid({ originX, originY, lengthX, lengthY, pointsX, pointsY });
+export function validateMap({ originX, originY, lengthX, lengthY, pointsX, pointsY, directionX, directionY }, limits) {
+    directionX ??= limits.directionX ?? 1;
+    directionY ??= limits.directionY ?? 1;
+    const grid = makeGrid({ originX, originY, lengthX, lengthY, pointsX, pointsY, directionX, directionY });
     if (!(limits.maxX > 0 && limits.maxY > 0 && limits.maxZ > 0)) throw new Error('Could not read valid $130/$131/$132 machine travel limits.');
     const eps = 1e-6;
-    if (originX < -eps || originY < -eps || originX + lengthX > limits.maxX + eps || originY + lengthY > limits.maxY + eps) {
+    const minX = Math.min(originX, originX + directionX * lengthX), maxX = Math.max(originX, originX + directionX * lengthX);
+    const minY = Math.min(originY, originY + directionY * lengthY), maxY = Math.max(originY, originY + directionY * lengthY);
+    if (minX < limits.minX - eps || maxX > limits.maxX + eps || minY < limits.minY - eps || maxY > limits.maxY + eps) {
         throw new Error(`Map exceeds machine XY travel (${limits.maxX} × ${limits.maxY} mm). Move the origin or reduce map dimensions.`);
     }
     return grid;
@@ -62,9 +66,16 @@ export function computePostProbeRetract(currentZ, homeZ, requestedDistance) {
 export function parseTravelLimits(lines) {
     const text = (Array.isArray(lines) ? lines : [lines]).map((line) => String(line)).join('\n');
     const settings = {};
-    const pattern = /\$?(130|131|132)\s*=\s*(-?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)/gi;
+    const pattern = /\$?(23|130|131|132)\s*=\s*(-?(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?)/gi;
     for (const match of text.matchAll(pattern)) settings[Number(match[1])] = Number(match[2]);
-    const limits = { maxX: settings[130], maxY: settings[131], maxZ: settings[132] };
+    if (!Number.isInteger(settings[23]) || settings[23] < 0) throw new Error('Could not find a valid $23 homing direction mask in the controller\'s $$ response.');
+    const limits = {
+        maxX: settings[130], maxY: settings[131], maxZ: settings[132],
+        directionX: (settings[23] & 1) ? -1 : 1,
+        directionY: (settings[23] & 2) ? -1 : 1,
+    };
+    limits.minX = limits.directionX < 0 ? -limits.maxX : 0;
+    limits.minY = limits.directionY < 0 ? -limits.maxY : 0;
     const missing = [[130, limits.maxX], [131, limits.maxY], [132, limits.maxZ]]
         .filter(([, value]) => !Number.isFinite(value) || value <= 0)
         .map(([setting]) => `$${setting}`);
@@ -234,14 +245,14 @@ function polygonArea(polygon) {
     }, 0) / 2;
 }
 
-export function makeContourProbePoints({ polygon, bounds, originX, originY, pointsX, pointsY, perimeterSpacing = 10 }) {
+export function makeContourProbePoints({ polygon, bounds, originX, originY, pointsX, pointsY, directionX = 1, directionY = 1, perimeterSpacing = 10 }) {
     if (!Array.isArray(polygon) || polygon.length < 3) throw new Error('A closed contour with at least three vertices is required.');
     const inside = (x, y) => pointInPolygon({ x, y }, polygon);
     const points = [];
     const add = (x, y, kind) => {
         if (!inside(x, y)) return;
         if (points.some((p) => Math.hypot(p.x - x, p.y - y) < 0.01)) return;
-        points.push({ x: originX + x - bounds.minX, y: originY + y - bounds.minY, kind });
+        points.push({ x: originX + directionX * (x - bounds.minX), y: originY + directionY * (y - bounds.minY), kind });
     };
     for (let i = 0; i < polygon.length; i += 1) {
         const a = polygon[i], b = polygon[(i + 1) % polygon.length];
@@ -300,10 +311,11 @@ export function computeProjectMapOrigin(settings, limits, alignment = 'zero') {
         throw new Error('The project map does not fit within machine XY travel.');
     }
     if (alignment === 'zero') return { x: 0, y: 0 };
+    const directionX = limits.directionX ?? 1, directionY = limits.directionY ?? 1;
     if (alignment === 'center') {
         return {
-            x: Number(((limits.maxX - settings.lengthX) / 2).toFixed(4)),
-            y: Number(((limits.maxY - settings.lengthY) / 2).toFixed(4)),
+            x: Number((directionX * (limits.maxX - settings.lengthX) / 2).toFixed(4)),
+            y: Number((directionY * (limits.maxY - settings.lengthY) / 2).toFixed(4)),
         };
     }
     throw new Error(`Unknown probe-map alignment: ${alignment}.`);
@@ -313,9 +325,10 @@ export function mapCoversProjectBounds(map, project, limits, { maxSpacing = 10, 
     if (!map || !project || !limits
         || ![map.originX, map.originY, map.lengthX, map.lengthY, map.pointsX, map.pointsY,
             project.lengthX, project.lengthY, limits.maxX, limits.maxY].every(Number.isFinite)) return false;
-    if (map.originX < -1e-6 || map.originY < -1e-6 || map.lengthX <= 0 || map.lengthY <= 0
-        || map.originX + map.lengthX > limits.maxX + 1e-6
-        || map.originY + map.lengthY > limits.maxY + 1e-6
+    const directionX = map.directionX ?? 1, directionY = map.directionY ?? 1;
+    if (directionX !== (limits.directionX ?? 1) || directionY !== (limits.directionY ?? 1)) return false;
+    const endX = map.originX + directionX * map.lengthX, endY = map.originY + directionY * map.lengthY;
+    if (Math.min(map.originX, endX) < (limits.minX ?? 0) - 1e-6 || Math.max(map.originX, endX) > limits.maxX + 1e-6 || Math.min(map.originY, endY) < (limits.minY ?? 0) - 1e-6 || Math.max(map.originY, endY) > limits.maxY + 1e-6 || map.lengthX <= 0 || map.lengthY <= 0
         || map.lengthX + 1e-6 < project.lengthX || map.lengthY + 1e-6 < project.lengthY
         || !Number.isInteger(map.pointsX) || !Number.isInteger(map.pointsY) || map.pointsX < 2 || map.pointsY < 2) return false;
     return map.lengthX / (map.pointsX - 1) <= maxSpacing + 1e-6
@@ -360,8 +373,8 @@ export function interpolate(map, x, y) {
             / weights.reduce((sum, weight) => sum + weight, 0);
     }
     const { originX, originY, lengthX, lengthY, pointsX, pointsY, z } = map;
-    const gx = ((x - originX) / lengthX) * (pointsX - 1);
-    const gy = ((y - originY) / lengthY) * (pointsY - 1);
+    const gx = ((x - originX) / (lengthX * (map.directionX ?? 1))) * (pointsX - 1);
+    const gy = ((y - originY) / (lengthY * (map.directionY ?? 1))) * (pointsY - 1);
     if (gx < -1e-7 || gy < -1e-7 || gx > pointsX - 1 + 1e-7 || gy > pointsY - 1 + 1e-7) {
         throw new Error(`Toolpath leaves mapped area at X${x.toFixed(3)} Y${y.toFixed(3)}.`);
     }
@@ -383,8 +396,8 @@ export function surfaceMapToStl(map) {
     let z = map?.z;
     if (Array.isArray(map?.samples) && map.samples.length >= 3) {
         z = Array.from({ length: pointsY }, (_, iy) => Array.from({ length: pointsX }, (_, ix) => {
-            const x = map.originX + (lengthX * ix) / (pointsX - 1);
-            const y = map.originY + (lengthY * iy) / (pointsY - 1);
+            const x = map.originX + (map.directionX ?? 1) * (lengthX * ix) / (pointsX - 1);
+            const y = map.originY + (map.directionY ?? 1) * (lengthY * iy) / (pointsY - 1);
             return pointInPolygon({ x, y }, map.contourMachine) ? interpolate(map, x, y) : null;
         }));
     }
@@ -423,7 +436,7 @@ export function surfaceMapToStl(map) {
             if (Array.isArray(map.samples)) {
                 const checks = [];
                 for (const ty of [0, 0.5, 1]) for (const tx of [0, 0.5, 1]) {
-                    checks.push({ x: map.originX + (lengthX * (ix + tx)) / (pointsX - 1), y: map.originY + (lengthY * (iy + ty)) / (pointsY - 1) });
+                    checks.push({ x: map.originX + (map.directionX ?? 1) * (lengthX * (ix + tx)) / (pointsX - 1), y: map.originY + (map.directionY ?? 1) * (lengthY * (iy + ty)) / (pointsY - 1) });
                 }
                 if (!checks.every((point) => pointInPolygon(point, map.contourMachine))) continue;
             }

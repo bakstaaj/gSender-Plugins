@@ -30,7 +30,7 @@ The map viewer intentionally exaggerates height variation to make small differen
 
 - gSender Edge with the plugin support required by the manifest (Edge 1.7 or later).
 - A connected controller that accepts standard GRBL-style `G38.2` probing commands, reports successful probe positions as `[PRB:...]`, and exposes a probe state to gSender (commonly `Pn:P`).
-- Valid controller travel settings `$130`, `$131`, and `$132`. The plugin uses them to reject a grid or start position outside machine travel.
+- Valid controller travel settings `$130`, `$131`, `$132`, and homing-direction mask `$23`. The plugin uses `$23` to determine the signed X/Y machine-coordinate travel ranges and map direction, then rejects grid points or start positions outside those ranges.
 - The probe input must be electrically verified before calibration. Check the controller's probe status with the contact open and closed; confirm that contact changes the reported probe signal and that the controller's polarity is configured correctly.
 
 The initial reference machine is a Cubiko running custom V45.4 control-panel and system-board firmware from the [N0JCG Cubiko firmware patches](https://github.com/bakstaaj/N0JCG-Cubiko-FW-Patches). That firmware combines the built-in bed sensor and external probe jack into the same active probe input. **Cubiko firmware is not a plugin dependency.** Other GRBL-compatible machines may work if they provide the probe reporting and coordinate behavior above, but have not been validated here.
@@ -88,7 +88,7 @@ Set Length X and Width Y to at least the planned project's full machine-coordina
 
 1. Connect to the CNC and make sure the tool/probe can travel without hitting clamps, stock, or other obstructions.
 2. If gSender reports the machine is already homed, the plugin skips the homing cycle and records the current machine Z as its retract baseline. Make sure the tool is at a clear, safe Z before continuing. Otherwise, click **Home machine**; the plugin records the resulting machine Z for its retract checks.
-3. Enter the machine-coordinate lower-left corner in **Start X machine** and **Start Y machine**. Both default to `0`. **Start calibration** moves to those coordinates while preserving the current Z, then captures the resulting machine position as the map origin. Check the whole XY path is clear before starting.
+3. Enter the machine-coordinate map origin in **Start X machine** and **Start Y machine**. Both default to `0`. Map points extend away from each axis's homing end, using the direction reported by `$23`; a positive-homed axis can therefore have negative machine coordinates. **Start calibration** moves to those coordinates while preserving the current Z, then captures the resulting position as the map origin. Check the whole XY path is clear before starting.
 
 ### 3. Select the probe type
 

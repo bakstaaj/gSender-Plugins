@@ -544,6 +544,7 @@ async function calibrate() {
         await waitIdle();
         state.map = {
             originX: state.origin.x, originY: state.origin.y,
+            directionX: limits.directionX, directionY: limits.directionY,
             lengthX: settings.lengthX, lengthY: settings.lengthY,
             pointsX: settings.pointsX, pointsY: settings.pointsY,
             surfaceType: settings.surfaceType, puckThickness: settings.puckThickness,

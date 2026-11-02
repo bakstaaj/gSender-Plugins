@@ -74,8 +74,8 @@ function drawSurfaceMap() {
     };
     if (Array.isArray(map.samples)) {
         const margin = 24;
-        const px = (x) => margin + ((x - map.originX) / map.lengthX) * (width - margin * 2);
-        const py = (y) => height - margin - ((y - map.originY) / map.lengthY) * (height - margin * 2);
+        const px = (x) => margin + ((x - map.originX) / (map.lengthX * (map.directionX ?? 1))) * (width - margin * 2);
+        const py = (y) => height - margin - ((y - map.originY) / (map.lengthY * (map.directionY ?? 1))) * (height - margin * 2);
         ctx.beginPath();
         map.contourMachine.forEach((point, index) => index ? ctx.lineTo(px(point.x), py(point.y)) : ctx.moveTo(px(point.x), py(point.y)));
         ctx.closePath();
@@ -348,12 +348,12 @@ function mapCoversProject() {
         const contour = state.project.contour;
         if (contour) return contour.length === state.map.contourMachine.length && contour.every((point, index) => {
             const mapped = state.map.contourMachine[index];
-            return Math.abs((point.x - state.project.bounds.minX) - (mapped.x - state.map.originX)) < 0.05
-                && Math.abs((point.y - state.project.bounds.minY) - (mapped.y - state.map.originY)) < 0.05;
+            return Math.abs((point.x - state.project.bounds.minX) * (state.map.directionX ?? 1) - (mapped.x - state.map.originX)) < 0.05
+                && Math.abs((point.y - state.project.bounds.minY) * (state.map.directionY ?? 1) - (mapped.y - state.map.originY)) < 0.05;
         });
         const b = state.project.bounds;
         const corners = [{ x: b.minX, y: b.minY }, { x: b.maxX, y: b.minY }, { x: b.maxX, y: b.maxY }, { x: b.minX, y: b.maxY }];
-        return corners.every((p) => pointInPolygon({ x: p.x - b.minX + state.map.originX, y: p.y - b.minY + state.map.originY }, state.map.contourMachine));
+        return corners.every((p) => pointInPolygon({ x: (p.x - b.minX) * (state.map.directionX ?? 1) + state.map.originX, y: (p.y - b.minY) * (state.map.directionY ?? 1) + state.map.originY }, state.map.contourMachine));
     }
     return true;
 }
@@ -632,16 +632,16 @@ async function analyzeProjectFile(file = state.file) {
         state.origin = state.controllerHomed && Number.isFinite(state.homeMachineZ) ? { ...mapOrigin } : null;
         renderContourPreview();
         if (contour) {
-            state.project.probePoints = makeContourProbePoints({ polygon: contour, bounds, originX: mapOrigin.x, originY: mapOrigin.y, pointsX: settings.pointsX, pointsY: settings.pointsY });
-            state.project.contourMachine = contour.map((point) => ({ x: mapOrigin.x + point.x - bounds.minX, y: mapOrigin.y + point.y - bounds.minY }));
+            state.project.probePoints = makeContourProbePoints({ polygon: contour, bounds, originX: mapOrigin.x, originY: mapOrigin.y, pointsX: settings.pointsX, pointsY: settings.pointsY, directionX: limits.directionX, directionY: limits.directionY });
+            state.project.contourMachine = contour.map((point) => ({ x: mapOrigin.x + limits.directionX * (point.x - bounds.minX), y: mapOrigin.y + limits.directionY * (point.y - bounds.minY) }));
         }
         for (const id of ['lengthX', 'lengthY', 'pointsX', 'pointsY']) $(id).value = String(settings[id]);
         await storage.set('settings', currentSettings());
         const pitchX = settings.lengthX / (settings.pointsX - 1);
         const pitchY = settings.lengthY / (settings.pointsY - 1);
         const alignmentSummary = state.project.mapAlignment === 'center'
-            ? `center at machine X${(limits.maxX / 2).toFixed(3)} Y${(limits.maxY / 2).toFixed(3)} with ±${(settings.lengthX / 2).toFixed(3)} X / ±${(settings.lengthY / 2).toFixed(3)} Y extents`
-            : 'lower-left at machine X0 Y0';
+            ? `center at machine X${((limits.directionX * limits.maxX) / 2).toFixed(3)} Y${((limits.directionY * limits.maxY) / 2).toFixed(3)} with ±${(settings.lengthX / 2).toFixed(3)} X / ±${(settings.lengthY / 2).toFixed(3)} Y extents`
+            : 'project minimum aligned at machine X0 Y0';
         const probeCount = contour ? state.project.probePoints.length : settings.pointCount;
         $('projectSummary').textContent = `${settings.lengthX.toFixed(3)} × ${settings.lengthY.toFixed(3)} mm project · file bounds X${bounds.minX.toFixed(3)}…${bounds.maxX.toFixed(3)}, Y${bounds.minY.toFixed(3)}…${bounds.maxY.toFixed(3)} · ${alignmentSummary} · ${contour ? `closed perimeter detected (${contour.length} vertices), perimeter probes ≤10 mm apart plus ${settings.pointsX} × ${settings.pointsY} interior grid, ${probeCount} unique points total` : `rectangular grid ${settings.pointsX} × ${settings.pointsY} (${probeCount} points)`}`;
         $('projectStatus').textContent = mapCoversProject()
@@ -685,8 +685,8 @@ async function calibrate() {
         validateSettings(settings, limits);
         const grid = state.project.mappingMode === 'contour'
             ? state.project.probePoints.map((point, index) => ({ ...point, ix: index, iy: 0 }))
-            : validateMap({ originX: state.origin.x, originY: state.origin.y, lengthX: settings.lengthX, lengthY: settings.lengthY, pointsX: settings.pointsX, pointsY: settings.pointsY }, limits).flat();
-        if (grid.some((point) => point.x < 0 || point.y < 0 || point.x > limits.maxX || point.y > limits.maxY)) throw new Error('A generated perimeter or grid probe point falls outside machine travel. Change map alignment or reduce the project area.');
+                : validateMap({ originX: state.origin.x, originY: state.origin.y, lengthX: settings.lengthX, lengthY: settings.lengthY, pointsX: settings.pointsX, pointsY: settings.pointsY }, limits).flat();
+        if (grid.some((point) => point.x < limits.minX || point.y < limits.minY || point.x > limits.maxX || point.y > limits.maxY)) throw new Error('A generated perimeter or grid probe point falls outside machine travel. Change map alignment or reduce the project area.');
         const flat = grid;
         const measured = [];
         if (settings.surfaceType === 'conductive') {
@@ -728,9 +728,10 @@ async function calibrate() {
         await waitIdle();
         state.map = {
             originX: state.origin.x, originY: state.origin.y,
+            directionX: limits.directionX, directionY: limits.directionY,
             lengthX: settings.lengthX, lengthY: settings.lengthY,
             pointsX: settings.pointsX, pointsY: settings.pointsY,
-            maxX: limits.maxX, maxY: limits.maxY,
+            maxX: limits.maxX, maxY: limits.maxY, minX: limits.minX, minY: limits.minY,
             mapAlignment: state.project.mapAlignment,
             surfaceType: settings.surfaceType, puckThickness: settings.puckThickness,
             referenceZ: round(firstZ), z: state.project.mappingMode === 'rectangle' ? Array.from({ length: settings.pointsY }, (_, iy) => Array.from({ length: settings.pointsX }, (_, ix) => measured.find((sample) => sample.ix === ix && sample.iy === iy)?.z)) : [],
@@ -780,18 +781,18 @@ async function compensateFile() {
             if (sourceContour && !pointInPolygon({ x: zeroX, y: zeroY }, sourceContour)) throw new Error('The selected file work-zero point is outside the uploaded file perimeter.');
             if (!sourceContour && (zeroX < bounds.minX || zeroX > bounds.maxX || zeroY < bounds.minY || zeroY > bounds.maxY)) throw new Error('The selected file work-zero point must be within the uploaded file bounds.');
             if (state.map.contourMachine) {
-                const mappedZero = { x: state.map.originX + zeroX - bounds.minX, y: state.map.originY + zeroY - bounds.minY };
+                const mappedZero = { x: state.map.originX + (state.map.directionX ?? 1) * (zeroX - bounds.minX), y: state.map.originY + (state.map.directionY ?? 1) * (zeroY - bounds.minY) };
                 if (!pointInPolygon(mappedZero, state.map.contourMachine)) throw new Error('The selected file work zero is outside the scanned perimeter.');
             }
             outputSource = rebaseGcodeCoordinates(source, zeroX, zeroY);
-            targetG54 = { x: Number((state.map.originX + zeroX - bounds.minX - g92[0]).toFixed(4)), y: Number((state.map.originY + zeroY - bounds.minY - g92[1]).toFixed(4)) };
+            targetG54 = { x: Number((state.map.originX + (state.map.directionX ?? 1) * (zeroX - bounds.minX) - g92[0]).toFixed(4)), y: Number((state.map.originY + (state.map.directionY ?? 1) * (zeroY - bounds.minY) - g92[1]).toFixed(4)) };
         } else {
             const zeroX = Number($('fileZeroX').value), zeroY = Number($('fileZeroY').value);
             const machineX = Number($('machineZeroX').value), machineY = Number($('machineZeroY').value);
             if (![zeroX, zeroY, machineX, machineY].every(Number.isFinite)) throw new Error('Enter valid file-zero and machine-coordinate X/Y values.');
             if (sourceContour && !pointInPolygon({ x: zeroX, y: zeroY }, sourceContour)) throw new Error('The selected file work-zero point is outside the uploaded file perimeter.');
             if (!sourceContour && (zeroX < bounds.minX || zeroX > bounds.maxX || zeroY < bounds.minY || zeroY > bounds.maxY)) throw new Error('The selected file work-zero point must be within the uploaded file bounds.');
-            if (machineX < 0 || machineY < 0 || machineX > state.map.maxX || machineY > state.map.maxY) throw new Error('Selected machine origin is outside the calibrated machine travel.');
+            if (machineX < (state.map.minX ?? 0) || machineY < (state.map.minY ?? 0) || machineX > state.map.maxX || machineY > state.map.maxY) throw new Error('Selected machine origin is outside the calibrated machine travel.');
             if (state.map.contourMachine) {
                 const mappedZero = { x: machineX, y: machineY };
                 if (!pointInPolygon(mappedZero, state.map.contourMachine)) throw new Error('The selected machine work-zero point is outside the scanned perimeter.');
