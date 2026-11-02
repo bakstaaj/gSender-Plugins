@@ -1,0 +1,3 @@
+*.zip
+helper/runtime/node.exe
+helper/runtime/nssm.exe
