@@ -9,8 +9,11 @@ header p, .hint { opacity: .75; }
 header p { margin: 6px 0 0; }
 section { margin: 18px 0; padding: 16px; border: 1px solid #8886; border-radius: 9px; }
 .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
-.full-retract-field { grid-column: span 2; white-space: nowrap; }
-@media (max-width: 520px) { .full-retract-field { grid-column: span 1; } }
+.settings-group-title { margin: 18px 0 10px; font-size: .95rem; opacity: .85; }
+.settings-grid { margin-bottom: 14px; }
+.retract-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); max-width: 650px; }
+.full-retract-field { white-space: nowrap; }
+@media (max-width: 520px) { .retract-grid { grid-template-columns: 1fr; max-width: 100%; } }
 label { display: flex; flex-direction: column; gap: 5px; }
 select { width: min(100%, 340px); padding: 8px; border: 1px solid #8888; border-radius: 5px; font: inherit; }
 [hidden] { display: none !important; }
