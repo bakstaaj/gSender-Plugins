@@ -3,7 +3,7 @@ export const DEFAULTS = Object.freeze({
     lengthY: 110,
     pointsX: 15,
     pointsY: 11,
-    clearanceZ: 0,
+    fullRetract: 10,
     probeTravel: 25.5,
     fastFeed: 100,
     slowFeed: 20,
@@ -37,7 +37,7 @@ export function validateMap({ originX, originY, lengthX, lengthY, pointsX, point
     const eps = 1e-6;
     const minX = Math.min(originX, originX + directionX * lengthX), maxX = Math.max(originX, originX + directionX * lengthX);
     const minY = Math.min(originY, originY + directionY * lengthY), maxY = Math.max(originY, originY + directionY * lengthY);
-    if (minX < limits.minX - eps || maxX > limits.maxX + eps || minY < limits.minY - eps || maxY > limits.maxY + eps) {
+    if (minX < limits.minX - eps || maxX > limits.maxXPosition + eps || minY < limits.minY - eps || maxY > limits.maxYPosition + eps) {
         throw new Error(`Map exceeds machine XY travel (${limits.maxX} × ${limits.maxY} mm). Move the origin or reduce map dimensions.`);
     }
     return grid;
@@ -48,8 +48,8 @@ export function validateMachineTarget({ x, y }, limits) {
         throw new Error('Could not read valid machine XY travel limits from $130/$131.');
     }
     if (![x, y].every(Number.isFinite)) throw new Error('Enter valid machine-coordinate X and Y positions.');
-    if (x < 0 || x > limits.maxX || y < 0 || y > limits.maxY) {
-        throw new Error(`Start position must be within machine travel: X 0–${limits.maxX} mm, Y 0–${limits.maxY} mm.`);
+    if (x < limits.minX || x > limits.maxXPosition || y < limits.minY || y > limits.maxYPosition) {
+        throw new Error(`Start position must be within machine travel: X ${limits.minX}–${limits.maxXPosition} mm, Y ${limits.minY}–${limits.maxYPosition} mm.`);
     }
     return { x: Number(x.toFixed(4)), y: Number(y.toFixed(4)) };
 }
@@ -72,12 +72,17 @@ export function parseTravelLimits(lines) {
     const limits = {
         maxX: settings[130], maxY: settings[131], maxZ: settings[132],
         directionX: (settings[23] & 1) ? 1 : -1,
-        directionY: (settings[23] & 2) ? 1 : -1,
+        // This workflow homes at the rear-left corner: Y is negative toward
+        // the front, so the front-to-rear probe scan advances in positive Y.
+        // $23 describes switch search direction; it is not the scan direction.
+        directionY: 1,
         homingMask: settings[23],
         zHomePositive: (settings[23] & 4) === 0,
     };
     limits.minX = limits.directionX < 0 ? -limits.maxX : 0;
-    limits.minY = limits.directionY < 0 ? -limits.maxY : 0;
+    limits.maxXPosition = limits.directionX < 0 ? 0 : limits.maxX;
+    limits.minY = -limits.maxY;
+    limits.maxYPosition = 0;
     limits.minZ = limits.zHomePositive ? -limits.maxZ : 0;
     limits.maxZPosition = limits.zHomePositive ? 0 : limits.maxZ;
     const missing = [[130, limits.maxX], [131, limits.maxY], [132, limits.maxZ]]
@@ -318,8 +323,8 @@ export function computeProjectMapOrigin(settings, limits, alignment = 'zero') {
     const directionX = limits.directionX ?? 1, directionY = limits.directionY ?? 1;
     if (alignment === 'center') {
         return {
-            x: Number((directionX * (limits.maxX - settings.lengthX) / 2).toFixed(4)),
-            y: Number((directionY * (limits.maxY - settings.lengthY) / 2).toFixed(4)),
+            x: Number(((directionX > 0 ? limits.minX : limits.maxXPosition) + directionX * (limits.maxX - settings.lengthX) / 2).toFixed(4)),
+            y: Number(((directionY > 0 ? limits.minY : limits.maxYPosition) + directionY * (limits.maxY - settings.lengthY) / 2).toFixed(4)),
         };
     }
     throw new Error(`Unknown probe-map alignment: ${alignment}.`);
@@ -331,8 +336,9 @@ export function mapCoversProjectBounds(map, project, limits, { maxSpacing = 10, 
             project.lengthX, project.lengthY, limits.maxX, limits.maxY].every(Number.isFinite)) return false;
     const directionX = map.directionX ?? 1, directionY = map.directionY ?? 1;
     if (directionX !== (limits.directionX ?? 1) || directionY !== (limits.directionY ?? 1)) return false;
+    if (map.fullMachineCoverage) return project.lengthX <= limits.maxX + 1e-6 && project.lengthY <= limits.maxY + 1e-6;
     const endX = map.originX + directionX * map.lengthX, endY = map.originY + directionY * map.lengthY;
-    if (Math.min(map.originX, endX) < (limits.minX ?? 0) - 1e-6 || Math.max(map.originX, endX) > limits.maxX + 1e-6 || Math.min(map.originY, endY) < (limits.minY ?? 0) - 1e-6 || Math.max(map.originY, endY) > limits.maxY + 1e-6 || map.lengthX <= 0 || map.lengthY <= 0
+    if (Math.min(map.originX, endX) < (limits.minX ?? 0) - 1e-6 || Math.max(map.originX, endX) > limits.maxXPosition + 1e-6 || Math.min(map.originY, endY) < (limits.minY ?? 0) - 1e-6 || Math.max(map.originY, endY) > limits.maxYPosition + 1e-6 || map.lengthX <= 0 || map.lengthY <= 0
         || map.lengthX + 1e-6 < project.lengthX || map.lengthY + 1e-6 < project.lengthY
         || !Number.isInteger(map.pointsX) || !Number.isInteger(map.pointsY) || map.pointsX < 2 || map.pointsY < 2) return false;
     return map.lengthX / (map.pointsX - 1) <= maxSpacing + 1e-6
@@ -367,6 +373,7 @@ export function rebaseGcodeCoordinates(source, zeroX, zeroY) {
 export function interpolate(map, x, y) {
     if (Array.isArray(map.samples) && map.samples.length >= 3) {
         if (!pointInPolygon({ x, y }, map.contourMachine)) {
+            if (map.fullMachineCoverage) return map.referenceZ;
             throw new Error(`Toolpath leaves the detected stock perimeter at X${x.toFixed(3)} Y${y.toFixed(3)}. No compensation was applied outside the scanned contour.`);
         }
         const nearest = map.samples.map((sample) => ({ sample, distance: Math.hypot(sample.x - x, sample.y - y) }))
@@ -380,6 +387,7 @@ export function interpolate(map, x, y) {
     const gx = ((x - originX) / (lengthX * (map.directionX ?? 1))) * (pointsX - 1);
     const gy = ((y - originY) / (lengthY * (map.directionY ?? 1))) * (pointsY - 1);
     if (gx < -1e-7 || gy < -1e-7 || gx > pointsX - 1 + 1e-7 || gy > pointsY - 1 + 1e-7) {
+        if (map.fullMachineCoverage) return map.referenceZ;
         throw new Error(`Toolpath leaves mapped area at X${x.toFixed(3)} Y${y.toFixed(3)}.`);
     }
     const x0 = Math.min(pointsX - 2, Math.max(0, Math.floor(gx)));
@@ -574,7 +582,7 @@ export function compensateGcode(source, map, workOffset = { x: 0, y: 0 }, active
                 continue;
             }
             const sx = x, sy = y, ex = nextX, ey = nextY;
-            if (Array.isArray(map.samples)
+            if (Array.isArray(map.samples) && !map.fullMachineCoverage
                 && !segmentInsidePolygon({ x: sx + workOffset.x, y: sy + workOffset.y }, { x: ex + workOffset.x, y: ey + workOffset.y }, map.contourMachine)) {
                 throw new Error(`Toolpath segment from X${sx.toFixed(3)} Y${sy.toFixed(3)} to X${ex.toFixed(3)} Y${ey.toFixed(3)} crosses outside the scanned perimeter.`);
             }

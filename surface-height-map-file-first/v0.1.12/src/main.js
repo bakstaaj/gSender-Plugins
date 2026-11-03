@@ -1,19 +1,24 @@
 import { getReduxState, gcode, machine, storage } from '@sienci/gsender-plugin-sdk';
-import { DEFAULTS, appendMachineOriginReturn, compensateGcode, computePostProbeRetract, computeProjectMapOrigin, computeProjectMapSettings, makeContourProbePoints, makeStlExportRecord, mapCoversProjectBounds, parseAbsoluteXYBounds, parseClosedContours, parseProbePosition, parseTravelLimits, parseWorkOffsetLine, pointInPolygon, probePositionMatches, rebaseGcodeCoordinates, validateMap } from './heightmap.js';
+import { DEFAULTS, appendMachineOriginReturn, compensateGcode, computeProjectMapOrigin, computeProjectMapSettings, interpolate, makeContourProbePoints, makeStlExportRecord, mapCoversProjectBounds, parseAbsoluteXYBounds, parseClosedContours, parseProbePosition, parseTravelLimits, parseWorkOffsetLine, pointInPolygon, probePositionMatches, rebaseGcodeCoordinates, validateMachineTarget, validateMap } from './heightmap.js';
 import './style.css';
 
 const $ = (id) => document.getElementById(id);
-const fields = ['lengthX', 'lengthY', 'pointsX', 'pointsY', 'clearanceZ', 'probeTravel', 'fastFeed', 'slowFeed', 'slowTravel', 'retract', 'puckThickness'];
-const state = { origin: null, homeMachineZ: null, controllerHomed: false, adoptingHomedPosition: false, probeReportSequence: 0, probeWaiter: null, offsetParserSequence: 0, map: null, stlExport: null, file: null, project: null, analyzingProject: false, busy: false, stopRequested: false, abortPuck: null, calibrationReadings: [], calibrationReadingCount: 0 };
+const fields = ['lengthX', 'lengthY', 'pointsX', 'pointsY', 'fullRetract', 'fastFeed', 'slowFeed', 'slowTravel', 'puckThickness'];
+const state = { origin: null, wposOrigin: null, homeMachineZ: null, machinePosition: null, controllerHomed: false, adoptingHomedPosition: false, probeReportSequence: 0, probeWaiter: null, offsetParserSequence: 0, map: null, stlExport: null, file: null, project: null, analyzingProject: false, busy: false, stopRequested: false, abortPuck: null, calibrationReadings: [], calibrationReadingCount: 0, continuousJog: null };
 const setNotice = (message, kind = '') => { $('notice').textContent = message; $('notice').className = kind; };
 const setApplyStatus = (message, kind = '') => { $('applyStatus').textContent = message; $('applyStatus').className = kind; };
 const n = (id) => Number($(id).value);
-const negativeMachineZ = (value) => {
-    const z = Number(value);
-    return Number.isFinite(z) && z > 0 ? -z : z;
-};
 const round = (v) => Number(v.toFixed(4));
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const calibrationLogKey = 'calibrationLog';
+let calibrationLog = [];
+
+async function logCalibration(message) {
+    calibrationLog = [...calibrationLog, `${new Date().toISOString()} ${message}`].slice(-400);
+    const output = $('calibrationLog');
+    if (output) { output.value = calibrationLog.join('\n'); output.scrollTop = output.scrollHeight; }
+    try { await storage.set(calibrationLogKey, calibrationLog); } catch (error) { console.warn('Could not persist calibration log', error); }
+}
 
 function renderProbeReadings() {
     const body = $('probeReadingsBody');
@@ -50,6 +55,7 @@ function drawSurfaceMap() {
     panel.hidden = !map;
     if (!map) return;
     const values = Array.isArray(map.samples) ? map.samples.map((sample) => sample.z) : map.z.flat();
+    if (map.fullMachineCoverage && Number.isFinite(map.referenceZ)) values.push(map.referenceZ);
     if (!values.length || values.some((value) => !Number.isFinite(value))) return;
     const min = Math.min(...values);
     const max = Math.max(...values);
@@ -70,40 +76,30 @@ function drawSurfaceMap() {
     ctx.clearRect(0, 0, width, height);
     const color = (level) => {
         const stops = [[36, 91, 219], [25, 185, 165], [184, 214, 60], [245, 140, 50], [216, 56, 56]];
-        const at = level * (stops.length - 1);
+        const at = Math.min(1, Math.max(0, level)) * (stops.length - 1);
         const idx = Math.min(stops.length - 2, Math.floor(at));
         const t = at - idx;
         const rgb = stops[idx].map((channel, c) => Math.round(channel + (stops[idx + 1][c] - channel) * t));
         return `rgb(${rgb.join(',')})`;
     };
-    if (Array.isArray(map.samples)) {
-        const margin = 24;
-        const px = (x) => margin + ((x - map.originX) / (map.lengthX * (map.directionX ?? 1))) * (width - margin * 2);
-        const py = (y) => height - margin - ((y - map.originY) / (map.lengthY * (map.directionY ?? 1))) * (height - margin * 2);
-        ctx.beginPath();
-        map.contourMachine.forEach((point, index) => index ? ctx.lineTo(px(point.x), py(point.y)) : ctx.moveTo(px(point.x), py(point.y)));
-        ctx.closePath();
-        ctx.strokeStyle = 'rgba(255,255,255,0.85)';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-        for (const sample of map.samples) {
-            const level = range > 0 ? (sample.z - min) / range : 0.5;
-            ctx.beginPath();
-            ctx.arc(px(sample.x), py(sample.y), sample.kind === 'perimeter' ? 2.6 : 2, 0, Math.PI * 2);
-            ctx.fillStyle = color(level);
-            ctx.fill();
-        }
-        return;
-    }
     const nx = map.pointsX;
     const ny = map.pointsY;
-    const span = Math.min(width * 0.40, height * 0.34);
-    const lift = Math.min(height * 0.28, span * factor * 0.08);
-    const points = map.z.map((row, iy) => row.map((z, ix) => {
+    const surfaceZ = Array.isArray(map.samples)
+        ? Array.from({ length: ny }, (_, iy) => Array.from({ length: nx }, (_, ix) => {
+            const x = map.originX + (map.directionX ?? 1) * map.lengthX * ix / (nx - 1);
+            const y = map.originY + (map.directionY ?? 1) * map.lengthY * iy / (ny - 1);
+            try { return interpolate(map, x, y); } catch { return map.referenceZ; }
+        }))
+        : map.z;
+    const span = Math.min(width * 0.38, height * 0.34);
+    const lift = Math.min(height * 0.24, span * factor * 0.08);
+    const frontY = height * 0.78;
+    const firstLevel = range > 0 ? (surfaceZ[0][0] - min) / range : 0.5;
+    const points = surfaceZ.map((row, iy) => row.map((z, ix) => {
         const u = ix / (nx - 1);
         const v = iy / (ny - 1);
         const level = range > 0 ? (z - min) / range : 0.5;
-        return { x: width / 2 + (u - v) * span, y: height * 0.32 + (u + v) * span * 0.43 - level * lift, level };
+        return { x: width / 2 + (u - v) * span, y: frontY - (u + v) * span * 0.43 - (level - firstLevel) * lift, level };
     }));
     for (let iy = 0; iy < ny - 1; iy += 1) {
         for (let ix = 0; ix < nx - 1; ix += 1) {
@@ -129,19 +125,38 @@ function drawSurfaceMap() {
         ctx.fill();
     }
     ctx.font = '12px system-ui, sans-serif';
-    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
     ctx.fillStyle = getComputedStyle(canvas).color;
-    ctx.fillText('X', width / 2 + span + 14, height * 0.32 + span * 0.43);
-    ctx.fillText('Y', width / 2 - span - 14, height * 0.32 + span * 0.43);
+    const corner = map.wposOriginCorner ?? 'front-left';
+    const originIndices = { 'front-left': [0, 0], 'front-right': [nx - 1, 0], 'rear-left': [0, ny - 1], 'rear-right': [nx - 1, ny - 1], center: [(nx - 1) / 2, (ny - 1) / 2] };
+    const [originXIndex, originYIndex] = originIndices[corner] ?? originIndices['front-left'];
+    const interpolatePoint = (xPosition, yPosition) => {
+        const x0 = Math.floor(xPosition), y0 = Math.floor(yPosition);
+        const x1 = Math.min(nx - 1, x0 + 1), y1 = Math.min(ny - 1, y0 + 1);
+        const tx = xPosition - x0, ty = yPosition - y0;
+        const blend = (a, b, t) => a + (b - a) * t;
+        return {
+            x: blend(blend(points[y0][x0].x, points[y0][x1].x, tx), blend(points[y1][x0].x, points[y1][x1].x, tx), ty),
+            y: blend(blend(points[y0][x0].y, points[y0][x1].y, tx), blend(points[y1][x0].y, points[y1][x1].y, tx), ty),
+        };
+    };
+    const originPoint = interpolatePoint(originXIndex, originYIndex);
+    const xPoint = points[0][nx - 1], yPoint = points[ny - 1][0];
+    ctx.beginPath(); ctx.arc(originPoint.x, originPoint.y, 4.5, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.95)'; ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.textAlign = 'left'; ctx.fillText('0,0', originPoint.x + 9, originPoint.y - 10);
+    ctx.textAlign = 'left'; ctx.fillText('X', xPoint.x + 9, xPoint.y - 4);
+    ctx.textAlign = 'right'; ctx.fillText('Y', yPoint.x - 9, yPoint.y - 4);
 }
 
 function currentSettings() {
     return {
-        ...Object.fromEntries(fields.map((id) => [id, id === 'clearanceZ' ? negativeMachineZ(n(id)) : n(id)])),
+        ...Object.fromEntries(fields.map((id) => [id, n(id)])),
+        retract: SHORT_RETRACT_MM,
         machineZeroX: n('machineZeroX'),
         machineZeroY: n('machineZeroY'),
         surfaceType: document.querySelector('input[name="surfaceType"]:checked').value,
-        mapAlignment: $('mapAlignment').value,
+        wposOrigin: selectedWposOrigin(),
     };
 }
 
@@ -152,11 +167,12 @@ function populateSettings(saved = {}) {
         const invalidSlowTravel = id === 'slowTravel'
             && Number(value) <= Number(saved.retract ?? DEFAULTS.retract);
         const selectedValue = missingOrInvalid || invalidSlowTravel ? DEFAULTS[id] : value;
-        $(id).value = String(id === 'clearanceZ' ? negativeMachineZ(selectedValue) : selectedValue);
+        $(id).value = String(selectedValue);
     }
     const surfaceType = ['conductive', 'puck', 'switch'].includes(saved.surfaceType) ? saved.surfaceType : DEFAULTS.surfaceType;
     document.querySelector(`input[name="surfaceType"][value="${surfaceType}"]`).checked = true;
-    $('mapAlignment').value = saved.mapAlignment === 'center' ? 'center' : 'zero';
+    const origin = ['front-left', 'front-right', 'rear-left', 'rear-right', 'center'].includes(saved.wposOrigin) ? saved.wposOrigin : 'front-left';
+    document.querySelector(`input[name="wposOrigin"][value="${origin}"]`).checked = true;
     for (const id of ['machineZeroX', 'machineZeroY']) {
         const value = saved[id];
         $(id).value = String(value == null || value === '' || !Number.isFinite(Number(value)) ? 0 : value);
@@ -170,6 +186,17 @@ function updatePuckThicknessVisibility() {
 
 function updateWorkZeroVisibility() {
     $('machineZeroFields').hidden = $('workZeroMode').value !== 'machine';
+}
+
+const SHORT_RETRACT_MM = 2;
+function selectedWposOrigin() {
+    return document.querySelector('input[name="wposOrigin"]:checked')?.value ?? 'front-left';
+}
+
+function mapFrontLeftFromWposOrigin(origin, corner, lengthX, lengthY, directionX, directionY) {
+    const xOffset = corner.endsWith('right') ? -directionX * lengthX : corner === 'center' ? -directionX * lengthX / 2 : 0;
+    const yOffset = corner.startsWith('rear') ? -directionY * lengthY : corner === 'center' ? -directionY * lengthY / 2 : 0;
+    return { x: round(origin.x + xOffset), y: round(origin.y + yOffset) };
 }
 
 function renderContourPreview() {
@@ -206,12 +233,20 @@ function positionVector(position) {
     return null;
 }
 
+function renderMachineDro() {
+    ['X', 'Y', 'Z'].forEach((axis, index) => {
+        const value = state.machinePosition?.[index];
+        $(`dro${axis}`).textContent = Number.isFinite(value) ? value.toFixed(3) : '—';
+    });
+}
+
 async function controllerSnapshot() {
     const reduxState = await getReduxState();
     if (!reduxState?.connection?.isConnected) throw new Error('Connect to the controller in gSender before continuing.');
     const status = reduxState?.controller?.state?.status;
     const mpos = positionVector(status?.mpos);
     if (!mpos || !mpos.every(Number.isFinite)) throw new Error('gSender has not reported a valid machine position yet. Wait for a controller status update and try again.');
+    state.machinePosition = mpos;
     return { state: status.activeState ?? 'unknown', mpos, wpos: positionVector(status.wpos) };
 }
 
@@ -233,7 +268,9 @@ async function waitIdle(timeoutMs = 30000) {
 }
 
 async function sendAndWait(line, timeout = 30000) {
+    await logCalibration(`TX ${line}`);
     const result = await machine.query(line, { until: 'ok-or-error', timeout, maxLines: 50 });
+    await logCalibration(`RX ${line}: ${JSON.stringify(result)}`);
     if (!result.complete || result.error || !result.ok) {
         throw new Error(`Controller did not accept “${line}”: ${result.error ?? result.lines.join(' ') ?? result.reason}`);
     }
@@ -252,7 +289,9 @@ async function readTravelLimits() {
                 const homingMask = readHomingMask(settingsLines);
                 if (homingMask === null) throw new Error('the $23 line was missing');
                 const limits = parseTravelLimits(settingsLines);
-                return { ...limits, homingMask, zHomePositive: (homingMask & 4) === 0 };
+                const resolved = { ...limits, homingMask, zHomePositive: (homingMask & 4) === 0 };
+                await logCalibration(`Controller travel: $23=${homingMask}; X=${resolved.minX}..${resolved.maxXPosition} (${resolved.maxX} mm), Y=${resolved.minY}..${resolved.maxYPosition} (${resolved.maxY} mm), Z=${resolved.minZ}..${resolved.maxZPosition}; probe scan direction X${resolved.directionX > 0 ? '+' : '-'} Y${resolved.directionY > 0 ? '+' : '-'}.`);
+                return resolved;
             } catch (error) {
                 lastError = error.message;
             }
@@ -320,25 +359,31 @@ async function refreshUi() {
     let connected = false;
     try { connected = Boolean((await machine.getContext())?.connected); } catch { /* disconnected or SDK denied */ }
     if (!connected) {
+        state.machinePosition = null;
         state.homeMachineZ = null;
         state.controllerHomed = false;
         state.origin = null;
+        state.wposOrigin = null;
     }
     const homed = connected && state.controllerHomed && Number.isFinite(state.homeMachineZ);
     $('connection').textContent = connected ? 'Connected' : 'Not connected';
+    renderMachineDro();
     $('connection').dataset.connected = String(connected);
-    $('home').disabled = !connected || !state.project || state.busy || state.analyzingProject;
+    $('home').disabled = !connected || state.busy || state.analyzingProject || homed;
     $('checkProject').disabled = !connected || !state.file || state.busy || state.analyzingProject;
-    $('mapAlignment').disabled = state.busy || state.analyzingProject;
-    $('calibrate').disabled = !homed || state.busy || !state.origin || !state.project;
+    $('originSelector').disabled = !homed || state.busy;
+    $('probeWpos').disabled = !homed || state.busy || !state.project;
+    $('jogStep').disabled = !homed || state.busy;
+    for (const id of ['jogYPlus', 'jogXMinus', 'jogXPlus', 'jogYMinus', 'jogZPlus', 'jogZMinus']) $(id).disabled = !homed || state.busy;
+    $('calibrate').disabled = !homed || state.busy || !state.origin || !state.wposOrigin || !state.project;
     $('stop').disabled = !state.busy;
     $('compensate').disabled = !state.map || !mapCoversProject() || !state.file || state.busy || state.analyzingProject;
     $('clearMap').disabled = !state.map || state.busy;
     $('exportStl').disabled = !state.map || state.busy;
-    $('originLabel').textContent = state.origin ? `Probe grid origin: machine X${state.origin.x.toFixed(3)} Y${state.origin.y.toFixed(3)}` : 'Derived from the imported file and alignment setting';
+    $('originLabel').textContent = state.wposOrigin ? `WPOS origin captured at machine X${state.wposOrigin.mpos[0].toFixed(3)} Y${state.wposOrigin.mpos[1].toFixed(3)}` : 'Probe the selected WPOS origin to enable calibration';
     $('homeLabel').textContent = homed ? `Machine already homed · safe Z${state.homeMachineZ.toFixed(3)}` : state.controllerHomed ? 'Machine homed · waiting for Idle position' : 'Machine not homed';
     $('mapSummary').textContent = state.map
-        ? `${state.map.lengthX} × ${state.map.lengthY} mm · ${Array.isArray(state.map.samples) ? `contour map with ${state.map.samples.length} points` : `${state.map.pointsX} × ${state.map.pointsY} grid`} · captured at machine X${state.map.originX.toFixed(3)} Y${state.map.originY.toFixed(3)} · ${new Date(state.map.createdAt).toLocaleString()}`
+        ? `${state.map.lengthX} × ${state.map.lengthY} mm · ${Array.isArray(state.map.samples) ? `contour map with ${state.map.samples.length} points` : `${state.map.pointsX} × ${state.map.pointsY} grid`} · WPOS origin ${state.map.wposOriginCorner ?? 'front-left'} · ${state.map.fullMachineCoverage ? 'full machine XY coverage; unprobed areas use the WPOS Z0 baseline' : `captured at machine X${state.map.originX.toFixed(3)} Y${state.map.originY.toFixed(3)}`} · ${new Date(state.map.createdAt).toLocaleString()}`
         : 'No height map saved.';
     $('fileLabelApply').textContent = state.file ? `${state.file.name} · ${(state.file.size / 1024).toFixed(1)} KB` : 'Import a G-code project above.';
     drawSurfaceMap();
@@ -349,6 +394,7 @@ async function adoptControllerHoming(hasHomed) {
     if (!state.controllerHomed) {
         state.homeMachineZ = null;
         state.origin = null;
+        state.wposOrigin = null;
         await refreshUi();
         return;
     }
@@ -361,8 +407,8 @@ async function adoptControllerHoming(hasHomed) {
         const snapshot = await statusSnapshot();
         if (!state.controllerHomed || snapshot.state !== 'Idle') return;
         state.homeMachineZ = round(snapshot.mpos[2]);
-        state.origin = state.project ? { ...state.project.mapOrigin } : null;
-        setNotice('Machine is already homed. Its current machine Z is the retract baseline; confirm it is clear and safe before moving.', 'success');
+        state.origin = null;
+        setNotice('Machine is already homed. Select the WPOS origin, jog the probe above it, and use Probe WPOS origin.', 'success');
     } catch (err) {
         setNotice(`Machine is homed, but its current Z position could not be read: ${err.message}`, 'error');
     } finally {
@@ -373,6 +419,7 @@ async function adoptControllerHoming(hasHomed) {
 
 function mapCoversProject() {
     if (!state.project || !mapCoversProjectBounds(state.map, state.project.settings, state.project.limits)) return false;
+    if (state.map?.fullMachineCoverage) return true;
     if (state.map?.contourMachine) {
         const contour = state.project.contour;
         if (contour) return contour.length === state.map.contourMachine.length && contour.every((point, index) => {
@@ -437,22 +484,37 @@ function receiveProbeReport(report) {
     state.probeReportSequence += 1;
     const waiter = state.probeWaiter;
     if (!waiter || state.probeReportSequence <= waiter.afterSequence || !probePositionMatches(line, waiter.expected)) return;
+    if (/:0\]\s*$/i.test(String(line).trim())) {
+        waiter.resolve({ missed: true });
+        return;
+    }
     try { waiter.resolve({ position: parseProbePosition(line) }); }
     catch (error) { waiter.resolve({ error }); }
 }
 
+function probeMissError(stage) {
+    const error = new Error(`${stage} did not trigger within the configured probe travel.`);
+    error.probeMiss = true;
+    return error;
+}
+
 async function queryProbe(line, timeout, stage, expected) {
+    await logCalibration(`TX ${stage}: ${line}`);
     let resolveReport;
     const reportPromise = new Promise((resolve) => { resolveReport = resolve; });
     const waiter = { expected, afterSequence: state.probeReportSequence, resolve: resolveReport };
     state.probeWaiter = waiter;
     try {
         const result = await machine.query(line, { until: 'ok-or-error', timeout, maxLines: 50 });
+        await logCalibration(`RX ${stage}: ${JSON.stringify(result)}`);
         if (!result.complete || !result.ok || result.error) {
             throw new Error(`${stage} probe was not accepted. Controller response: ${result.error ?? result.lines.join(' ') ?? result.reason}`);
         }
         const reportLine = result.lines.map((entry) => String(entry).trim()).find((entry) => /^\[PRB:/i.test(entry) && probePositionMatches(entry, expected));
-        if (reportLine) return readProbePosition({ lines: [reportLine] });
+        if (reportLine) {
+            if (/:0\]$/i.test(reportLine)) throw probeMissError(stage);
+            return readProbePosition({ lines: [reportLine] });
+        }
 
         setNotice(`${stage} probe was acknowledged. Waiting for its matching X/Y position report…`);
         let reportTimeout;
@@ -481,6 +543,7 @@ async function queryProbe(line, timeout, stage, expected) {
         } finally {
             clearTimeout(reportTimeout);
         }
+        if (outcome.missed) throw probeMissError(stage);
         if (outcome.error) throw outcome.error;
         if (!outcome.position) throw new Error(`${stage} probe report did not contain a valid position.`);
         return outcome.position;
@@ -497,28 +560,59 @@ function safeProbeTravel(distance, stage, pointLabel, currentZ, limits) {
     return Math.floor(Math.min(distance, available) * 1000) / 1000;
 }
 
-async function probeAt(settings, point, index, total, limits, startingZ) {
+async function probeAtOnce(settings, point, index, total, limits, startingZ, attempt) {
     const pointLabel = `point ${index + 1}/${total} (X${point.x.toFixed(3)} Y${point.y.toFixed(3)})`;
-    const fastTravel = safeProbeTravel(settings.probeTravel, 'Fast probe', pointLabel, startingZ, limits);
-    setNotice(fastTravel < settings.probeTravel
-        ? `Fast probe at ${pointLabel}: limiting travel to ${fastTravel.toFixed(3)} mm to stay inside Z travel. Keep hands clear.`
-        : `Fast probe on ${pointLabel}… keep hands clear.`);
-    const fastProbe = await queryProbe(`G91 G38.2 Z-${fastTravel} F${settings.fastFeed}`, 45000, `Fast probe on ${pointLabel}`, point);
-    const interimRetract = computePostProbeRetract(fastProbe.z, state.homeMachineZ, settings.retract);
+    const fastTravel = safeProbeTravel(limits.maxZ, 'Fast probe', pointLabel, startingZ, limits);
+    const retryLabel = attempt === 1 ? ' (retry)' : '';
+    setNotice(`Fast probe on ${pointLabel}${retryLabel}: using ${fastTravel.toFixed(3)} mm, limited by available machine Z travel… keep hands clear.`);
+    await queryProbe(`G91 G38.3 Z-${fastTravel} F${settings.fastFeed}`, 45000, `Fast probe on ${pointLabel}${retryLabel}`, point);
+    const interimRetract = SHORT_RETRACT_MM;
     setNotice(`Fast contact found on ${pointLabel}. Retracting ${interimRetract.toFixed(3)} mm before the slow touch…`);
     await sendAndWait(`G91 G0 Z${interimRetract}`);
     const slowStart = await waitIdle();
     const slowTravel = safeProbeTravel(settings.slowTravel, 'Slow probe', pointLabel, slowStart.mpos[2], limits);
     setNotice(slowTravel < settings.slowTravel
         ? `Slow probe at ${pointLabel}: limiting travel to ${slowTravel.toFixed(3)} mm to stay inside Z travel.`
-        : `Slow probe on ${pointLabel}…`);
-    await queryProbe(`G91 G38.2 Z-${slowTravel} F${settings.slowFeed}`, 30000, `Slow probe on ${pointLabel}`, point);
+        : `Slow probe on ${pointLabel}${retryLabel}…`);
+    await queryProbe(`G91 G38.3 Z-${slowTravel} F${settings.slowFeed}`, 30000, `Slow probe on ${pointLabel}${retryLabel}`, point);
     setNotice(`Slow probe contact registered on ${pointLabel}. Reading the stopped Z position…`);
     const status = await statusSnapshot();
     return {
+        x: status.mpos[0], y: status.mpos[1],
         z: status.mpos[2] - (settings.surfaceType === 'puck' ? settings.puckThickness : 0),
         machineZ: status.mpos[2],
     };
+}
+
+async function probeAt(settings, point, index, total, limits, startingZ, retryZ = startingZ) {
+    try {
+        return await probeAtOnce(settings, point, index, total, limits, startingZ, 0);
+    } catch (error) {
+        if (!error.probeMiss) throw error;
+        const pointLabel = `point ${index + 1}/${total} (X${point.x.toFixed(3)} Y${point.y.toFixed(3)})`;
+        await logCalibration(`PROBE MISS at ${pointLabel}: ${error.message} Returning to machine Z${retryZ.toFixed(3)} for one retry.`);
+        setNotice(`${error.message} Returning to a safe height for one retry at ${pointLabel}…`);
+        const status = await statusSnapshot();
+        if (status.state !== 'Idle') throw new Error(`${error.message} One retry was not possible because the controller is ${status.state}; resolve the controller state and restart calibration.`);
+        if (retryZ < limits.minZ || retryZ > limits.maxZPosition) throw new Error(`${error.message} One retry was not possible because the saved safe retry Z is outside machine travel.`);
+        await sendAndWait(`G90 G53 G0 Z${retryZ.toFixed(3)}`);
+        const retryStart = await waitIdle();
+        await logCalibration(`Retrying ${pointLabel} once from machine Z${retryStart.mpos[2].toFixed(3)}.`);
+        setNotice(`Retrying probe at ${pointLabel} once…`);
+        try {
+            return await probeAtOnce(settings, point, index, total, limits, retryStart.mpos[2], 1);
+        } catch (retryError) {
+            if (retryError.probeMiss) {
+                const stopped = await statusSnapshot();
+                if (stopped.state === 'Idle') {
+                    await sendAndWait(`G90 G53 G0 Z${retryZ.toFixed(3)}`);
+                    await waitIdle();
+                }
+                throw new Error(`${retryError.message} The single retry also missed; calibration stopped at ${pointLabel}.`);
+            }
+            throw retryError;
+        }
+    }
 }
 
 function confirmUser(message, title, buttonLabel = 'Continue') {
@@ -570,22 +664,18 @@ function confirmRectangleFallback() {
 
 function validateSettings(s, limits) {
     for (const id of fields) if (!Number.isFinite(s[id])) throw new Error(`Enter a valid number for ${id}.`);
-    if (s.clearanceZ < limits.minZ || s.clearanceZ > limits.maxZPosition) throw new Error(`Safe Z clearance must be between machine Z${limits.minZ} and Z${limits.maxZPosition} mm.`);
-    if (s.probeTravel <= 0 || s.probeTravel > limits.maxZ) throw new Error(`Probe travel must be greater than zero and no more than the Z travel limit ${limits.maxZ} mm.`);
-    if (s.slowTravel <= s.retract) throw new Error('Slow probe travel must be greater than the retract distance.');
-    if (s.fastFeed <= 0 || s.slowFeed <= 0 || s.retract <= 0) throw new Error('Feeds and retract must be greater than zero.');
+    if (s.fullRetract <= 0) throw new Error('Full Retract Height must be greater than zero above WPOS Z0.');
+    if (s.slowTravel <= SHORT_RETRACT_MM) throw new Error(`Slow probe travel must be greater than the fixed ${SHORT_RETRACT_MM} mm short retract.`);
+    if (s.fastFeed <= 0 || s.slowFeed <= 0) throw new Error('Probe feeds must be greater than zero.');
     if (s.puckThickness < 0) throw new Error('Probe puck thickness cannot be negative.');
     if (!['conductive', 'puck', 'switch'].includes(s.surfaceType)) throw new Error('Choose Conductive, Puck, or Switch as the probe type.');
 }
 
 async function homeMachine() {
     if (state.busy) return;
-    if (!state.project) {
-        setNotice('Import and validate the G-code project before homing for its map.', 'error');
-        return;
-    }
     state.homeMachineZ = null;
     state.controllerHomed = false;
+    state.wposOrigin = null;
     state.origin = null;
     state.busy = true; await refreshUi(); setNotice('Homing… keep clear of the machine.');
     try {
@@ -597,11 +687,139 @@ async function homeMachine() {
             throw new Error(`Homing finished at machine X${homeStatus.mpos[0].toFixed(3)} Y${homeStatus.mpos[1].toFixed(3)}; this workflow requires machine X0 Y0 at home before using it as the map origin.`);
         }
         state.controllerHomed = true;
-        state.origin = { ...state.project.mapOrigin };
+        state.origin = null;
         await refreshUi();
-        setNotice(`Homing complete. The probe grid is ready at its ${state.project.mapAlignment === 'center' ? 'centered' : 'machine-zero'} origin X${state.origin.x.toFixed(3)} Y${state.origin.y.toFixed(3)}.`, 'success');
+        setNotice('Homing complete. Select the WPOS origin, jog the probe into position, then probe the origin.', 'success');
     } catch (err) { setNotice(err.message, 'error'); }
     finally { state.busy = false; await refreshUi(); }
+}
+
+function invalidateWposOrigin(message = '') {
+    state.wposOrigin = null;
+    state.origin = null;
+    if (message) setNotice(message, 'error');
+}
+
+async function jogMachine(axis, sign) {
+    if (state.busy || !state.controllerHomed || !['X', 'Y', 'Z'].includes(axis)) return;
+    const step = $('jogStep').value;
+    const continuous = step === 'continuous';
+    if (continuous) return startContinuousJog(axis, sign, null);
+    const distance = Number(step);
+    invalidateWposOrigin('Machine jogged. Probe the selected WPOS origin again before calibration.');
+    state.busy = true; await refreshUi();
+    try {
+        const status = await statusSnapshot();
+        if (status.state !== 'Idle') throw new Error(`Jogging requires an idle machine (current state: ${status.state}).`);
+        const limits = await readTravelLimits();
+        const target = [...status.mpos];
+        const index = { X: 0, Y: 1, Z: 2 }[axis];
+        target[index] += sign * distance;
+        if (axis === 'Z') {
+            if (target[2] < limits.minZ || target[2] > limits.maxZPosition) throw new Error(`Z jog would exceed machine travel ${limits.minZ}..${limits.maxZPosition} mm.`);
+        } else validateMachineTarget({ x: target[0], y: target[1] }, limits);
+        await machine.setBusy(true, `Jog ${axis}`);
+        await sendAndWait(`G21 G91 G0 ${axis}${(sign * distance).toFixed(3)}`);
+        await waitIdle(); await sendAndWait('G90');
+        setNotice(`Jogged ${axis} ${sign > 0 ? '+' : '−'}${distance} mm. Probe the selected WPOS origin when positioned.`, 'success');
+    } catch (error) {
+        try { await sendAndWait('G90', 5000); } catch { /* preserve the original motion error */ }
+        setNotice(error.message, 'error');
+    } finally {
+        state.busy = false;
+        try { await machine.setBusy(false); } catch { /* disconnected */ }
+        await refreshUi();
+    }
+}
+
+async function startContinuousJog(axis, sign) {
+    if (state.busy || !state.controllerHomed) return;
+    invalidateWposOrigin('Machine jogged. Probe the selected WPOS origin again before calibration.');
+    state.busy = true; await refreshUi();
+    try {
+        const snapshot = await statusSnapshot();
+        if (snapshot.state !== 'Idle') throw new Error(`Jogging requires an idle machine (current state: ${snapshot.state}).`);
+        const limits = await readTravelLimits();
+        const index = { X: 0, Y: 1, Z: 2 }[axis];
+        const travel = axis === 'X' ? { min: limits.minX, max: limits.maxXPosition } : axis === 'Y' ? { min: limits.minY, max: limits.maxYPosition } : { min: limits.minZ, max: limits.maxZPosition };
+        const distance = Math.abs((sign > 0 ? travel.max : travel.min) - snapshot.mpos[index]) - 0.1;
+        if (!Number.isFinite(distance) || distance <= 0.1) throw new Error(`${axis} is already at its machine travel limit.`);
+        await machine.setBusy(true, `Continuous jog ${axis}`);
+        const jog = state.continuousJog = { stopRequested: false };
+        await sendAndWait(`$J=G21 G91 ${axis}${(sign * distance).toFixed(3)} F500`, 10000);
+        setNotice(`Continuously jogging ${axis} ${sign > 0 ? '+' : '−'}. Release the control to stop.`);
+        while (!jog.stopRequested) await pause(40);
+        await machine.command('gcode', '[\\x85]');
+        await waitIdle(); await sendAndWait('G90');
+        setNotice('Continuous jog stopped. Probe the selected WPOS origin again before calibration.', 'success');
+    } catch (error) { await logCalibration(`CONTINUOUS JOG ERROR: ${error.message}`); setNotice(error.message, 'error'); }
+    finally {
+        state.continuousJog = null; state.busy = false;
+        try { await machine.setBusy(false); } catch { /* disconnected */ }
+        await refreshUi();
+    }
+}
+
+function stopContinuousJog() {
+    if (state.continuousJog) state.continuousJog.stopRequested = true;
+}
+
+async function probeWposOrigin() {
+    if (state.busy || !state.project || !state.controllerHomed) return;
+    state.busy = true; await refreshUi(); setNotice('Checking the origin position and Z travel…');
+    try {
+        const limits = await readTravelLimits();
+        const initial = await statusSnapshot();
+        if (initial.state !== 'Idle') throw new Error(`Probe WPOS origin requires an idle machine (current state: ${initial.state}).`);
+        validateMachineTarget({ x: initial.mpos[0], y: initial.mpos[1] }, limits);
+        const modal = await machine.query('$G', { until: 'ok-or-error', timeout: 8000, maxLines: 30 });
+        await logCalibration(`RX $G before WPOS touch-off: ${JSON.stringify(modal)}`);
+        const gcLine = modal.lines.find((line) => /^\[GC:/i.test(line));
+        const activeWcs = gcLine?.match(/(?:^|\s)(G5[4-9])(?:\s|\])/i)?.[1]?.toUpperCase();
+        if (activeWcs !== 'G54') throw new Error(`Select G54 in gSender before probing the WPOS origin. Active coordinate system: ${activeWcs ?? 'unknown'}.`);
+        const settings = currentSettings();
+        validateSettings(settings, limits);
+        if (initial.mpos[2] < limits.minZ || initial.mpos[2] > limits.maxZPosition) throw new Error(`Current machine Z${initial.mpos[2].toFixed(3)} is outside the reported Z travel ${limits.minZ}..${limits.maxZPosition} mm.`);
+        if (settings.surfaceType === 'conductive') await confirmUser('Attach the conductive probe clip to the material at the selected work origin.', 'Prepare conductive probe', 'Clip is attached');
+        if (settings.surfaceType === 'puck') await confirmUser('Place the probe puck at the selected work origin.', 'Place probe puck at origin', 'Puck is in place');
+        await machine.setBusy(true, 'Probe WPOS origin');
+        const contact = await probeAt({ ...settings, retract: SHORT_RETRACT_MM }, { x: initial.mpos[0], y: initial.mpos[1] }, 0, 1, limits, initial.mpos[2]);
+        await sendAndWait('G21 G90 G10 L20 P1 X0 Y0 Z0');
+        const corner = selectedWposOrigin();
+        const mapOrigin = mapFrontLeftFromWposOrigin({ x: contact.x, y: contact.y }, corner, settings.lengthX, settings.lengthY, limits.directionX, limits.directionY);
+        const retractMachineZ = contact.machineZ + (limits.zHomePositive ? 1 : -1) * settings.fullRetract;
+        if (retractMachineZ < limits.minZ || retractMachineZ > limits.maxZPosition) {
+            await sendAndWait(`G91 G0 Z${limits.zHomePositive ? SHORT_RETRACT_MM : -SHORT_RETRACT_MM}`); await waitIdle(); await sendAndWait('G90');
+            throw new Error(`Full Retract Height places machine Z at ${retractMachineZ.toFixed(3)} mm, outside Z travel ${limits.minZ}..${limits.maxZPosition} mm. The probe was backed off ${SHORT_RETRACT_MM} mm.`);
+        }
+        await sendAndWait(`G90 G53 G0 Z${retractMachineZ.toFixed(3)}`); await waitIdle();
+        let originStatus = null;
+        for (let attempt = 0; attempt < 20; attempt += 1) {
+            originStatus = await controllerSnapshot();
+            if (originStatus.state === 'Alarm') throw new Error('Controller entered Alarm while setting WPOS zero. Resolve the alarm in gSender before continuing.');
+            if (originStatus.state === 'Idle' && originStatus.wpos?.length >= 3 && originStatus.wpos.slice(0, 3).every(Number.isFinite)
+                && originStatus.wpos.slice(0, 3).every((value, index) => Math.abs(value - [0, 0, settings.fullRetract][index]) <= 0.1)
+                && originStatus.mpos.slice(0, 2).every((value, index) => Math.abs(value - [contact.x, contact.y][index]) <= 0.1)
+                && Math.abs(originStatus.mpos[2] - retractMachineZ) <= 0.1) break;
+            await pause(250);
+        }
+        if (!originStatus || originStatus.state !== 'Idle' || !originStatus.wpos || originStatus.wpos.length < 3
+            || originStatus.wpos.slice(0, 3).some((value, index) => !Number.isFinite(value) || Math.abs(value - [0, 0, settings.fullRetract][index]) > 0.1)
+            || originStatus.mpos.slice(0, 2).some((value, index) => Math.abs(value - [contact.x, contact.y][index]) > 0.1)
+            || Math.abs(originStatus.mpos[2] - retractMachineZ) > 0.1) throw new Error(`Controller did not confirm G54 WPOS X0 Y0 and Full Retract Z+${settings.fullRetract.toFixed(2)}. Reported WPOS: ${originStatus?.wpos?.map((value) => Number(value).toFixed(3)).join(', ') ?? 'unavailable'}.`);
+        state.wposOrigin = { corner, mpos: originStatus.mpos.map(round), surfaceMachineZ: contact.machineZ, surfaceZ: contact.z };
+        state.origin = mapOrigin;
+        state.project.mapOrigin = mapOrigin;
+        state.project.mapAlignment = corner;
+        if (state.project.contour) {
+            state.project.probePoints = makeContourProbePoints({ polygon: state.project.contour, bounds: state.project.bounds, originX: mapOrigin.x, originY: mapOrigin.y, pointsX: settings.pointsX, pointsY: settings.pointsY, directionX: limits.directionX, directionY: limits.directionY });
+            state.project.contourMachine = state.project.contour.map((p) => ({ x: mapOrigin.x + limits.directionX * (p.x - state.project.bounds.minX), y: mapOrigin.y + limits.directionY * (p.y - state.project.bounds.minY) }));
+        }
+        $('machineZeroX').value = contact.x.toFixed(3); $('machineZeroY').value = contact.y.toFixed(3);
+        await saveSettings();
+        setNotice(`WPOS origin probed and G54 X0 Y0 Z0 set. Full retract is +${settings.fullRetract.toFixed(1)} mm.`, 'success');
+    } catch (error) { await logCalibration(`WPOS ORIGIN ERROR: ${error.message}`); setNotice(error.message, 'error'); }
+    finally { state.busy = false; try { await machine.setBusy(false); } catch { /* disconnected */ } await refreshUi(); }
 }
 
 async function analyzeProjectFile(file = state.file) {
@@ -609,6 +827,7 @@ async function analyzeProjectFile(file = state.file) {
     if (!file) {
         state.file = null;
         state.project = null;
+        state.wposOrigin = null;
         renderContourPreview();
         state.origin = null;
         $('fileLabel').textContent = 'No project selected.';
@@ -621,6 +840,7 @@ async function analyzeProjectFile(file = state.file) {
     }
     state.file = file;
     state.project = null;
+    state.wposOrigin = null;
     state.origin = null;
     state.analyzingProject = true;
     setApplyStatus('');
@@ -652,13 +872,14 @@ async function analyzeProjectFile(file = state.file) {
         if (!context?.connected) throw new Error('Connect to the CNC in gSender, then click “Check project and machine limits” to read $130/$131/$132.');
         const limits = await readTravelLimits();
         const settings = computeProjectMapSettings(bounds, limits);
-        const mapOrigin = computeProjectMapOrigin(settings, limits, $('mapAlignment').value);
+        const mapOrigin = computeProjectMapOrigin(settings, limits, 'zero');
         $('fileZeroX').value = bounds.minX.toFixed(3);
         $('fileZeroY').value = bounds.minY.toFixed(3);
         $('machineZeroX').value = mapOrigin.x.toFixed(3);
         $('machineZeroY').value = mapOrigin.y.toFixed(3);
-        state.project = { bounds, limits, settings, mapOrigin, mapAlignment: $('mapAlignment').value, contour, mappingMode };
-        state.origin = state.controllerHomed && Number.isFinite(state.homeMachineZ) ? { ...mapOrigin } : null;
+        state.project = { bounds, limits, settings, mapOrigin, mapAlignment: 'zero', contour, mappingMode };
+        state.origin = null;
+        state.wposOrigin = null;
         renderContourPreview();
         if (contour) {
             state.project.probePoints = makeContourProbePoints({ polygon: contour, bounds, originX: mapOrigin.x, originY: mapOrigin.y, pointsX: settings.pointsX, pointsY: settings.pointsY, directionX: limits.directionX, directionY: limits.directionY });
@@ -668,16 +889,12 @@ async function analyzeProjectFile(file = state.file) {
         await storage.set('settings', currentSettings());
         const pitchX = settings.lengthX / (settings.pointsX - 1);
         const pitchY = settings.lengthY / (settings.pointsY - 1);
-        const alignmentSummary = state.project.mapAlignment === 'center'
-            ? `center at machine X${((limits.directionX * limits.maxX) / 2).toFixed(3)} Y${((limits.directionY * limits.maxY) / 2).toFixed(3)} with ±${(settings.lengthX / 2).toFixed(3)} X / ±${(settings.lengthY / 2).toFixed(3)} Y extents`
-            : 'project minimum aligned at machine X0 Y0';
+        const alignmentSummary = 'map placement is set by probing the selected WPOS origin';
         const probeCount = contour ? state.project.probePoints.length : settings.pointCount;
         $('projectSummary').textContent = `${settings.lengthX.toFixed(3)} × ${settings.lengthY.toFixed(3)} mm project · file bounds X${bounds.minX.toFixed(3)}…${bounds.maxX.toFixed(3)}, Y${bounds.minY.toFixed(3)}…${bounds.maxY.toFixed(3)} · ${alignmentSummary} · ${contour ? `closed perimeter detected (${contour.length} vertices), perimeter probes ≤10 mm apart plus ${settings.pointsX} × ${settings.pointsY} interior grid, ${probeCount} unique points total` : `rectangular grid ${settings.pointsX} × ${settings.pointsY} (${probeCount} points)`}`;
         $('projectStatus').textContent = mapCoversProject()
             ? `Project fits within the saved scan. Applying the map aligns its minimum X/Y to saved map origin X${state.map.originX.toFixed(3)} Y${state.map.originY.toFixed(3)}; the scan is not changed.`
-            : state.controllerHomed && Number.isFinite(state.homeMachineZ)
-                ? 'Project fits machine travel. The machine is already homed; confirm Z is clear and safe, then start calibration.'
-                : 'Project fits machine travel. Confirm the machine is homed, then start calibration.';
+            : 'Project dimensions and probe pattern are ready. Home the machine, jog to the selected material origin, then probe WPOS origin.';
         $('projectStatus').className = 'success';
         const applyOrigin = mapCoversProject() ? { x: state.map.originX, y: state.map.originY } : mapOrigin;
         setNotice(`Project analysis passed. The project minimum X/Y will align to probe-grid origin X${applyOrigin.x.toFixed(3)} Y${applyOrigin.y.toFixed(3)} when applying the map.`, 'success');
@@ -695,11 +912,16 @@ async function analyzeProjectFile(file = state.file) {
 
 async function calibrate() {
     if (state.busy || !state.origin) return;
+    if (!state.wposOrigin) {
+        setNotice('Probe the selected WPOS origin before starting calibration.', 'error');
+        return;
+    }
     if (!state.controllerHomed || !Number.isFinite(state.homeMachineZ)) {
         setNotice('Confirm homing in gSender or click Home machine before starting calibration.', 'error');
         return;
     }
     state.busy = true; state.stopRequested = false; state.calibrationReadings = []; state.calibrationReadingCount = 0;
+    await logCalibration('--- File First calibration started ---');
     $('calibrationProgress').hidden = false; $('progress').value = 0; $('progressPercent').textContent = '0%';
     renderProbeReadings();
     await refreshUi(); setNotice('Reading controller travel limits and validating the complete grid…');
@@ -713,17 +935,18 @@ async function calibrate() {
         const grid = state.project.mappingMode === 'contour'
             ? state.project.probePoints.map((point, index) => ({ ...point, ix: index, iy: 0 }))
                 : validateMap({ originX: state.origin.x, originY: state.origin.y, lengthX: settings.lengthX, lengthY: settings.lengthY, pointsX: settings.pointsX, pointsY: settings.pointsY }, limits).flat();
-        if (grid.some((point) => point.x < limits.minX || point.y < limits.minY || point.x > limits.maxX || point.y > limits.maxY)) throw new Error('A generated perimeter or grid probe point falls outside machine travel. Change map alignment or reduce the project area.');
+        if (grid.some((point) => point.x < limits.minX || point.y < limits.minY || point.x > limits.maxXPosition || point.y > limits.maxYPosition)) throw new Error('A generated perimeter or grid probe point falls outside machine travel. Change map alignment or reduce the project area.');
         const flat = grid;
         const measured = [];
         if (settings.surfaceType === 'conductive') {
-            await confirmUser(`Attach the probe clip to the conductive work surface. The machine will move Z to machine Z0 before traveling to the first probe point. After each point, it will retract to safe clearance Z${settings.clearanceZ} before the next XY move; keep clear of the machine.`, 'Prepare conductive probe', 'Clip is attached');
+            await confirmUser('Attach the probe clip to the conductive work surface for the calibration.', 'Prepare conductive probe', 'Clip is attached');
         }
         await machine.setBusy(true, 'Surface height-map calibration');
-        setNotice('Moving Z to machine Z0 before traveling to the first probe point…');
-        await sendAndWait('G90 G53 G0 Z0');
+        const retractMachineZ = state.wposOrigin.surfaceMachineZ + (limits.zHomePositive ? 1 : -1) * settings.fullRetract;
+        if (retractMachineZ < limits.minZ || retractMachineZ > limits.maxZPosition) throw new Error(`Full Retract Height places machine Z at ${retractMachineZ.toFixed(3)} mm, outside Z travel ${limits.minZ}..${limits.maxZPosition} mm.`);
+        setNotice(`Retracting to WPOS +${settings.fullRetract.toFixed(1)} mm before moving to the first probe point…`);
+        await sendAndWait(`G90 G53 G0 Z${retractMachineZ.toFixed(3)}`);
         await waitIdle();
-        state.homeMachineZ = 0;
         let firstZ = null;
         for (let index = 0; index < flat.length; index += 1) {
             if (state.stopRequested) break;
@@ -745,9 +968,12 @@ async function calibrate() {
             state.calibrationReadingCount += 1;
             if (state.calibrationReadings.length > 10) state.calibrationReadings.pop();
             renderProbeReadings();
-            if (settings.clearanceZ < probe.machineZ - 0.1) throw new Error(`Probe contact at point ${index + 1} reached machine Z${probe.machineZ.toFixed(3)}, above the configured clearance Z${settings.clearanceZ}. Increase the safe Z clearance before calibration.`);
-            setNotice(`Probe complete at point ${index + 1}/${flat.length} (X${point.x.toFixed(3)} Y${point.y.toFixed(3)}). Retracting to safe machine Z${settings.clearanceZ}…`);
-            await sendAndWait(`G90 G53 G0 Z${settings.clearanceZ}`);
+            if ((limits.zHomePositive && retractMachineZ < probe.machineZ - 0.1) || (!limits.zHomePositive && retractMachineZ > probe.machineZ + 0.1)) {
+                await sendAndWait(`G91 G0 Z${limits.zHomePositive ? SHORT_RETRACT_MM : -SHORT_RETRACT_MM}`); await waitIdle(); await sendAndWait('G90');
+                throw new Error(`The probe contact at point ${index + 1} is above the configured Full Retract target. Increase Full Retract Height; the probe was backed off ${SHORT_RETRACT_MM} mm.`);
+            }
+            setNotice(`Probe complete at point ${index + 1}/${flat.length} (X${point.x.toFixed(3)} Y${point.y.toFixed(3)}). Retracting to WPOS +${settings.fullRetract.toFixed(1)} mm…`);
+            await sendAndWait(`G90 G53 G0 Z${retractMachineZ.toFixed(3)}`);
             await waitIdle();
             setNotice(`Point ${index + 1}/${flat.length} saved. Retract complete; moving to the next point…`);
             measured.push({ x: point.x, y: point.y, ix: point.ix, iy: point.iy, z: round(probe.z), kind: point.kind ?? 'grid' });
@@ -756,8 +982,8 @@ async function calibrate() {
         }
         if (state.stopRequested) throw new Error('Calibration stopped at a point boundary. Partial measurements were discarded; the previous saved map remains available.');
         if (measured.length !== flat.length || measured.some((sample) => !Number.isFinite(sample.z))) throw new Error('Calibration ended with missing measurements; no new map was saved.');
-        setNotice(`All probe points measured. Retracting to safe machine Z${settings.clearanceZ}, then moving to machine X0 Y0…`);
-        await sendAndWait(`G90 G53 G0 Z${settings.clearanceZ}`);
+        setNotice(`All probe points measured. Retracting to WPOS +${settings.fullRetract.toFixed(1)} mm, then parking at machine X0 Y0…`);
+        await sendAndWait(`G90 G53 G0 Z${retractMachineZ.toFixed(3)}`);
         await waitIdle();
         await sendAndWait('G90 G53 G0 X0 Y0');
         await waitIdle();
@@ -766,10 +992,13 @@ async function calibrate() {
             directionX: limits.directionX, directionY: limits.directionY,
             lengthX: settings.lengthX, lengthY: settings.lengthY,
             pointsX: settings.pointsX, pointsY: settings.pointsY,
-            maxX: limits.maxX, maxY: limits.maxY, minX: limits.minX, minY: limits.minY,
-            mapAlignment: state.project.mapAlignment,
+            maxX: limits.maxXPosition, maxY: limits.maxYPosition, minX: limits.minX, minY: limits.minY,
+            mapAlignment: state.wposOrigin.corner,
+            wposOriginCorner: state.wposOrigin.corner,
+            wposOriginMachine: state.wposOrigin.mpos,
+            fullMachineCoverage: true,
             surfaceType: settings.surfaceType, puckThickness: settings.puckThickness,
-            referenceZ: round(firstZ), z: state.project.mappingMode === 'rectangle' ? Array.from({ length: settings.pointsY }, (_, iy) => Array.from({ length: settings.pointsX }, (_, ix) => measured.find((sample) => sample.ix === ix && sample.iy === iy)?.z)) : [],
+            referenceZ: round(state.wposOrigin.surfaceZ), z: state.project.mappingMode === 'rectangle' ? Array.from({ length: settings.pointsY }, (_, iy) => Array.from({ length: settings.pointsX }, (_, ix) => measured.find((sample) => sample.ix === ix && sample.iy === iy)?.z)) : [],
             samples: state.project.mappingMode === 'contour' ? measured : null,
             contourMachine: state.project.mappingMode === 'contour' ? state.project.contourMachine : null,
             createdAt: new Date().toISOString(),
@@ -782,6 +1011,7 @@ async function calibrate() {
         $('copyStlStatus').textContent = '';
         setNotice(`Calibration saved (${flat.length} points${state.project.mappingMode === 'contour' ? ', including perimeter and interior grid samples' : ''}).`, 'success');
     } catch (err) {
+        await logCalibration(`CALIBRATION ERROR: ${err.message}`);
         setNotice(err.message, 'error');
     } finally {
         $('calibrationProgress').hidden = true; state.busy = false;
@@ -815,7 +1045,7 @@ async function compensateFile() {
             if (![zeroX, zeroY].every(Number.isFinite)) throw new Error('Enter a valid file X/Y work-zero point.');
             if (sourceContour && !pointInPolygon({ x: zeroX, y: zeroY }, sourceContour)) throw new Error('The selected file work-zero point is outside the uploaded file perimeter.');
             if (!sourceContour && (zeroX < bounds.minX || zeroX > bounds.maxX || zeroY < bounds.minY || zeroY > bounds.maxY)) throw new Error('The selected file work-zero point must be within the uploaded file bounds.');
-            if (state.map.contourMachine) {
+            if (state.map.contourMachine && !state.map.fullMachineCoverage) {
                 const mappedZero = { x: state.map.originX + (state.map.directionX ?? 1) * (zeroX - bounds.minX), y: state.map.originY + (state.map.directionY ?? 1) * (zeroY - bounds.minY) };
                 if (!pointInPolygon(mappedZero, state.map.contourMachine)) throw new Error('The selected file work zero is outside the scanned perimeter.');
             }
@@ -828,14 +1058,14 @@ async function compensateFile() {
             if (sourceContour && !pointInPolygon({ x: zeroX, y: zeroY }, sourceContour)) throw new Error('The selected file work-zero point is outside the uploaded file perimeter.');
             if (!sourceContour && (zeroX < bounds.minX || zeroX > bounds.maxX || zeroY < bounds.minY || zeroY > bounds.maxY)) throw new Error('The selected file work-zero point must be within the uploaded file bounds.');
             if (machineX < (state.map.minX ?? 0) || machineY < (state.map.minY ?? 0) || machineX > state.map.maxX || machineY > state.map.maxY) throw new Error('Selected machine origin is outside the calibrated machine travel.');
-            if (state.map.contourMachine) {
+            if (state.map.contourMachine && !state.map.fullMachineCoverage) {
                 const mappedZero = { x: machineX, y: machineY };
                 if (!pointInPolygon(mappedZero, state.map.contourMachine)) throw new Error('The selected machine work-zero point is outside the scanned perimeter.');
             }
             targetG54 = { x: Number((machineX - zeroX - g92[0]).toFixed(4)), y: Number((machineY - zeroY - g92[1]).toFixed(4)) };
         }
         const targetWorkOffset = { x: targetG54.x + g92[0], y: targetG54.y + g92[1] };
-        if (bounds.maxX - bounds.minX > state.map.lengthX + 1e-6 || bounds.maxY - bounds.minY > state.map.lengthY + 1e-6) {
+        if (!state.map.fullMachineCoverage && (bounds.maxX - bounds.minX > state.map.lengthX + 1e-6 || bounds.maxY - bounds.minY > state.map.lengthY + 1e-6)) {
             throw new Error(`Toolpath size ${ (bounds.maxX - bounds.minX).toFixed(3) } × ${ (bounds.maxY - bounds.minY).toFixed(3) } mm is larger than the mapped area ${state.map.lengthX} × ${state.map.lengthY} mm.`);
         }
         // Preflight before updating the persistent controller offset, so invalid or
@@ -870,29 +1100,44 @@ async function start() {
     try {
         machine.onParsed('probe-report', receiveProbeReport);
         populateSettings(await storage.get('settings', DEFAULTS));
+        calibrationLog = await storage.get(calibrationLogKey, []);
+        if (!Array.isArray(calibrationLog)) calibrationLog = [];
+        $('calibrationLog').value = calibrationLog.join('\n');
         updateWorkZeroVisibility();
         state.map = await storage.get('heightMap', null);
         state.stlExport = await storage.get('stlExport', null);
         renderStlExport();
         $('exaggeration').addEventListener('input', drawSurfaceMap);
+        $('copyCalibrationLog').addEventListener('click', async () => {
+            try { await navigator.clipboard.writeText(calibrationLog.join('\n')); setNotice('Calibration log copied.', 'success'); }
+            catch { $('calibrationLog').focus(); $('calibrationLog').select(); setNotice('Clipboard access failed. The log is selected; press Ctrl+C to copy it.'); }
+        });
         if (window.ResizeObserver) new ResizeObserver(drawSurfaceMap).observe($('surfaceCanvas'));
-        for (const id of fields) {
-            $(id).addEventListener('change', id === 'clearanceZ' ? () => {
-                $('clearanceZ').value = String(negativeMachineZ(n('clearanceZ')));
-                saveSettings();
-            } : saveSettings);
-        }
+        for (const id of fields) $(id).addEventListener('change', saveSettings);
         for (const id of ['machineZeroX', 'machineZeroY']) $(id).addEventListener('change', saveSettings);
         for (const input of document.querySelectorAll('input[name="surfaceType"]')) input.addEventListener('change', () => {
             updatePuckThicknessVisibility();
             saveSettings();
         });
-        $('mapAlignment').addEventListener('change', async () => {
+        for (const input of document.querySelectorAll('input[name="wposOrigin"]')) input.addEventListener('change', async () => {
+            invalidateWposOrigin('Work origin changed. Jog to the selected point and probe WPOS origin again.');
             await saveSettings();
-            if (state.file) await analyzeProjectFile();
+            await refreshUi();
         });
         $('workZeroMode').addEventListener('change', updateWorkZeroVisibility);
         $('home').addEventListener('click', homeMachine);
+        $('probeWpos').addEventListener('click', probeWposOrigin);
+        const jogButtons = { jogYPlus: ['Y', 1], jogXMinus: ['X', -1], jogXPlus: ['X', 1], jogYMinus: ['Y', -1], jogZPlus: ['Z', 1], jogZMinus: ['Z', -1] };
+        for (const [id, [axis, sign]] of Object.entries(jogButtons)) {
+            const button = $(id);
+            button.addEventListener('click', () => { if ($('jogStep').value !== 'continuous') void jogMachine(axis, sign); });
+            button.addEventListener('pointerdown', (event) => { if ($('jogStep').value === 'continuous') { event.preventDefault(); void startContinuousJog(axis, sign); } });
+            button.addEventListener('pointerup', stopContinuousJog);
+            button.addEventListener('pointercancel', stopContinuousJog);
+            button.addEventListener('pointerleave', stopContinuousJog);
+        }
+        window.addEventListener('blur', stopContinuousJog);
+        document.addEventListener('keyup', stopContinuousJog);
         $('calibrate').addEventListener('click', calibrate);
         $('stop').addEventListener('click', () => { state.stopRequested = true; state.abortPuck?.(); setNotice('Stop requested. The current controller move/probe will finish before calibration stops.'); });
         $('clearMap').addEventListener('click', async () => { state.map = null; state.stlExport = null; await storage.delete('heightMap'); await storage.delete('stlExport'); renderStlExport(); $('stlStatus').textContent = ''; await refreshUi(); setNotice('Saved height map and STL export deleted.', 'success'); });
@@ -902,6 +1147,7 @@ async function start() {
         $('checkProject').addEventListener('click', () => analyzeProjectFile());
         $('compensate').addEventListener('click', compensateFile);
         machine.addListener('controller:state', (_type, controllerState) => {
+            state.machinePosition = positionVector(controllerState?.status?.mpos);
             refreshUi();
             if (state.controllerHomed && !Number.isFinite(state.homeMachineZ)
                 && controllerState?.status?.activeState === 'Idle') adoptControllerHoming(true);
@@ -911,6 +1157,8 @@ async function start() {
         await refreshUi();
         try {
             const reduxState = await getReduxState();
+            state.machinePosition = positionVector(reduxState?.controller?.state?.status?.mpos);
+            await refreshUi();
             await adoptControllerHoming(Boolean(reduxState?.controller?.hasHomed));
         } catch (err) {
             setNotice(`Could not read gSender's existing homing state. Use Home machine if needed. ${err.message}`, 'error');

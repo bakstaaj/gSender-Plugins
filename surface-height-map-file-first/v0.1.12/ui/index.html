@@ -18,8 +18,8 @@
     "react/jsx-dev-runtime": "./vendor/react-jsx-dev-runtime.js"
   }
 }</script>
-    <script type="module" crossorigin src="./assets/index-8lumeUPK.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-BPaYHLpS.css">
+    <script type="module" crossorigin src="./assets/index-CsShRwG-.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-kxGq7LWj.css">
   </head>
   <body>
     <main>
@@ -28,9 +28,10 @@
         <span id="connection" class="badge">Checking connection…</span>
       </header>
       <div id="notice" role="status" aria-live="polite"></div>
+      <details id="calibrationLogPanel"><summary>Calibration log (kept across restarts)</summary><textarea id="calibrationLog" rows="8" readonly spellcheck="false" aria-label="Persistent calibration diagnostic log"></textarea><div class="row"><button id="copyCalibrationLog" class="secondary" type="button">Copy log</button></div></details>
       <section>
         <h2>1. Import project G-code</h2>
-        <p class="hint">Connect to the CNC first. The plugin reads a metric, absolute G-code file and checks its XY size against controller travel ($130/$131). Once a scan exists, import another file here; if its full XY extents fit inside the saved scan, you can apply that same map to it.</p>
+        <p class="hint">Connect to the CNC first. The plugin reads a metric, absolute G-code file and checks its XY size against controller travel ($130/$131). Unprobed machine areas use the WPOS Z0 baseline.</p>
         <div class="row project-import">
           <input id="file" type="file" accept=".nc,.gcode,.tap,.ngc,.txt" title="Select the metric, absolute G-code project to map and compensate.">
           <button id="checkProject" class="secondary" type="button" disabled>Check project and machine limits</button>
@@ -42,12 +43,6 @@
       </section>
       <section>
         <h2>2. Map setup</h2>
-        <label class="alignment-field" title="Map direction and signed machine-coordinate travel are read from controller setting $23. Zero alignment starts the project minimum at machine X0 Y0; center mode centers the project-sized area on the travel midpoint.">Probe area alignment
-          <select id="mapAlignment">
-            <option value="zero">Start at machine X0 Y0</option>
-            <option value="center">Center project on machine travel</option>
-          </select>
-        </label>
         <h3 class="settings-group-title">Map area and sampling</h3>
         <div class="grid fields settings-grid">
           <label title="Set automatically from the imported file's absolute X bounds. This value is checked against machine X travel.">Length X (mm)<input id="lengthX" type="number" min="0.001" step="0.001" readonly></label>
@@ -57,7 +52,6 @@
         </div>
         <h3 class="settings-group-title">Probe travel and feed</h3>
         <div class="grid fields settings-grid">
-          <label title="Maximum allowed downward probe travel in machine Z for each initial fast touch. Choose enough travel to reach the surface safely.">Max Allowed Probe Travel (Z Max)<input id="probeTravel" type="number" min="0.1" step="0.1"></label>
           <label title="Maximum downward travel for the slow touch. It must exceed the interim retract distance.">Slow probe travel (mm)<input id="slowTravel" type="number" min="0.1" step="0.1"></label>
           <label title="Feed rate for the initial fast touch, in mm/min.">Fast feed (mm/min)<input id="fastFeed" type="number" min="1" step="1"></label>
           <label title="Feed rate for the repeat touch, in mm/min.">Slow feed (mm/min)<input id="slowFeed" type="number" min="1" step="1"></label>
@@ -65,21 +59,22 @@
         </div>
         <h3 class="settings-group-title">Retracts</h3>
         <div class="grid fields settings-grid retract-grid">
-          <label class="full-retract-field" title="Machine-coordinate negative Z position used for XY travel between probe points. Positive entries are changed to negative values.">Full Retract (Machine -Z mm)<input id="clearanceZ" type="number" step="0.1" value="0"></label>
-          <label title="Short upward move between fast and slow probing.">Short Retract (mm)<input id="retract" type="number" min="0.1" step="0.1"></label>
+          <label class="full-retract-field" title="Clearance above WPOS Z0 used for XY travel between probe points.">Full Retract Height (WPOS +Z mm)<input id="fullRetract" type="number" min="0.1" step="0.1" value="10"></label>
         </div>
-        <fieldset title="Choose how the probe makes contact at each point."><legend>Probe type</legend>
+        <fieldset class="probe-type-options" title="Choose how the probe makes contact at each point."><legend>Probe type</legend>
           <label class="inline" title="Conductive surface: attach the probe clip for the full calibration. The plugin prompts you once to confirm it is attached."><input type="radio" name="surfaceType" value="conductive" checked> Conductive</label>
           <label class="inline" title="Puck: use a conductive puck on non-conductive material. The plugin pauses at each point so you can move it; enter its thickness above."><input type="radio" name="surfaceType" value="puck"> Puck</label>
           <label class="inline" title="Switch: use a controller-connected probe switch. It probes like Conductive, without a clip confirmation prompt."><input type="radio" name="surfaceType" value="switch"> Switch</label>
         </fieldset>
-        <p class="hint">The imported project's X/Y dimensions and sample counts are calculated automatically. Probe speeds, travel, Short Retract, probe type, puck thickness, and Full Retract stay at their saved values. The map origin is derived from the file and selected machine-zero or centered alignment. Start calibration moves Z to machine Z0 before traveling to the first generated point; after each probe, Z returns to Full Retract before the next XY move. On machines where Z0 is the top of travel, more negative values are lower; keep Full Retract above the highest part feature.</p>
-        <h3>1. Confirm machine is homed</h3>
-          <p>If gSender reports the machine already homed, the plugin uses the current machine position and skips re-homing. Confirm Z is clear before calibration. Calibration moves Z to machine Z0 before any XY travel.</p>
-        <div class="row"><button id="home" title="Home the machine if it has not already been homed. The plugin records the resulting Z baseline and uses the selected alignment to derive the map origin." disabled>Home machine</button><span id="homeLabel">Machine not homed</span></div>
-        <h3>2. Start calibration</h3>
-        <p>Calibration starts at the first point in the grid derived from the imported project. The full grid is checked against machine travel and probe moves stop short of the configured Z limit.</p>
-        <div class="row"><span id="originLabel">Derived from the imported file and alignment setting</span><button id="calibrate" class="primary" title="Move through the calculated probe grid and save the map only after all points succeed." disabled>Start calibration</button><button id="stop" class="danger" title="Stop safely after the current probe or move." disabled>Stop after current move</button></div>
+        <h3>3. Home, choose the work origin, and position the probe</h3>
+        <div class="origin-jog-layout">
+          <fieldset id="originSelector" class="origin-picker"><legend>WPOS origin</legend><div class="origin-grid" role="radiogroup" aria-label="Work coordinate origin">
+            <label class="origin-point rear-left"><input type="radio" name="wposOrigin" value="rear-left"><span></span><em>Rear left</em></label><label class="origin-point rear-right"><input type="radio" name="wposOrigin" value="rear-right"><span></span><em>Rear right</em></label><label class="origin-point center"><input type="radio" name="wposOrigin" value="center"><span></span><em>Center</em></label><label class="origin-point front-left"><input type="radio" name="wposOrigin" value="front-left" checked><span></span><em>Front left</em></label><label class="origin-point front-right"><input type="radio" name="wposOrigin" value="front-right"><span></span><em>Front right</em></label>
+          </div></fieldset>
+          <fieldset class="jog-panel"><legend>Jog and probe</legend><label for="jogStep">Jog step</label><select id="jogStep"><option value="0.1">0.1 mm</option><option value="1" selected>1 mm</option><option value="10">10 mm</option><option value="continuous">Continuous (hold)</option></select><div class="machine-dro" aria-label="Machine coordinates"><span>X <output id="droX">—</output></span><span>Y <output id="droY">—</output></span><span>Z <output id="droZ">—</output></span></div><div class="jog-pad"><div class="xy-jog-pad"><button id="jogYPlus">Y+</button><button id="jogXMinus">X−</button><button id="jogXPlus">X+</button><button id="jogYMinus">Y−</button></div><div class="z-jog-pad"><div class="home-control"><button id="home" disabled>Home machine</button><span id="homeLabel">Machine not homed</span></div><button id="jogZPlus">Z+</button><button id="jogZMinus">Z−</button><button id="probeWpos" disabled>Probe WPOS origin</button></div></div></fieldset>
+        </div>
+        <h3>4. Start calibration</h3>
+        <div class="row"><span id="originLabel">Probe the selected WPOS origin to enable calibration</span><button id="calibrate" class="primary" disabled>Start calibration</button><button id="stop" class="danger" disabled>Stop after current move</button></div>
         <div id="calibrationProgress" class="calibration-progress" hidden>
           <label for="progress">Probe progress</label>
           <div class="progress-line"><progress id="progress" max="1" value="0" aria-label="Calibration probe progress"></progress><output id="progressPercent" for="progress">0%</output></div>
@@ -96,7 +91,7 @@
         </div>
       </section>
       <section>
-        <h2>3. Saved map</h2>
+        <h2>5. Saved map</h2>
         <div id="mapSummary">No height map saved.</div>
         <div id="mapVisual" class="map-visual" hidden>
           <div class="map-visual-heading">
@@ -118,8 +113,7 @@
         <button id="clearMap" class="secondary" disabled>Delete saved map</button>
       </section>
       <section>
-        <h2>4. Apply map to imported project</h2>
-        <p class="hint">Choose whether to rebase a generated copy around a file point or keep file coordinates and place its origin at a selected machine XY coordinate. For contour maps, the complete compensated path must stay inside the scanned perimeter.</p>
+        <h2>6. Apply map to imported project</h2>
         <label>Work-zero method
           <select id="workZeroMode"><option value="rebase">Rebase copy around selected file point</option><option value="machine">Keep file coordinates; place selected point at machine XY</option></select>
         </label>
@@ -128,8 +122,8 @@
           <label>File zero Y (mm)<input id="fileZeroY" type="number" step="0.001" value="0"></label>
         </div>
         <div id="machineZeroFields" class="grid fields" hidden>
-          <label>Selected point machine X (mm)<input id="machineZeroX" type="number" min="0" step="0.001" value="0"></label>
-          <label>Selected point machine Y (mm)<input id="machineZeroY" type="number" min="0" step="0.001" value="0"></label>
+          <label>Selected point machine X (mm)<input id="machineZeroX" type="number" step="0.001" value="0"></label>
+          <label>Selected point machine Y (mm)<input id="machineZeroY" type="number" step="0.001" value="0"></label>
         </div>
         <div id="fileLabelApply" class="hint">Import a G-code project above.</div>
         <button id="compensate" class="primary" title="Create a compensated copy and load it in gSender's visualizer." disabled>Apply map and load copy</button>
@@ -139,6 +133,6 @@
       <dialog id="puckDialog"><h2 id="dialogTitle">Move the probe puck</h2><p id="puckPrompt"></p><div class="row"><button id="continuePuck" class="primary">Puck is in place</button><button id="cancelPuck" class="danger">Cancel calibration</button></div></dialog>
       <dialog id="rectangleFallbackDialog"><h2>No closed perimeter found</h2><p>This file has no usable closed G-code contour. Use a rectangular probe area from the file’s minimum and maximum X/Y points? The probe grid may reach outside irregular stock.</p><div class="row"><button id="cancelRectangleFallback" class="secondary">Cancel</button><button id="useRectangleFallback" class="primary">Use rectangle from min/max</button></div></dialog>
       <footer>Community plugin prototype · Review the loaded toolpath before running it.</footer>
-    </main>
+    </main>
   </body>
 </html>
