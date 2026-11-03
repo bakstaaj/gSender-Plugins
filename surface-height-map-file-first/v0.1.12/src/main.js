@@ -1,9 +1,9 @@
 import { getReduxState, gcode, machine, storage } from '@sienci/gsender-plugin-sdk';
-import { DEFAULTS, appendMachineOriginReturn, compensateGcode, computeProjectMapOrigin, computeProjectMapSettings, interpolate, makeContourProbePoints, makeStlExportRecord, mapCoversProjectBounds, parseAbsoluteXYBounds, parseClosedContours, parseProbePosition, parseTravelLimits, parseWorkOffsetLine, pointInPolygon, probePositionMatches, rebaseGcodeCoordinates, validateMachineTarget, validateMap } from './heightmap.js';
+import { DEFAULTS, SHORT_RETRACT_MM, SLOW_PROBE_TRAVEL_MM, appendMachineOriginReturn, compensateGcode, computeProjectMapOrigin, computeProjectMapSettings, interpolate, makeContourProbePoints, makeStlExportRecord, mapCoversProjectBounds, parseAbsoluteXYBounds, parseClosedContours, parseProbePosition, parseTravelLimits, parseWorkOffsetLine, pointInPolygon, probePositionMatches, rebaseGcodeCoordinates, validateMachineTarget, validateMap } from './heightmap.js';
 import './style.css';
 
 const $ = (id) => document.getElementById(id);
-const fields = ['lengthX', 'lengthY', 'pointsX', 'pointsY', 'fullRetract', 'fastFeed', 'slowFeed', 'slowTravel', 'puckThickness'];
+const fields = ['lengthX', 'lengthY', 'pointsX', 'pointsY', 'fullRetract', 'fastFeed', 'slowFeed', 'puckThickness'];
 const state = { origin: null, wposOrigin: null, homeMachineZ: null, machinePosition: null, controllerHomed: false, adoptingHomedPosition: false, probeReportSequence: 0, probeWaiter: null, offsetParserSequence: 0, map: null, mapInvalid: false, stlExport: null, file: null, project: null, analyzingProject: false, busy: false, stopRequested: false, abortPuck: null, calibrationReadings: [], calibrationReadingCount: 0, continuousJog: null };
 const setNotice = (message, kind = '') => { $('notice').textContent = message; $('notice').className = kind; };
 const setApplyStatus = (message, kind = '') => { $('applyStatus').textContent = message; $('applyStatus').className = kind; };
@@ -171,6 +171,7 @@ function currentSettings() {
         machineZeroX: n('machineZeroX'),
         machineZeroY: n('machineZeroY'),
         surfaceType: document.querySelector('input[name="surfaceType"]:checked').value,
+        probeMode: document.querySelector('input[name="probeMode"]:checked')?.value ?? DEFAULTS.probeMode,
         wposOrigin: selectedWposOrigin(),
     };
 }
@@ -179,13 +180,13 @@ function populateSettings(saved = {}) {
     for (const id of fields) {
         const value = saved[id];
         const missingOrInvalid = value == null || value === '' || !Number.isFinite(Number(value));
-        const invalidSlowTravel = id === 'slowTravel'
-            && Number(value) <= Number(saved.retract ?? DEFAULTS.retract);
-        const selectedValue = missingOrInvalid || invalidSlowTravel ? DEFAULTS[id] : value;
+        const selectedValue = missingOrInvalid ? DEFAULTS[id] : value;
         $(id).value = String(selectedValue);
     }
     const surfaceType = ['conductive', 'puck', 'switch'].includes(saved.surfaceType) ? saved.surfaceType : DEFAULTS.surfaceType;
     document.querySelector(`input[name="surfaceType"][value="${surfaceType}"]`).checked = true;
+    const probeMode = ['fast', 'precise'].includes(saved.probeMode) ? saved.probeMode : DEFAULTS.probeMode;
+    document.querySelector(`input[name="probeMode"][value="${probeMode}"]`).checked = true;
     const origin = ['front-left', 'front-right', 'rear-left', 'rear-right', 'center'].includes(saved.wposOrigin) ? saved.wposOrigin : 'front-left';
     document.querySelector(`input[name="wposOrigin"][value="${origin}"]`).checked = true;
     for (const id of ['machineZeroX', 'machineZeroY']) {
@@ -203,7 +204,6 @@ function updateWorkZeroVisibility() {
     $('machineZeroFields').hidden = $('workZeroMode').value !== 'machine';
 }
 
-const SHORT_RETRACT_MM = 2;
 function selectedWposOrigin() {
     return document.querySelector('input[name="wposOrigin"]:checked')?.value ?? 'front-left';
 }
@@ -225,6 +225,63 @@ function renderContourPreview() {
     const offsetX = (320 - (maxX - minX) * scale) / 2;
     const offsetY = (200 - (maxY - minY) * scale) / 2;
     $('contourPreviewShape').setAttribute('points', polygon.map((point) => `${offsetX + (point.x - minX) * scale},${200 - offsetY - (point.y - minY) * scale}`).join(' '));
+}
+
+function readProjectGeometry() {
+    return { lengthX: n('lengthX'), lengthY: n('lengthY'), pointsX: n('pointsX'), pointsY: n('pointsY') };
+}
+
+function validateProjectGeometry(settings) {
+    if (![settings.lengthX, settings.lengthY].every((value) => Number.isFinite(value) && value > 0)) {
+        throw new Error('Map Length X and Width Y must be positive numbers.');
+    }
+    if (![settings.pointsX, settings.pointsY].every((value) => Number.isInteger(value) && value >= 2 && value <= 101)) {
+        throw new Error('X samples and Y samples must be whole numbers from 2 to 101.');
+    }
+}
+
+function validateProjectGeometryState() {
+    try { validateProjectGeometry(readProjectGeometry()); return true; }
+    catch { return false; }
+}
+
+function renderProjectSummary() {
+    const project = state.project;
+    if (!project) return;
+    const { settings, bounds, mappingMode } = project;
+    const gridSummary = mappingMode === 'contour'
+        ? `closed perimeter plus ${settings.pointsX} × ${settings.pointsY} interior grid`
+        : `rectangular grid ${settings.pointsX} × ${settings.pointsY} (${settings.pointsX * settings.pointsY} points)`;
+    $('projectSummary').textContent = `${settings.lengthX.toFixed(3)} × ${settings.lengthY.toFixed(3)} mm map area · file bounds X${bounds.minX.toFixed(3)}…${bounds.maxX.toFixed(3)}, Y${bounds.minY.toFixed(3)}…${bounds.maxY.toFixed(3)} · map placement is set by probing the selected WPOS origin · ${gridSummary}`;
+    if (!validateProjectGeometryState()) {
+        $('projectStatus').textContent = 'Enter positive map dimensions and whole-number sample counts from 2 to 101.';
+        $('projectStatus').className = 'error';
+    } else if (state.map && mapCoversProject()) {
+        $('projectStatus').textContent = `Project fits within the saved scan. Applying the map aligns its minimum X/Y to saved map origin X${state.map.originX.toFixed(3)} Y${state.map.originY.toFixed(3)}; the scan is not changed.`;
+        $('projectStatus').className = 'success';
+    } else {
+        $('projectStatus').textContent = 'Map setup is ready. Home the machine, jog to the selected material origin, then probe WPOS origin.';
+        $('projectStatus').className = 'success';
+    }
+}
+
+async function updateProjectGeometry() {
+    if (!state.project) { await saveSettings(); return; }
+    const geometry = readProjectGeometry();
+    try { validateProjectGeometry(geometry); }
+    catch (error) {
+        $('projectStatus').textContent = error.message;
+        $('projectStatus').className = 'error';
+        await refreshUi();
+        return;
+    }
+    const previous = state.project.settings;
+    const changed = ['lengthX', 'lengthY', 'pointsX', 'pointsY'].some((key) => Number(previous[key]) !== geometry[key]);
+    state.project.settings = { ...previous, ...geometry, pointCount: geometry.pointsX * geometry.pointsY };
+    if (changed && state.wposOrigin) invalidateWposOrigin('Map setup changed. Probe the selected WPOS origin again before calibration.');
+    renderProjectSummary();
+    await saveSettings();
+    await refreshUi();
 }
 
 function renderStlExport() {
@@ -304,8 +361,17 @@ async function readTravelLimits() {
                 const homingMask = readHomingMask(settingsLines);
                 if (homingMask === null) throw new Error('the $23 line was missing');
                 const limits = parseTravelLimits(settingsLines);
+                const hardLimitsEnabled = settingsLines.some((line) => /^\s*\$?21\s*=\s*1(?:\s|$)/i.test(line));
+                const pullOffLine = settingsLines.find((line) => /^\s*\$?27\s*=/i.test(line));
+                const pullOffMatch = pullOffLine?.match(/^\s*\$?27\s*=\s*(-?(?:\d+(?:\.\d*)?|\.\d+))(?:\s|$)/i);
+                const pullOff = pullOffMatch ? Number(pullOffMatch[1]) : 0;
+                if (hardLimitsEnabled && Number.isFinite(pullOff) && pullOff > 0) {
+                    limits.minZ += pullOff;
+                    limits.maxZPosition -= pullOff;
+                    if (limits.minZ >= limits.maxZPosition) throw new Error('$27 homing pull-off leaves no usable Z travel within $132=' + limits.maxZ + ' mm.');
+                }
                 const resolved = { ...limits, homingMask, zHomePositive: (homingMask & 4) === 0 };
-                await logCalibration(`Controller travel: $23=${homingMask}; X=${resolved.minX}..${resolved.maxXPosition} (${resolved.maxX} mm), Y=${resolved.minY}..${resolved.maxYPosition} (${resolved.maxY} mm), Z=${resolved.minZ}..${resolved.maxZPosition}; probe scan direction X${resolved.directionX > 0 ? '+' : '-'} Y${resolved.directionY > 0 ? '+' : '-'}.`);
+                await logCalibration('Controller travel: $23=' + homingMask + '; X=' + resolved.minX + '..' + resolved.maxXPosition + ' (' + resolved.maxX + ' mm), Y=' + resolved.minY + '..' + resolved.maxYPosition + ' (' + resolved.maxY + ' mm), Z=' + resolved.minZ + '..' + resolved.maxZPosition + (hardLimitsEnabled && pullOff > 0 ? ' ($27=' + pullOff + ' mm pull-off clearance applied)' : '') + '; probe scan direction X' + (resolved.directionX > 0 ? '+' : '-') + ' Y' + (resolved.directionY > 0 ? '+' : '-') + '.');
                 return resolved;
             } catch (error) {
                 lastError = error.message;
@@ -387,10 +453,10 @@ async function refreshUi() {
     $('home').disabled = !connected || state.busy || state.analyzingProject || homed;
     $('checkProject').disabled = !connected || !state.file || state.busy || state.analyzingProject;
     $('originSelector').disabled = !homed || state.busy;
-    $('probeWpos').disabled = !homed || state.busy || !state.project;
+    $('probeWpos').disabled = !homed || state.busy || !state.project || !validateProjectGeometryState();
     $('jogStep').disabled = !homed || state.busy;
     for (const id of ['jogYPlus', 'jogXMinus', 'jogXPlus', 'jogYMinus', 'jogZPlus', 'jogZMinus']) $(id).disabled = !homed || state.busy;
-    $('calibrate').disabled = !homed || state.busy || !state.origin || !state.wposOrigin || !state.project;
+    $('calibrate').disabled = !homed || state.busy || !state.origin || !state.wposOrigin || !state.project || !validateProjectGeometryState();
     $('stop').disabled = !state.busy;
     $('compensate').disabled = !state.map || state.mapInvalid || !mapCoversProject() || !state.file || state.busy || state.analyzingProject;
     $('clearMap').disabled = !state.map || state.busy;
@@ -398,7 +464,7 @@ async function refreshUi() {
     $('originLabel').textContent = state.wposOrigin ? `WPOS origin captured at machine X${state.wposOrigin.mpos[0].toFixed(3)} Y${state.wposOrigin.mpos[1].toFixed(3)}` : 'Probe the selected WPOS origin to enable calibration';
     $('homeLabel').textContent = homed ? `Machine already homed · safe Z${state.homeMachineZ.toFixed(3)}` : state.controllerHomed ? 'Machine homed · waiting for Idle position' : 'Machine not homed';
     $('mapSummary').textContent = state.map
-        ? `${state.map.lengthX} × ${state.map.lengthY} mm · ${Array.isArray(state.map.samples) ? `contour map with ${state.map.samples.length} points` : `${state.map.pointsX} × ${state.map.pointsY} grid`} · WPOS origin ${state.map.wposOriginCorner ?? 'front-left'} · ${state.map.fullMachineCoverage ? 'full machine XY coverage; unprobed areas use the WPOS Z0 baseline' : `captured at machine X${state.map.originX.toFixed(3)} Y${state.map.originY.toFixed(3)}`} · ${new Date(state.map.createdAt).toLocaleString()}`
+        ? `${state.map.lengthX} × ${state.map.lengthY} mm · ${Array.isArray(state.map.samples) ? `contour map with ${state.map.samples.length} points` : `${state.map.pointsX} × ${state.map.pointsY} grid`} · WPOS origin ${state.map.wposOriginCorner ?? 'front-left'} · ${state.map.fullMachineCoverage ? 'full machine XY coverage; edges extend from measured probes' : `captured at machine X${state.map.originX.toFixed(3)} Y${state.map.originY.toFixed(3)}`} · ${new Date(state.map.createdAt).toLocaleString()}`
         : 'No height map saved.';
     $('fileLabelApply').textContent = state.file ? `${state.file.name} · ${(state.file.size / 1024).toFixed(1)} KB` : 'Import a G-code project above.';
     drawSurfaceMap();
@@ -568,7 +634,7 @@ async function queryProbe(line, timeout, stage, expected) {
 }
 
 function safeProbeTravel(distance, stage, pointLabel, currentZ, limits) {
-    const zMinimum = limits.zHomePositive ? -limits.maxZ : 0;
+    const zMinimum = limits.minZ;
     if (!Number.isFinite(currentZ)) throw new Error(`Could not read the current machine Z before ${stage.toLowerCase()} at ${pointLabel}.`);
     const available = currentZ - zMinimum - 0.1;
     if (!Number.isFinite(available) || available <= 0.1) throw new Error(`${stage} at ${pointLabel} has no safe downward Z travel remaining before the machine Z limit (${zMinimum.toFixed(3)} mm). Move to a higher safe Z before calibration.`);
@@ -581,12 +647,21 @@ async function probeAtOnce(settings, point, index, total, limits, startingZ, att
     const retryLabel = attempt === 1 ? ' (retry)' : '';
     setNotice(`Fast probe on ${pointLabel}${retryLabel}: using ${fastTravel.toFixed(3)} mm, limited by available machine Z travel… keep hands clear.`);
     await queryProbe(`G91 G38.3 Z-${fastTravel} F${settings.fastFeed}`, 45000, `Fast probe on ${pointLabel}${retryLabel}`, point);
+    if (settings.probeMode === 'fast') {
+        setNotice(`Single fast probe contact registered on ${pointLabel}; reading the stopped position…`);
+        const status = await statusSnapshot();
+        return {
+            x: status.mpos[0], y: status.mpos[1],
+            z: status.mpos[2] - (settings.surfaceType === 'puck' ? settings.puckThickness : 0),
+            machineZ: status.mpos[2],
+        };
+    }
     const interimRetract = SHORT_RETRACT_MM;
     setNotice(`Fast contact found on ${pointLabel}. Retracting ${interimRetract.toFixed(3)} mm before the slow touch…`);
     await sendAndWait(`G91 G0 Z${interimRetract}`);
     const slowStart = await waitIdle();
-    const slowTravel = safeProbeTravel(settings.slowTravel, 'Slow probe', pointLabel, slowStart.mpos[2], limits);
-    setNotice(slowTravel < settings.slowTravel
+    const slowTravel = safeProbeTravel(SLOW_PROBE_TRAVEL_MM, 'Slow probe', pointLabel, slowStart.mpos[2], limits);
+    setNotice(slowTravel < SLOW_PROBE_TRAVEL_MM
         ? `Slow probe at ${pointLabel}: limiting travel to ${slowTravel.toFixed(3)} mm to stay inside Z travel.`
         : `Slow probe on ${pointLabel}${retryLabel}…`);
     await queryProbe(`G91 G38.3 Z-${slowTravel} F${settings.slowFeed}`, 30000, `Slow probe on ${pointLabel}${retryLabel}`, point);
@@ -679,11 +754,12 @@ function confirmRectangleFallback() {
 
 function validateSettings(s, limits) {
     for (const id of fields) if (!Number.isFinite(s[id])) throw new Error(`Enter a valid number for ${id}.`);
+    validateProjectGeometry(s);
     if (s.fullRetract <= 0) throw new Error('Full Retract Height must be greater than zero above WPOS Z0.');
-    if (s.slowTravel <= SHORT_RETRACT_MM) throw new Error(`Slow probe travel must be greater than the fixed ${SHORT_RETRACT_MM} mm short retract.`);
     if (s.fastFeed <= 0 || s.slowFeed <= 0) throw new Error('Probe feeds must be greater than zero.');
     if (s.puckThickness < 0) throw new Error('Probe puck thickness cannot be negative.');
     if (!['conductive', 'puck', 'switch'].includes(s.surfaceType)) throw new Error('Choose Conductive, Puck, or Switch as the probe type.');
+    if (!['fast', 'precise'].includes(s.probeMode)) throw new Error('Choose Fast or Precise as the probe method.');
 }
 
 async function homeMachine() {
@@ -794,11 +870,28 @@ async function probeWposOrigin() {
         if (activeWcs !== 'G54') throw new Error(`Select G54 in gSender before probing the WPOS origin. Active coordinate system: ${activeWcs ?? 'unknown'}.`);
         const settings = currentSettings();
         validateSettings(settings, limits);
+        await logCalibration('WPOS origin probe method=' + settings.probeMode + (settings.probeMode === 'fast' ? ' (single fast touch).' : ' (fast touch plus slow repeat).'));
         if (initial.mpos[2] < limits.minZ || initial.mpos[2] > limits.maxZPosition) throw new Error(`Current machine Z${initial.mpos[2].toFixed(3)} is outside the reported Z travel ${limits.minZ}..${limits.maxZPosition} mm.`);
         if (settings.surfaceType === 'conductive') await confirmUser('Attach the conductive probe clip to the material at the selected work origin.', 'Prepare conductive probe', 'Clip is attached');
         if (settings.surfaceType === 'puck') await confirmUser('Place the probe puck at the selected work origin.', 'Place probe puck at origin', 'Puck is in place');
-        await machine.setBusy(true, 'Probe WPOS origin');
-        const contact = await probeAt({ ...settings, retract: SHORT_RETRACT_MM }, { x: initial.mpos[0], y: initial.mpos[1] }, 0, 1, limits, initial.mpos[2]);
+        const ready = await statusSnapshot();
+        if (ready.state !== 'Idle' || ready.mpos.some((value, index) => Math.abs(value - initial.mpos[index]) > 0.05)) {
+            throw new Error('Machine position changed while preparing the origin probe. Return to the selected origin and try again.');
+        }
+        const retractDirection = limits.zHomePositive ? 1 : -1;
+        const probeStartMachineZ = round(ready.mpos[2] + retractDirection * settings.fullRetract);
+        if (probeStartMachineZ < limits.minZ || probeStartMachineZ > limits.maxZPosition) {
+            throw new Error(`Cannot back Z off by the configured Full Retract Height (${settings.fullRetract.toFixed(3)} mm) before probing: machine Z${probeStartMachineZ.toFixed(3)} would be outside travel ${limits.minZ}..${limits.maxZPosition} mm. Jog Z farther from its home end, then try again.`);
+        }
+        await machine.setBusy(true, 'Back Z off, then probe WPOS origin');
+        await logCalibration(`WPOS origin pre-probe back-off: machine Z${ready.mpos[2].toFixed(3)} to Z${probeStartMachineZ.toFixed(3)} (${settings.fullRetract.toFixed(3)} mm toward the Z home end).`);
+        await sendAndWait(`G90 G53 G0 Z${probeStartMachineZ.toFixed(3)}`); await waitIdle();
+        const backedOff = await statusSnapshot();
+        if (backedOff.state !== 'Idle' || backedOff.mpos.slice(0, 2).some((value, index) => Math.abs(value - ready.mpos[index]) > 0.05)
+            || Math.abs(backedOff.mpos[2] - probeStartMachineZ) > 0.1) {
+            throw new Error('Machine did not reach the expected safe Z height before the WPOS origin probe.');
+        }
+        const contact = await probeAt({ ...settings, retract: SHORT_RETRACT_MM }, { x: backedOff.mpos[0], y: backedOff.mpos[1] }, 0, 1, limits, backedOff.mpos[2]);
         await sendAndWait('G21 G90 G10 L20 P1 X0 Y0 Z0');
         const corner = selectedWposOrigin();
         const mapOrigin = mapFrontLeftFromWposOrigin({ x: contact.x, y: contact.y }, corner, settings.lengthX, settings.lengthY, limits.directionX, limits.directionY);
@@ -902,15 +995,7 @@ async function analyzeProjectFile(file = state.file) {
         }
         for (const id of ['lengthX', 'lengthY', 'pointsX', 'pointsY']) $(id).value = String(settings[id]);
         await storage.set('settings', currentSettings());
-        const pitchX = settings.lengthX / (settings.pointsX - 1);
-        const pitchY = settings.lengthY / (settings.pointsY - 1);
-        const alignmentSummary = 'map placement is set by probing the selected WPOS origin';
-        const probeCount = contour ? state.project.probePoints.length : settings.pointCount;
-        $('projectSummary').textContent = `${settings.lengthX.toFixed(3)} × ${settings.lengthY.toFixed(3)} mm project · file bounds X${bounds.minX.toFixed(3)}…${bounds.maxX.toFixed(3)}, Y${bounds.minY.toFixed(3)}…${bounds.maxY.toFixed(3)} · ${alignmentSummary} · ${contour ? `closed perimeter detected (${contour.length} vertices), perimeter probes ≤10 mm apart plus ${settings.pointsX} × ${settings.pointsY} interior grid, ${probeCount} unique points total` : `rectangular grid ${settings.pointsX} × ${settings.pointsY} (${probeCount} points)`}`;
-        $('projectStatus').textContent = mapCoversProject()
-            ? `Project fits within the saved scan. Applying the map aligns its minimum X/Y to saved map origin X${state.map.originX.toFixed(3)} Y${state.map.originY.toFixed(3)}; the scan is not changed.`
-            : 'Project dimensions and probe pattern are ready. Home the machine, jog to the selected material origin, then probe WPOS origin.';
-        $('projectStatus').className = 'success';
+        renderProjectSummary();
         const applyOrigin = mapCoversProject() ? { x: state.map.originX, y: state.map.originY } : mapOrigin;
         setNotice(`Project analysis passed. The project minimum X/Y will align to probe-grid origin X${applyOrigin.x.toFixed(3)} Y${applyOrigin.y.toFixed(3)} when applying the map.`, 'success');
     } catch (error) {
@@ -945,6 +1030,7 @@ async function calibrate() {
         if (initialStatus.state !== 'Idle') throw new Error(`Machine must be idle before calibration (current state: ${initialStatus.state}).`);
         const settings = currentSettings();
         const limits = await readTravelLimits();
+        await logCalibration('Probe method=' + settings.probeMode + (settings.probeMode === 'fast' ? ' (single fast touch)' : ' (fast touch plus slow repeat)') + '.');
         validateSettings(settings, limits);
         if (initialStatus.mpos[2] < limits.minZ - 0.1 || initialStatus.mpos[2] > limits.maxZPosition + 0.1) throw new Error(`Current machine Z${initialStatus.mpos[2].toFixed(3)} is outside the reported Z travel ${limits.minZ}..${limits.maxZPosition} mm.`);
         const grid = state.project.mappingMode === 'contour'
@@ -1128,12 +1214,16 @@ async function start() {
             catch { $('calibrationLog').focus(); $('calibrationLog').select(); setNotice('Clipboard access failed. The log is selected; press Ctrl+C to copy it.'); }
         });
         if (window.ResizeObserver) new ResizeObserver(drawSurfaceMap).observe($('surfaceCanvas'));
-        for (const id of fields) $(id).addEventListener('change', saveSettings);
+        for (const id of fields) {
+            const geometryField = ['lengthX', 'lengthY', 'pointsX', 'pointsY'].includes(id);
+            $(id).addEventListener('change', geometryField ? updateProjectGeometry : saveSettings);
+        }
         for (const id of ['machineZeroX', 'machineZeroY']) $(id).addEventListener('change', saveSettings);
         for (const input of document.querySelectorAll('input[name="surfaceType"]')) input.addEventListener('change', () => {
             updatePuckThicknessVisibility();
             saveSettings();
         });
+        for (const input of document.querySelectorAll('input[name="probeMode"]')) input.addEventListener('change', saveSettings);
         for (const input of document.querySelectorAll('input[name="wposOrigin"]')) input.addEventListener('change', async () => {
             invalidateWposOrigin('Work origin changed. Jog to the selected point and probe WPOS origin again.');
             await saveSettings();

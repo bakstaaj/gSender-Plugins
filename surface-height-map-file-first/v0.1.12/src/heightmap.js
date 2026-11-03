@@ -1,3 +1,6 @@
+export const SHORT_RETRACT_MM = 3;
+export const SLOW_PROBE_TRAVEL_MM = 3.5;
+
 export const DEFAULTS = Object.freeze({
     lengthX: 150,
     lengthY: 110,
@@ -7,10 +10,10 @@ export const DEFAULTS = Object.freeze({
     probeTravel: 25.5,
     fastFeed: 100,
     slowFeed: 20,
-    slowTravel: 3,
-    retract: 2,
+    retract: SHORT_RETRACT_MM,
     puckThickness: 1.53,
     surfaceType: 'conductive',
+    probeMode: 'precise',
 });
 
 export function makeGrid({ originX, originY, lengthX, lengthY, pointsX, pointsY, directionX = 1, directionY = 1 }) {
@@ -373,21 +376,28 @@ export function rebaseGcodeCoordinates(source, zeroX, zeroY) {
 export function interpolate(map, x, y) {
     if (Array.isArray(map.samples) && map.samples.length >= 3) {
         if (!pointInPolygon({ x, y }, map.contourMachine)) {
-            if (map.fullMachineCoverage) return map.referenceZ;
+            if (map.fullMachineCoverage) {
+                const perimeter = map.samples.filter((sample) => sample.kind === 'perimeter');
+                return interpolateScattered(perimeter.length ? perimeter : map.samples, x, y);
+            }
             throw new Error(`Toolpath leaves the detected stock perimeter at X${x.toFixed(3)} Y${y.toFixed(3)}. No compensation was applied outside the scanned contour.`);
         }
-        const nearest = map.samples.map((sample) => ({ sample, distance: Math.hypot(sample.x - x, sample.y - y) }))
-            .sort((a, b) => a.distance - b.distance).slice(0, 8);
-        if (nearest[0].distance < 1e-8) return nearest[0].sample.z;
-        const weights = nearest.map(({ distance }) => 1 / Math.max(distance, 0.05) ** 2);
-        return nearest.reduce((sum, entry, index) => sum + entry.sample.z * weights[index], 0)
-            / weights.reduce((sum, weight) => sum + weight, 0);
+        return interpolateScattered(map.samples, x, y);
     }
     const { originX, originY, lengthX, lengthY, pointsX, pointsY, z } = map;
     const gx = ((x - originX) / (lengthX * (map.directionX ?? 1))) * (pointsX - 1);
     const gy = ((y - originY) / (lengthY * (map.directionY ?? 1))) * (pointsY - 1);
     if (gx < -1e-7 || gy < -1e-7 || gx > pointsX - 1 + 1e-7 || gy > pointsY - 1 + 1e-7) {
-        if (map.fullMachineCoverage) return map.referenceZ;
+        if (map.fullMachineCoverage && Array.isArray(z) && z.length === pointsY && z.every((row) => Array.isArray(row) && row.length === pointsX)) {
+            const rawX = Array.from({ length: pointsX }, (_, ix) => originX + (map.directionX ?? 1) * lengthX * ix / (pointsX - 1));
+            const rawY = Array.from({ length: pointsY }, (_, iy) => originY + (map.directionY ?? 1) * lengthY * iy / (pointsY - 1));
+            const xOrder = rawX.map((value, index) => ({ value, index })).sort((a, b) => a.value - b.value);
+            const yOrder = rawY.map((value, index) => ({ value, index })).sort((a, b) => a.value - b.value);
+            const sortedX = xOrder.map(({ value }) => value);
+            const sortedY = yOrder.map(({ value }) => value);
+            const sortedZ = yOrder.map(({ index: iy }) => xOrder.map(({ index: ix }) => z[iy][ix]));
+            return extrapolateGrid(sortedX, sortedY, sortedZ, x, y);
+        }
         throw new Error(`Toolpath leaves mapped area at X${x.toFixed(3)} Y${y.toFixed(3)}.`);
     }
     const x0 = Math.min(pointsX - 2, Math.max(0, Math.floor(gx)));
@@ -396,6 +406,51 @@ export function interpolate(map, x, y) {
     const ty = Math.min(1, Math.max(0, gy - y0));
     const z00 = z[y0][x0], z10 = z[y0][x0 + 1], z01 = z[y0 + 1][x0], z11 = z[y0 + 1][x0 + 1];
     return (z00 * (1 - tx) * (1 - ty)) + (z10 * tx * (1 - ty)) + (z01 * (1 - tx) * ty) + (z11 * tx * ty);
+}
+
+function interpolateScattered(samples, x, y) {
+    if (!samples.length) throw new Error('The saved contour map has no perimeter probe readings to extend.');
+    const nearest = samples.map((sample) => ({ sample, distance: Math.hypot(sample.x - x, sample.y - y) }))
+        .sort((a, b) => a.distance - b.distance).slice(0, 8);
+    if (nearest[0].distance < 1e-8) return nearest[0].sample.z;
+    const weights = nearest.map(({ distance }) => 1 / Math.max(distance, 0.05) ** 2);
+    return nearest.reduce((sum, entry, index) => sum + entry.sample.z * weights[index], 0)
+        / weights.reduce((sum, weight) => sum + weight, 0);
+}
+
+function extrapolateGrid(xAxis, yAxis, zGrid, x, y) {
+    const xMin = xAxis[0], xMax = xAxis.at(-1), yMin = yAxis[0], yMax = yAxis.at(-1);
+    const outsideX = x < xMin || x > xMax;
+    const outsideY = y < yMin || y > yMax;
+    const edgeX = Math.min(xMax, Math.max(xMin, x));
+    const edgeY = Math.min(yMax, Math.max(yMin, y));
+    const sample = (sx, sy) => {
+        const locate = (axis, value) => {
+            let low = 0, high = axis.length - 1;
+            while (high - low > 1) {
+                const mid = Math.floor((low + high) / 2);
+                if (axis[mid] <= value) low = mid;
+                else high = mid;
+            }
+            const index = Math.min(axis.length - 2, Math.max(0, low));
+            return { index, t: Math.min(1, Math.max(0, (value - axis[index]) / (axis[index + 1] - axis[index]))) };
+        };
+        const { index: ix, t: tx } = locate(xAxis, sx);
+        const { index: iy, t: ty } = locate(yAxis, sy);
+        return zGrid[iy][ix] * (1 - tx) * (1 - ty) + zGrid[iy][ix + 1] * tx * (1 - ty)
+            + zGrid[iy + 1][ix] * (1 - tx) * ty + zGrid[iy + 1][ix + 1] * tx * ty;
+    };
+    const edgeZ = sample(edgeX, edgeY);
+    if (!outsideX || !outsideY) return edgeZ;
+    const inwardX = edgeX === xMin ? 1 : -1;
+    const inwardY = edgeY === yMin ? 1 : -1;
+    const diagonalStep = Math.min(
+        inwardX > 0 ? xAxis[1] - xAxis[0] : xAxis.at(-1) - xAxis.at(-2),
+        inwardY > 0 ? yAxis[1] - yAxis[0] : yAxis.at(-1) - yAxis.at(-2),
+    );
+    const innerZ = sample(edgeX + inwardX * diagonalStep, edgeY + inwardY * diagonalStep);
+    const diagonalDistance = (Math.abs(x - edgeX) + Math.abs(y - edgeY)) / 2;
+    return edgeZ + (edgeZ - innerZ) * (diagonalDistance / diagonalStep);
 }
 
 /**

@@ -15,7 +15,7 @@
       <details id="calibrationLogPanel"><summary>Calibration log (kept across restarts)</summary><textarea id="calibrationLog" rows="8" readonly spellcheck="false" aria-label="Persistent calibration diagnostic log"></textarea><div class="row"><button id="copyCalibrationLog" class="secondary" type="button">Copy log</button></div></details>
       <section>
         <h2>1. Import project G-code</h2>
-        <p class="hint">Connect to the CNC first. The plugin reads a metric, absolute G-code file and checks its XY size against controller travel ($130/$131). Unprobed machine areas use the WPOS Z0 baseline.</p>
+        <p class="hint">Connect to the CNC first. The plugin reads a metric, absolute G-code file and checks its XY size against controller travel ($130/$131). Unprobed edge strips extend from their nearest measured row or column; corners extrapolate along 45-degree diagonals.</p>
         <div class="row project-import">
           <input id="file" type="file" accept=".nc,.gcode,.tap,.ngc,.txt" title="Select the metric, absolute G-code project to map and compensate.">
           <button id="checkProject" class="secondary" type="button" disabled>Check project and machine limits</button>
@@ -29,18 +29,21 @@
         <h2>2. Map setup</h2>
         <h3 class="settings-group-title">Map area and sampling</h3>
         <div class="grid fields settings-grid">
-          <label title="Set automatically from the imported file's absolute X bounds. This value is checked against machine X travel.">Length X (mm)<input id="lengthX" type="number" min="0.001" step="0.001" readonly></label>
-          <label title="Set automatically from the imported file's absolute Y bounds. This value is checked against machine Y travel.">Width Y (mm)<input id="lengthY" type="number" min="0.001" step="0.001" readonly></label>
-          <label title="Calculated to keep adjacent probe points no more than 10 mm apart and the full grid at or above 50 total points.">X samples<input id="pointsX" type="number" min="2" max="101" step="1" readonly></label>
-          <label title="Calculated to keep adjacent probe points no more than 10 mm apart and the full grid at or above 50 total points.">Y samples<input id="pointsY" type="number" min="2" max="101" step="1" readonly></label>
+          <label title="Starts from the imported file's X bounds. Edit to change the area to probe; values are checked against machine travel.">Length X (mm)<input id="lengthX" type="number" min="0.001" step="0.001"></label>
+          <label title="Starts from the imported file's Y bounds. Edit to change the area to probe; values are checked against machine travel.">Width Y (mm)<input id="lengthY" type="number" min="0.001" step="0.001"></label>
+          <label title="Starts from a grid calculated for the imported file. Edit the number of probe samples on X (2–101).">X samples<input id="pointsX" type="number" min="2" max="101" step="1"></label>
+          <label title="Starts from a grid calculated for the imported file. Edit the number of probe samples on Y (2–101).">Y samples<input id="pointsY" type="number" min="2" max="101" step="1"></label>
         </div>
         <h3 class="settings-group-title">Probe travel and feed</h3>
         <div class="grid fields settings-grid">
-          <label title="Maximum downward travel for the slow touch. It must exceed the interim retract distance.">Slow probe travel (mm)<input id="slowTravel" type="number" min="0.1" step="0.1"></label>
           <label title="Feed rate for the initial fast touch, in mm/min.">Fast feed (mm/min)<input id="fastFeed" type="number" min="1" step="1"></label>
           <label title="Feed rate for the repeat touch, in mm/min.">Slow feed (mm/min)<input id="slowFeed" type="number" min="1" step="1"></label>
           <label id="puckThicknessField" title="Puck probing only; this thickness is subtracted from each contact height." hidden>Probe puck thickness (mm, Puck only)<input id="puckThickness" type="number" min="0" step="0.01"></label>
         </div>
+        <fieldset class="probe-type-options" title="Fast uses one touch at Fast feed. Precise uses the existing fast touch, short retract, and slow touch sequence."><legend>Probe method</legend>
+          <label class="inline" title="One probe touch at Fast feed, then move on."><input type="radio" name="probeMode" value="fast"> Fast (single touch)</label>
+          <label class="inline" title="Fast touch, retract, then slow touch for a more repeatable reading."><input type="radio" name="probeMode" value="precise" checked> Precise (double tap)</label>
+        </fieldset>
         <h3 class="settings-group-title">Retracts</h3>
         <div class="grid fields settings-grid retract-grid">
           <label class="full-retract-field" title="Clearance above WPOS Z0 used for XY travel between probe points.">Full Retract Height (WPOS +Z mm)<input id="fullRetract" type="number" min="0.1" step="0.1" value="10"></label>

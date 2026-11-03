@@ -22,18 +22,21 @@
         <h2>1. Map setup</h2>
         <h3 class="settings-group-title">Map area and sampling</h3>
         <div class="grid fields settings-grid">
-          <label title="Total material area width along work X to probe. Beyond this probed rectangle, compensation uses the WPOS Z0 baseline through the machine travel limit.">Length X (mm)<input id="lengthX" type="number" min="1" step="0.1"></label>
-          <label title="Total material area depth along work Y to probe. Beyond this probed rectangle, compensation uses the WPOS Z0 baseline through the machine travel limit.">Width Y (mm)<input id="lengthY" type="number" min="1" step="0.1"></label>
+          <label title="Total material area width along work X to probe. Outside the probed rectangle, edge rows and columns extend outward; corners extrapolate diagonally at 45 degrees.">Length X (mm)<input id="lengthX" type="number" min="1" step="0.1"></label>
+          <label title="Total material area depth along work Y to probe. Outside the probed rectangle, edge rows and columns extend outward; corners extrapolate diagonally at 45 degrees.">Width Y (mm)<input id="lengthY" type="number" min="1" step="0.1"></label>
           <label title="Number of evenly spaced probe points along X. More points capture smaller variations but increase calibration time.">X samples<input id="pointsX" type="number" min="2" max="101" step="1"></label>
           <label title="Number of evenly spaced probe points along Y. More points capture smaller variations but increase calibration time.">Y samples<input id="pointsY" type="number" min="2" max="101" step="1"></label>
         </div>
-        <h3 class="settings-group-title">Probe feeds and slow travel</h3>
+        <h3 class="settings-group-title">Probe feeds</h3>
         <div class="grid fields settings-grid">
-          <label title="Maximum downward travel for the slow touch, starting after the interim retract. It must be long enough to reach the surface again.">Slow probe travel (mm)<input id="slowTravel" type="number" min="0.1" step="0.1"></label>
           <label title="Feed rate used for the initial fast touch, in millimeters per minute.">Fast feed (mm/min)<input id="fastFeed" type="number" min="1" step="1"></label>
           <label title="Feed rate used for the slower, more repeatable touch after the fast probe retracts.">Slow feed (mm/min)<input id="slowFeed" type="number" min="1" step="1"></label>
           <label id="puckThicknessField" title="Puck probing only: enter the thickness of the puck placed between the probe and material. This value is subtracted from each measured contact height." hidden>Probe puck thickness (mm, Puck only)<input id="puckThickness" type="number" min="0" step="0.01"></label>
         </div>
+        <fieldset class="probe-type-options" title="Fast uses one touch at Fast feed. Precise uses the existing fast touch, short retract, and slow touch sequence."><legend>Probe method</legend>
+          <label class="inline" title="One probe touch at Fast feed, then move on."><input type="radio" name="probeMode" value="fast"> Fast (single touch)</label>
+          <label class="inline" title="Fast touch, retract, then slow touch for a more repeatable reading."><input type="radio" name="probeMode" value="precise" checked> Precise (double tap)</label>
+        </fieldset>
         <h3 class="settings-group-title">Retracts</h3>
         <div class="grid fields settings-grid retract-grid">
           <label class="full-retract-field" title="Clearance height above the probed WPOS Z0 surface, used before moving between XY points. Increase this for warped parts; it must remain within the machine's Z travel.">Full Retract Height (WPOS +Z mm)<input id="fullRetract" type="number" min="0.1" step="0.1" value="10"></label>
@@ -90,7 +93,7 @@
       </section>
       <section>
         <h2>5. Compensate a G-code file</h2>
-        <p class="hint">The plugin creates a new compensated file and loads it into gSender’s visualizer. It leaves the selected original untouched. On Apply, it aligns the selected file’s smallest X/Y coordinates to the captured map origin by updating saved G54 X/Y. This persistent offset also affects other G54 jobs until changed again. The file must use metric, absolute G0/G1 moves and fit inside machine XY travel; unprobed areas use the WPOS Z0 baseline.</p>
+        <p class="hint">The plugin creates a new compensated file and loads it into gSender’s visualizer. It leaves the selected original untouched. On Apply, it aligns the selected file’s smallest X/Y coordinates to the captured map origin by updating saved G54 X/Y. This persistent offset also affects other G54 jobs until changed again. The file must use metric, absolute G0/G1 moves and fit inside machine XY travel; unprobed edge strips extend from their nearest measured row or column, and corners extrapolate along 45-degree diagonals.</p>
         <div class="row"><input id="file" type="file" accept=".nc,.gcode,.tap,.ngc,.txt" title="Select a supported metric, absolute G-code file. The source file is left unchanged."><button id="compensate" class="primary" title="Create a compensated copy and load it into the visualizer. The toolpath must stay inside the calibrated map." disabled>Apply map and load copy</button></div>
         <div id="applyStatus" role="status" aria-live="polite"></div>
         <div id="fileLabel">No file selected.</div>

@@ -1,10 +1,9 @@
 import { gcode, getReduxState, machine, storage, workspace } from '@sienci/gsender-plugin-sdk';
-import { DEFAULTS, appendMachineOriginReturn, compensateGcode, computeG54ForMapOrigin, computePostProbeRetract, extendMapToMachineTravel, makeStlExportRecord, parseAbsoluteXYBounds, parseProbePosition, parseTravelLimits, parseWorkOffsetLine, validateMachineTarget, validateMap } from './heightmap.js';
+import { DEFAULTS, SHORT_RETRACT_MM, SLOW_PROBE_TRAVEL_MM, appendMachineOriginReturn, compensateGcode, computeG54ForMapOrigin, computePostProbeRetract, extendMapToMachineTravel, makeStlExportRecord, parseAbsoluteXYBounds, parseProbePosition, parseTravelLimits, parseWorkOffsetLine, validateMachineTarget, validateMap } from './heightmap.js';
 import './style.css';
 
 const $ = (id) => document.getElementById(id);
-const SHORT_RETRACT_MM = 2;
-const fields = ['lengthX', 'lengthY', 'pointsX', 'pointsY', 'fullRetract', 'fastFeed', 'slowFeed', 'slowTravel', 'puckThickness'];
+const fields = ['lengthX', 'lengthY', 'pointsX', 'pointsY', 'fullRetract', 'fastFeed', 'slowFeed', 'puckThickness'];
 const state = { origin: null, wposOrigin: null, homeMachineZ: null, machinePosition: null, controllerHomed: false, adoptingHomedPosition: false, probeParserSequence: 0, offsetParserSequence: 0, map: null, mapInvalid: false, stlExport: null, file: null, busy: false, stopRequested: false, abortPuck: null, continuousJog: null };
 const setNotice = (message, kind = '') => { $('notice').textContent = message; $('notice').className = kind; };
 const setApplyStatus = (message, kind = '') => { $('applyStatus').textContent = message; $('applyStatus').className = kind; };
@@ -163,6 +162,7 @@ function currentSettings() {
         ...Object.fromEntries(fields.map((id) => [id, n(id)])),
         retract: SHORT_RETRACT_MM,
         surfaceType: document.querySelector('input[name="surfaceType"]:checked').value,
+        probeMode: document.querySelector('input[name="probeMode"]:checked')?.value ?? DEFAULTS.probeMode,
         wposOrigin: selectedWposOrigin(),
     };
 }
@@ -171,13 +171,13 @@ function populateSettings(saved = {}) {
     for (const id of fields) {
         const value = saved[id];
         const missingOrInvalid = value == null || value === '' || !Number.isFinite(Number(value));
-        const invalidSlowTravel = id === 'slowTravel'
-            && Number(value) <= SHORT_RETRACT_MM;
-        const selectedValue = missingOrInvalid || invalidSlowTravel ? DEFAULTS[id] : value;
+        const selectedValue = missingOrInvalid ? DEFAULTS[id] : value;
         $(id).value = String(selectedValue);
     }
     const surfaceType = ['conductive', 'puck', 'switch'].includes(saved.surfaceType) ? saved.surfaceType : DEFAULTS.surfaceType;
     document.querySelector(`input[name="surfaceType"][value="${surfaceType}"]`).checked = true;
+    const probeMode = ['fast', 'precise'].includes(saved.probeMode) ? saved.probeMode : DEFAULTS.probeMode;
+    document.querySelector(`input[name="probeMode"][value="${probeMode}"]`).checked = true;
     const wposOrigin = ['front-left', 'front-right', 'rear-left', 'rear-right', 'center'].includes(saved.wposOrigin) ? saved.wposOrigin : 'front-left';
     document.querySelector(`input[name="wposOrigin"][value="${wposOrigin}"]`).checked = true;
     updatePuckThicknessVisibility();
@@ -298,6 +298,16 @@ async function readTravelLimits() {
                 const homingMask = readHomingMask(settingsLines);
                 if (homingMask === null) throw new Error('the $23 line was missing');
                 const limits = parseTravelLimits(settingsLines);
+                const hardLimitsEnabled = settingsLines.some((line) => /^\s*\$?21\s*=\s*1(?:\s|$)/i.test(line));
+                const pullOffLine = settingsLines.find((line) => /^\s*\$?27\s*=/i.test(line));
+                const pullOffMatch = pullOffLine?.match(/^\s*\$?27\s*=\s*(-?(?:\d+(?:\.\d*)?|\.\d+))(?:\s|$)/i);
+                const pullOff = pullOffMatch ? Number(pullOffMatch[1]) : 0;
+                if (hardLimitsEnabled && Number.isFinite(pullOff) && pullOff > 0) {
+                    limits.minZ += pullOff;
+                    limits.maxZPosition -= pullOff;
+                    if (limits.minZ >= limits.maxZPosition) throw new Error('$27 homing pull-off leaves no usable Z travel within $132=' + limits.maxZ + ' mm.');
+                }
+                await logCalibration('Controller Z travel: ' + limits.minZ + '..' + limits.maxZPosition + (hardLimitsEnabled && pullOff > 0 ? ' ($27=' + pullOff + ' mm pull-off clearance applied)' : '.') );
                 return { ...limits, homingMask, zHomePositive: (homingMask & 4) === 0 };
             } catch (error) {
                 lastError = error.message;
@@ -562,7 +572,7 @@ async function queryProbe(line, timeout, stage) {
 }
 
 function safeProbeTravel(distance, stage, pointLabel, currentZ, limits) {
-    const zMinimum = limits.zHomePositive ? -limits.maxZ : 0;
+    const zMinimum = limits.minZ;
     if (!Number.isFinite(currentZ)) throw new Error(`Could not read the current machine Z before ${stage.toLowerCase()} at ${pointLabel}.`);
     const available = currentZ - zMinimum - 0.1;
     if (!Number.isFinite(available) || available <= 0.1) throw new Error(`${stage} at ${pointLabel} has no safe downward Z travel remaining before the machine Z limit (${zMinimum.toFixed(3)} mm). Move to a higher safe Z before calibration.`);
@@ -574,12 +584,16 @@ async function probeSequenceOnce(settings, point, pointLabel, limits, startingZ,
     const fastTravel = safeProbeTravel(limits.maxZ, 'Fast probe', pointLabel, startingZ, limits);
     setNotice(`Fast probe on ${pointLabel}${retryLabel}: up to ${fastTravel.toFixed(3)} mm available before the machine Z limit. Keep hands clear.`);
     const fastProbe = await queryProbe(`G91 G38.3 Z-${fastTravel} F${settings.fastFeed}`, 45000, `Fast probe on ${pointLabel}${retryLabel}`);
+    if (settings.probeMode === 'fast') {
+        setNotice(`Single fast probe contact registered on ${pointLabel}; moving on.`);
+        return fastProbe;
+    }
     const interimRetract = computePostProbeRetract(fastProbe.z, limits.maxZPosition, SHORT_RETRACT_MM);
     setNotice(`Fast contact found on ${pointLabel}. Retracting ${interimRetract.toFixed(3)} mm before the slow touch…`);
     await sendAndWait(`G91 G0 Z${interimRetract}`);
     const slowStart = await waitIdle();
-    const slowTravel = safeProbeTravel(settings.slowTravel, 'Slow probe', pointLabel, slowStart.mpos[2], limits);
-    setNotice(slowTravel < settings.slowTravel
+    const slowTravel = safeProbeTravel(SLOW_PROBE_TRAVEL_MM, 'Slow probe', pointLabel, slowStart.mpos[2], limits);
+    setNotice(slowTravel < SLOW_PROBE_TRAVEL_MM
         ? `Slow probe at ${pointLabel}: limiting travel to ${slowTravel.toFixed(3)} mm to stay inside Z travel.`
         : `Slow probe on ${pointLabel}${retryLabel}…`);
     const slowProbe = await queryProbe(`G91 G38.3 Z-${slowTravel} F${settings.slowFeed}`, 30000, `Slow probe on ${pointLabel}${retryLabel}`);
@@ -667,10 +681,10 @@ function validateSettings(s, limits, wposZeroMachineZ = null) {
             throw new Error(`Full Retract Height ${s.fullRetract.toFixed(3)} mm places machine Z at ${retractMachineZ.toFixed(3)} mm, outside the reported Z travel ${limits.minZ}..${limits.maxZPosition} mm. Reduce the height or choose an origin with more Z clearance.`);
         }
     }
-    if (s.slowTravel <= SHORT_RETRACT_MM) throw new Error(`Slow probe travel must be greater than the fixed ${SHORT_RETRACT_MM} mm short retract.`);
     if (s.fastFeed <= 0 || s.slowFeed <= 0) throw new Error('Probe feeds must be greater than zero.');
     if (s.puckThickness < 0) throw new Error('Probe puck thickness cannot be negative.');
     if (!['conductive', 'puck', 'switch'].includes(s.surfaceType)) throw new Error('Choose Conductive, Puck, or Switch as the probe type.');
+    if (!['fast', 'precise'].includes(s.probeMode)) throw new Error('Choose Fast or Precise as the probe method.');
 }
 
 async function homeMachine() {
@@ -807,6 +821,7 @@ async function probeWposOrigin() {
         if (initial.state !== 'Idle') throw new Error(`Probe WPOS origin requires an idle machine (current state: ${initial.state}).`);
         const limits = await readTravelLimits();
         validateSettings(settings, limits);
+        await logCalibration('WPOS origin probe method=' + settings.probeMode + (settings.probeMode === 'fast' ? ' (single fast touch).' : ' (fast touch plus slow repeat).'));
         if (initial.mpos[2] < limits.minZ || initial.mpos[2] > limits.maxZPosition) {
             throw new Error(`Current machine Z${initial.mpos[2].toFixed(3)} is outside the reported Z travel ${limits.minZ}..${limits.maxZPosition} mm.`);
         }
@@ -823,9 +838,21 @@ async function probeWposOrigin() {
         if (ready.state !== 'Idle' || ready.mpos.some((value, index) => Math.abs(value - initial.mpos[index]) > 0.05)) {
             throw new Error('Machine position changed while preparing the origin probe. Return to the selected origin and try again.');
         }
+        const retractDirection = limits.zHomePositive ? 1 : -1;
+        const probeStartMachineZ = round(ready.mpos[2] + retractDirection * settings.fullRetract);
+        if (probeStartMachineZ < limits.minZ || probeStartMachineZ > limits.maxZPosition) {
+            throw new Error(`Cannot back Z off by the configured Full Retract Height (${settings.fullRetract.toFixed(3)} mm) before probing: machine Z${probeStartMachineZ.toFixed(3)} would be outside travel ${limits.minZ}..${limits.maxZPosition} mm. Jog Z farther from its home end, then try again.`);
+        }
         await machine.setBusy(true, 'Probe WPOS origin and set G54 zero');
+        await logCalibration(`WPOS origin pre-probe back-off: machine Z${ready.mpos[2].toFixed(3)} to Z${probeStartMachineZ.toFixed(3)} (${settings.fullRetract.toFixed(3)} mm toward the Z home end).`);
+        await sendAndWait(`G90 G53 G0 Z${probeStartMachineZ.toFixed(3)}`);
+        const backedOff = await waitIdle();
+        if (backedOff.mpos.slice(0, 2).some((value, index) => Math.abs(value - ready.mpos[index]) > 0.05)
+            || Math.abs(backedOff.mpos[2] - probeStartMachineZ) > 0.1) {
+            throw new Error('Machine did not reach the expected safe Z height before the WPOS origin probe.');
+        }
         const pointLabel = `${corner.replace('-', ' ')} WPOS origin`;
-        const slowProbe = await probeWithOneRetry(settings, { x: ready.mpos[0], y: ready.mpos[1] }, `WPOS origin (${pointLabel})`, limits, ready.mpos[2]);
+        const slowProbe = await probeWithOneRetry(settings, { x: backedOff.mpos[0], y: backedOff.mpos[1] }, `WPOS origin (${pointLabel})`, limits, backedOff.mpos[2]);
         await sendAndWait('G90');
         const fullRetractMachineZ = round(slowProbe.z + settings.fullRetract);
         validateSettings(settings, limits, slowProbe.z);
@@ -906,7 +933,7 @@ async function calibrate() {
         const wposMachine = { x: round(state.wposOrigin.mpos[0]), y: round(state.wposOrigin.mpos[1]) };
         const gridOrigin = mapFrontLeftFromWposOrigin(wposMachine, state.wposOrigin.corner, settings.lengthX, settings.lengthY);
         const retractMachineZ = round(state.wposOrigin.surfaceMachineZ + settings.fullRetract);
-        await logCalibration(`Settings: $23=${limits.homingMask}; $132 max Z travel=${limits.maxZ} mm; selected WPOS origin=${state.wposOrigin.corner} at machine X${wposMachine.x.toFixed(3)} Y${wposMachine.y.toFixed(3)}; map front-left X${gridOrigin.x.toFixed(3)} Y${gridOrigin.y.toFixed(3)}; scan front-left to back-right (+WPOS X/+WPOS Y); machine travel X=${limits.minX}..${limits.maxX}, Y=${limits.minY}..${limits.maxY}; Full Retract WPOS Z+${settings.fullRetract.toFixed(3)} / machine Z${retractMachineZ.toFixed(3)}; short retract=${SHORT_RETRACT_MM} mm; fast probe travel is calculated from available Z travel per point.`);
+        await logCalibration(`Settings: $23=${limits.homingMask}; $132 max Z travel=${limits.maxZ} mm; probe method=${settings.probeMode}; selected WPOS origin=${state.wposOrigin.corner} at machine X${wposMachine.x.toFixed(3)} Y${wposMachine.y.toFixed(3)}; map front-left X${gridOrigin.x.toFixed(3)} Y${gridOrigin.y.toFixed(3)}; scan front-left to back-right (+WPOS X/+WPOS Y); machine travel X=${limits.minX}..${limits.maxX}, Y=${limits.minY}..${limits.maxY}; Full Retract WPOS Z+${settings.fullRetract.toFixed(3)} / machine Z${retractMachineZ.toFixed(3)}; short retract=${SHORT_RETRACT_MM} mm; fast probe travel is calculated from available Z travel per point.`);
         validateSettings(settings, limits, state.wposOrigin.surfaceMachineZ);
         if (initialStatus.mpos[2] < limits.minZ - 0.1 || initialStatus.mpos[2] > limits.maxZPosition + 0.1) throw new Error(`Current machine Z${initialStatus.mpos[2].toFixed(3)} is outside the reported Z travel ${limits.minZ}..${limits.maxZPosition} mm.`);
         const grid = validateMap({ originX: gridOrigin.x, originY: gridOrigin.y, lengthX: settings.lengthX, lengthY: settings.lengthY, pointsX: settings.pointsX, pointsY: settings.pointsY, directionX: 1, directionY: 1 }, limits);
@@ -976,7 +1003,7 @@ async function calibrate() {
             surfaceType: settings.surfaceType, puckThickness: settings.puckThickness,
             referenceZ: baselineZ, createdAt: new Date().toISOString(),
         };
-        await logCalibration(`Extended map to machine XY travel X${limits.minX.toFixed(3)}..${limits.maxX.toFixed(3)}, Y${limits.minY.toFixed(3)}..${limits.maxY.toFixed(3)}. Every point outside the measured material grid uses the WPOS origin Z0 probe baseline ${baselineZ.toFixed(3)}.`);
+        await logCalibration(`Extended map to machine XY travel X${limits.minX.toFixed(3)}..${limits.maxX.toFixed(3)}, Y${limits.minY.toFixed(3)}..${limits.maxY.toFixed(3)}. Unprobed strips extend the nearest measured edge row or column; corner regions extrapolate along 45-degree diagonals.`);
         await storage.set('heightMap', state.map);
         await storage.delete('stlExport');
         state.stlExport = null;
@@ -1078,6 +1105,7 @@ async function start() {
             updatePuckThicknessVisibility();
             saveSettings();
         });
+        for (const input of document.querySelectorAll('input[name="probeMode"]')) input.addEventListener('change', saveSettings);
         $('home').addEventListener('click', homeMachine);
         for (const [id, axis, sign] of [
             ['jogXMinus', 'X', -1], ['jogXPlus', 'X', 1], ['jogYMinus', 'Y', -1],

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { DEFAULTS, MAX_STL_STORAGE_BYTES, appendMachineOriginReturn, compensateGcode, computeG54ForMapOrigin, computePostProbeRetract, computeProjectMapOrigin, computeProjectMapSettings, interpolate, makeGrid, makeStlExportRecord, mapCoversProjectBounds, parseAbsoluteXYBounds, parseProbePosition, parseTravelLimits, parseWorkOffsetLine, probePositionMatches, surfaceMapToStl, validateMachineTarget, validateMap } from './heightmap.js';
+import { DEFAULTS, MAX_STL_STORAGE_BYTES, SHORT_RETRACT_MM, SLOW_PROBE_TRAVEL_MM, appendMachineOriginReturn, compensateGcode, computeG54ForMapOrigin, computePostProbeRetract, computeProjectMapOrigin, computeProjectMapSettings, interpolate, makeGrid, makeStlExportRecord, mapCoversProjectBounds, parseAbsoluteXYBounds, parseProbePosition, parseTravelLimits, parseWorkOffsetLine, probePositionMatches, surfaceMapToStl, validateMachineTarget, validateMap } from './heightmap.js';
 
 test('returns to machine Z0 and XY origin before M30, including a shared M5 M30 line', () => {
     const output = appendMachineOriginReturn('G1 X10 Y10 Z1\nM5 M30 (end job)\n');
@@ -11,9 +11,10 @@ test('appends machine-origin return when the source has no program-end code', ()
     assert.match(appendMachineOriginReturn('G1 X1 Y1 Z0.2'), /G1 X1 Y1 Z0\.2\nG21 G90 G53 G0 Z0\nG53 G0 X0 Y0\n$/);
 });
 
-test('default slow probe travel exceeds the default retract distance', () => {
-    assert.equal(DEFAULTS.slowTravel, 3);
-    assert.ok(DEFAULTS.slowTravel > DEFAULTS.retract);
+test('fixed slow probe travel exceeds the fixed short retract', () => {
+    assert.equal(SHORT_RETRACT_MM, 3);
+    assert.equal(SLOW_PROBE_TRAVEL_MM, 3.5);
+    assert.ok(SLOW_PROBE_TRAVEL_MM > SHORT_RETRACT_MM);
 });
 
 test('generates inclusive grid endpoints with requested sample counts', () => {

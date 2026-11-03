@@ -1,3 +1,6 @@
+export const SHORT_RETRACT_MM = 3;
+export const SLOW_PROBE_TRAVEL_MM = 3.5;
+
 export const DEFAULTS = Object.freeze({
     lengthX: 150,
     lengthY: 110,
@@ -6,9 +9,9 @@ export const DEFAULTS = Object.freeze({
     fullRetract: 10,
     fastFeed: 100,
     slowFeed: 20,
-    slowTravel: 3,
     puckThickness: 1.53,
     surfaceType: 'conductive',
+    probeMode: 'precise',
 });
 
 export function makeGrid({ originX, originY, lengthX, lengthY, pointsX, pointsY, directionX = 1, directionY = 1 }) {
@@ -41,7 +44,7 @@ export function validateMap({ originX, originY, lengthX, lengthY, pointsX, point
     return grid;
 }
 
-/** Extend a measured grid to machine travel with untouched points at the origin probe baseline. */
+/** Extend measured edge rows/columns across machine travel, with diagonal corner extrapolation. */
 export function extendMapToMachineTravel(grid, z, limits, baselineZ) {
     if (!Array.isArray(grid) || !grid.length || !Array.isArray(grid[0]) || !grid[0].length
         || !Array.isArray(z) || z.length !== grid.length || z.some((row, index) => !Array.isArray(row) || row.length !== grid[index].length)
@@ -65,13 +68,12 @@ export function extendMapToMachineTravel(grid, z, limits, baselineZ) {
     };
     const xPositions = combine(machineBounds.minX, measuredX, machineBounds.maxX);
     const yPositions = combine(machineBounds.minY, measuredY, machineBounds.maxY);
+    const probeX = [...measuredX].sort((a, b) => a - b);
+    const probeY = [...measuredY].sort((a, b) => a - b);
     const xIndex = new Map(measuredX.map((value, index) => [value.toFixed(4), index]));
     const yIndex = new Map(measuredY.map((value, index) => [value.toFixed(4), index]));
-    const paddedZ = yPositions.map((y) => xPositions.map((x) => {
-        const ix = xIndex.get(x.toFixed(4));
-        const iy = yIndex.get(y.toFixed(4));
-        return ix === undefined || iy === undefined ? baselineZ : z[iy][ix];
-    }));
+    const probeZ = probeY.map((y) => probeX.map((x) => z[yIndex.get(y.toFixed(4))][xIndex.get(x.toFixed(4))]));
+    const paddedZ = yPositions.map((y) => xPositions.map((x) => extrapolateGrid(probeX, probeY, probeZ, x, y)));
     return {
         // Keep the measured front-left as the map origin so existing G-code
         // placement remains tied to the material, while the coordinate axes
@@ -84,6 +86,42 @@ export function extendMapToMachineTravel(grid, z, limits, baselineZ) {
         probeCellY: (measuredBounds.maxY - measuredBounds.minY) / Math.max(1, measuredY.length - 1),
         directionX: 1, directionY: 1,
     };
+}
+
+function extrapolateGrid(xAxis, yAxis, zGrid, x, y) {
+    const xMin = xAxis[0], xMax = xAxis.at(-1), yMin = yAxis[0], yMax = yAxis.at(-1);
+    const outsideX = x < xMin || x > xMax;
+    const outsideY = y < yMin || y > yMax;
+    const edgeX = Math.min(xMax, Math.max(xMin, x));
+    const edgeY = Math.min(yMax, Math.max(yMin, y));
+    const sample = (sx, sy) => {
+        const locate = (axis, value) => {
+            let low = 0, high = axis.length - 1;
+            while (high - low > 1) {
+                const mid = Math.floor((low + high) / 2);
+                if (axis[mid] <= value) low = mid;
+                else high = mid;
+            }
+            const index = Math.min(axis.length - 2, Math.max(0, low));
+            return { index, t: Math.min(1, Math.max(0, (value - axis[index]) / (axis[index + 1] - axis[index]))) };
+        };
+        const { index: ix, t: tx } = locate(xAxis, sx);
+        const { index: iy, t: ty } = locate(yAxis, sy);
+        return zGrid[iy][ix] * (1 - tx) * (1 - ty) + zGrid[iy][ix + 1] * tx * (1 - ty)
+            + zGrid[iy + 1][ix] * (1 - tx) * ty + zGrid[iy + 1][ix + 1] * tx * ty;
+    };
+    const edgeZ = sample(edgeX, edgeY);
+    if (!outsideX || !outsideY) return edgeZ;
+
+    const inwardX = edgeX === xMin ? 1 : -1;
+    const inwardY = edgeY === yMin ? 1 : -1;
+    const diagonalStep = Math.min(
+        inwardX > 0 ? xAxis[1] - xAxis[0] : xAxis.at(-1) - xAxis.at(-2),
+        inwardY > 0 ? yAxis[1] - yAxis[0] : yAxis.at(-1) - yAxis.at(-2),
+    );
+    const innerZ = sample(edgeX + inwardX * diagonalStep, edgeY + inwardY * diagonalStep);
+    const diagonalDistance = (Math.abs(x - edgeX) + Math.abs(y - edgeY)) / 2;
+    return edgeZ + (edgeZ - innerZ) * (diagonalDistance / diagonalStep);
 }
 
 function roundTo(value, places) {
@@ -206,10 +244,6 @@ export function interpolate(map, x, y) {
         const eps = 1e-7;
         if (x < xAxis[0] - eps || x > xAxis.at(-1) + eps || y < yAxis[0] - eps || y > yAxis.at(-1) + eps) {
             throw new Error(`Toolpath leaves mapped area at X${x.toFixed(3)} Y${y.toFixed(3)}.`);
-        }
-        const bounds = map.probeBounds;
-        if (bounds && (x < bounds.minX - eps || x > bounds.maxX + eps || y < bounds.minY - eps || y > bounds.maxY + eps)) {
-            return map.baselineZ;
         }
         const locate = (axis, value) => {
             let low = 0, high = axis.length - 1;
