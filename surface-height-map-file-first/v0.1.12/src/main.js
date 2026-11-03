@@ -4,7 +4,7 @@ import './style.css';
 
 const $ = (id) => document.getElementById(id);
 const fields = ['lengthX', 'lengthY', 'pointsX', 'pointsY', 'fullRetract', 'fastFeed', 'slowFeed', 'slowTravel', 'puckThickness'];
-const state = { origin: null, wposOrigin: null, homeMachineZ: null, machinePosition: null, controllerHomed: false, adoptingHomedPosition: false, probeReportSequence: 0, probeWaiter: null, offsetParserSequence: 0, map: null, stlExport: null, file: null, project: null, analyzingProject: false, busy: false, stopRequested: false, abortPuck: null, calibrationReadings: [], calibrationReadingCount: 0, continuousJog: null };
+const state = { origin: null, wposOrigin: null, homeMachineZ: null, machinePosition: null, controllerHomed: false, adoptingHomedPosition: false, probeReportSequence: 0, probeWaiter: null, offsetParserSequence: 0, map: null, mapInvalid: false, stlExport: null, file: null, project: null, analyzingProject: false, busy: false, stopRequested: false, abortPuck: null, calibrationReadings: [], calibrationReadingCount: 0, continuousJog: null };
 const setNotice = (message, kind = '') => { $('notice').textContent = message; $('notice').className = kind; };
 const setApplyStatus = (message, kind = '') => { $('applyStatus').textContent = message; $('applyStatus').className = kind; };
 const n = (id) => Number($(id).value);
@@ -54,9 +54,24 @@ function drawSurfaceMap() {
     const map = state.map;
     panel.hidden = !map;
     if (!map) return;
-    const values = Array.isArray(map.samples) ? map.samples.map((sample) => sample.z) : map.z.flat();
+    const grid = map.z;
+    const validRectGrid = Array.isArray(grid) && grid.length >= 2 && Array.isArray(grid[0]) && grid[0].length >= 2
+        && grid.every((row) => Array.isArray(row) && row.length === grid[0].length && row.every(Number.isFinite));
+    const validSamples = Array.isArray(map.samples) && map.samples.length > 0
+        && map.samples.every((sample) => sample && Number.isFinite(sample.x) && Number.isFinite(sample.y) && Number.isFinite(sample.z));
+    const validContourGrid = validSamples && Number.isInteger(map.pointsX) && map.pointsX >= 2
+        && Number.isInteger(map.pointsY) && map.pointsY >= 2 && Number.isFinite(map.referenceZ);
+    if (!validRectGrid && !validContourGrid) {
+        state.mapInvalid = true;
+        $('compensate').disabled = true;
+        $('mapStats').textContent = 'Saved map data is incomplete or inconsistent.';
+        setNotice('The saved height map has an incomplete grid and cannot be displayed or applied. Delete the saved map and calibrate again.', 'error');
+        return;
+    }
+    state.mapInvalid = false;
+    $('compensate').disabled = !state.file || !mapCoversProject() || state.busy || state.analyzingProject;
+    const values = validSamples ? map.samples.map((sample) => sample.z) : grid.flat();
     if (map.fullMachineCoverage && Number.isFinite(map.referenceZ)) values.push(map.referenceZ);
-    if (!values.length || values.some((value) => !Number.isFinite(value))) return;
     const min = Math.min(...values);
     const max = Math.max(...values);
     const range = max - min;
@@ -377,7 +392,7 @@ async function refreshUi() {
     for (const id of ['jogYPlus', 'jogXMinus', 'jogXPlus', 'jogYMinus', 'jogZPlus', 'jogZMinus']) $(id).disabled = !homed || state.busy;
     $('calibrate').disabled = !homed || state.busy || !state.origin || !state.wposOrigin || !state.project;
     $('stop').disabled = !state.busy;
-    $('compensate').disabled = !state.map || !mapCoversProject() || !state.file || state.busy || state.analyzingProject;
+    $('compensate').disabled = !state.map || state.mapInvalid || !mapCoversProject() || !state.file || state.busy || state.analyzingProject;
     $('clearMap').disabled = !state.map || state.busy;
     $('exportStl').disabled = !state.map || state.busy;
     $('originLabel').textContent = state.wposOrigin ? `WPOS origin captured at machine X${state.wposOrigin.mpos[0].toFixed(3)} Y${state.wposOrigin.mpos[1].toFixed(3)}` : 'Probe the selected WPOS origin to enable calibration';

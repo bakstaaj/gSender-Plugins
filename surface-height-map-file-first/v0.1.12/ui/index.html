@@ -18,8 +18,8 @@
     "react/jsx-dev-runtime": "./vendor/react-jsx-dev-runtime.js"
   }
 }</script>
-    <script type="module" crossorigin src="./assets/index-CsShRwG-.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-kxGq7LWj.css">
+    <script type="module" crossorigin src="./assets/index-BkM36WpR.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DxFRYqDj.css">
   </head>
   <body>
     <main>
@@ -71,7 +71,7 @@
           <fieldset id="originSelector" class="origin-picker"><legend>WPOS origin</legend><div class="origin-grid" role="radiogroup" aria-label="Work coordinate origin">
             <label class="origin-point rear-left"><input type="radio" name="wposOrigin" value="rear-left"><span></span><em>Rear left</em></label><label class="origin-point rear-right"><input type="radio" name="wposOrigin" value="rear-right"><span></span><em>Rear right</em></label><label class="origin-point center"><input type="radio" name="wposOrigin" value="center"><span></span><em>Center</em></label><label class="origin-point front-left"><input type="radio" name="wposOrigin" value="front-left" checked><span></span><em>Front left</em></label><label class="origin-point front-right"><input type="radio" name="wposOrigin" value="front-right"><span></span><em>Front right</em></label>
           </div></fieldset>
-          <fieldset class="jog-panel"><legend>Jog and probe</legend><label for="jogStep">Jog step</label><select id="jogStep"><option value="0.1">0.1 mm</option><option value="1" selected>1 mm</option><option value="10">10 mm</option><option value="continuous">Continuous (hold)</option></select><div class="machine-dro" aria-label="Machine coordinates"><span>X <output id="droX">—</output></span><span>Y <output id="droY">—</output></span><span>Z <output id="droZ">—</output></span></div><div class="jog-pad"><div class="xy-jog-pad"><button id="jogYPlus">Y+</button><button id="jogXMinus">X−</button><button id="jogXPlus">X+</button><button id="jogYMinus">Y−</button></div><div class="z-jog-pad"><div class="home-control"><button id="home" disabled>Home machine</button><span id="homeLabel">Machine not homed</span></div><button id="jogZPlus">Z+</button><button id="jogZMinus">Z−</button><button id="probeWpos" disabled>Probe WPOS origin</button></div></div></fieldset>
+          <fieldset class="jog-panel"><legend>Jog and probe</legend><label for="jogStep">Jog step</label><select id="jogStep"><option value="0.1">0.1 mm</option><option value="1" selected>1 mm</option><option value="10">10 mm</option><option value="continuous">Continuous (hold)</option></select><div class="machine-dro" aria-label="Machine coordinates"><span><strong>X:</strong><output id="droX">—</output></span><span><strong>Y:</strong><output id="droY">—</output></span><span><strong>Z:</strong><output id="droZ">—</output></span></div><div class="jog-pad"><div class="xy-jog-pad"><button id="jogYPlus">Y+</button><button id="jogXMinus">X−</button><button id="jogXPlus">X+</button><button id="jogYMinus">Y−</button></div><div class="z-jog-pad"><div class="home-control"><button id="home" disabled>Home machine</button><span id="homeLabel">Machine not homed</span></div><button id="jogZPlus">Z+</button><button id="jogZMinus">Z−</button><button id="probeWpos" disabled>Probe WPOS origin</button></div></div></fieldset>
         </div>
         <h3>4. Start calibration</h3>
         <div class="row"><span id="originLabel">Probe the selected WPOS origin to enable calibration</span><button id="calibrate" class="primary" disabled>Start calibration</button><button id="stop" class="danger" disabled>Stop after current move</button></div>
