@@ -72,6 +72,9 @@ footer { opacity: .65; margin: 22px 0; font-size: .9em; }
 .origin-point em { font-size: .75em; font-style: normal; opacity: .8; white-space: nowrap; }
 .jog-controls > label { margin: 4px 0; }
 .jog-controls select { max-width: 190px; padding: 6px; font: inherit; }
+.machine-dro { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 8px 0; padding: 7px 10px; border: 1px solid #8886; border-radius: 6px; font-variant-numeric: tabular-nums; }
+.machine-dro span { display: flex; justify-content: space-between; gap: 8px; white-space: nowrap; }
+.machine-dro output { font-family: ui-monospace, monospace; font-weight: 600; }
 .jog-panel { min-width: 0; width: 100%; }
 .jog-pad { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(140px, .8fr); gap: 14px; align-items: center; max-width: 440px; margin: 8px auto; }
 .jog-pad button { padding: 4px; }

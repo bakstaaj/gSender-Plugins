@@ -5,7 +5,7 @@ import './style.css';
 const $ = (id) => document.getElementById(id);
 const SHORT_RETRACT_MM = 2;
 const fields = ['lengthX', 'lengthY', 'pointsX', 'pointsY', 'fullRetract', 'fastFeed', 'slowFeed', 'slowTravel', 'puckThickness'];
-const state = { origin: null, wposOrigin: null, homeMachineZ: null, controllerHomed: false, adoptingHomedPosition: false, probeParserSequence: 0, offsetParserSequence: 0, map: null, stlExport: null, file: null, busy: false, stopRequested: false, abortPuck: null, continuousJog: null };
+const state = { origin: null, wposOrigin: null, homeMachineZ: null, machinePosition: null, controllerHomed: false, adoptingHomedPosition: false, probeParserSequence: 0, offsetParserSequence: 0, map: null, mapInvalid: false, stlExport: null, file: null, busy: false, stopRequested: false, abortPuck: null, continuousJog: null };
 const setNotice = (message, kind = '') => { $('notice').textContent = message; $('notice').className = kind; };
 const setApplyStatus = (message, kind = '') => { $('applyStatus').textContent = message; $('applyStatus').className = kind; };
 const n = (id) => Number($(id).value);
@@ -43,8 +43,20 @@ function drawSurfaceMap() {
         }
     }
     const surfaceZ = surface?.z ?? map.z;
+    const gridWidth = Array.isArray(surfaceZ) && Array.isArray(surfaceZ[0]) ? surfaceZ[0].length : 0;
+    const validGrid = Array.isArray(surfaceZ) && surfaceZ.length >= 2 && gridWidth >= 2
+        && Array.from(surfaceZ).every((row) => Array.isArray(row) && row.length === gridWidth
+            && Array.from(row).every((value) => Number.isFinite(value)));
+    if (!validGrid) {
+        state.mapInvalid = true;
+        $('compensate').disabled = true;
+        $('mapStats').textContent = 'Saved map data is incomplete or inconsistent.';
+        setNotice('The saved height map has an incomplete grid and cannot be displayed or applied. Delete the saved map and calibrate again.', 'error');
+        return;
+    }
+    state.mapInvalid = false;
+    $('compensate').disabled = !state.file || state.busy;
     const values = surfaceZ.flat();
-    if (!values.length || values.some((value) => !Number.isFinite(value))) return;
     const min = Math.min(...values);
     const max = Math.max(...values);
     const range = max - min;
@@ -196,6 +208,13 @@ function positionVector(position) {
     return null;
 }
 
+function renderMachineDro() {
+    ['X', 'Y', 'Z'].forEach((axis, index) => {
+        const value = state.machinePosition?.[index];
+        $(`dro${axis}`).textContent = Number.isFinite(value) ? value.toFixed(3) : '—';
+    });
+}
+
 function selectedWposOrigin() {
     return document.querySelector('input[name="wposOrigin"]:checked')?.value ?? 'front-left';
 }
@@ -233,6 +252,7 @@ async function controllerSnapshot() {
     const status = reduxState?.controller?.state?.status;
     const mpos = positionVector(status?.mpos);
     if (!mpos || !mpos.every(Number.isFinite)) throw new Error('gSender has not reported a valid machine position yet. Wait for a controller status update and try again.');
+    state.machinePosition = mpos;
     return { state: status.activeState ?? 'unknown', mpos, wpos: positionVector(status.wpos) };
 }
 
@@ -346,6 +366,7 @@ async function refreshUi() {
     let connected = false;
     try { connected = Boolean((await machine.getContext())?.connected); } catch { /* disconnected or SDK denied */ }
     if (!connected) {
+        state.machinePosition = null;
         state.homeMachineZ = null;
         state.controllerHomed = false;
         state.wposOrigin = null;
@@ -353,6 +374,7 @@ async function refreshUi() {
     }
     const homed = connected && state.controllerHomed && Number.isFinite(state.homeMachineZ);
     $('connection').textContent = connected ? 'Connected' : 'Not connected';
+    renderMachineDro();
     $('connection').dataset.connected = String(connected);
     $('home').disabled = !connected || state.busy || homed;
     $('originSelector').disabled = !homed || state.busy;
@@ -362,7 +384,7 @@ async function refreshUi() {
     $('probeWpos').disabled = !homed || state.busy || Boolean(state.wposOrigin);
     $('calibrate').disabled = !homed || state.busy || !state.wposOrigin;
     $('stop').disabled = !state.busy;
-    $('compensate').disabled = !state.map || !state.file || state.busy;
+    $('compensate').disabled = !state.map || state.mapInvalid || !state.file || state.busy;
     $('clearMap').disabled = !state.map || state.busy;
     $('exportStl').disabled = !state.map || state.busy;
     $('originLabel').textContent = state.origin ? `Map front-left X${state.origin.x.toFixed(3)}  Y${state.origin.y.toFixed(3)}`
@@ -457,6 +479,12 @@ async function copyStlText() {
     }
 }
 
+function probeMissError(stage) {
+    const error = new Error(`${stage} did not trigger within the configured probe travel.`);
+    error.probeMiss = true;
+    return error;
+}
+
 async function queryProbe(line, timeout, stage) {
     await logCalibration(`TX ${stage}: ${line}`);
     const parserId = `surface-height-map-probe-${++state.probeParserSequence}`;
@@ -472,6 +500,10 @@ async function queryProbe(line, timeout, stage) {
     let resolveReport;
     const reportPromise = new Promise((resolve) => { resolveReport = resolve; });
     const unsubscribe = machine.onParsed(parserId, (report) => {
+        if (/:0\]\s*$/i.test(String(report.line).trim())) {
+            resolveReport({ missed: true });
+            return;
+        }
         try { resolveReport({ position: parseProbePosition(report.line) }); }
         catch (error) { resolveReport({ error }); }
     });
@@ -484,7 +516,11 @@ async function queryProbe(line, timeout, stage) {
             throw new Error(`${stage} probe was not accepted. Controller response: ${result.error ?? result.lines.join(' ') ?? result.reason}`);
         }
         const reportLine = result.lines.map((entry) => String(entry).trim()).find((entry) => /^\[PRB:/i.test(entry));
-        if (reportLine) { await logCalibration(`${stage} report: ${reportLine}`); return readProbePosition({ lines: [reportLine] }); }
+        if (reportLine) {
+            await logCalibration(`${stage} report: ${reportLine}`);
+            if (/:0\]$/i.test(reportLine)) throw probeMissError(stage);
+            return readProbePosition({ lines: [reportLine] });
+        }
 
         setNotice(`${stage} probe was acknowledged. Waiting for its position report…`);
         let reportTimeout;
@@ -515,6 +551,7 @@ async function queryProbe(line, timeout, stage) {
         } finally {
             clearTimeout(reportTimeout);
         }
+        if (outcome.missed) throw probeMissError(stage);
         if (outcome.error) throw outcome.error;
         if (!outcome.position) throw new Error(`${stage} probe report did not contain a valid position.`);
         return outcome.position;
@@ -532,11 +569,11 @@ function safeProbeTravel(distance, stage, pointLabel, currentZ, limits) {
     return Math.floor(Math.min(distance, available) * 1000) / 1000;
 }
 
-async function probeAt(settings, point, index, total, limits, startingZ) {
-    const pointLabel = `point ${index + 1}/${total} (X${point.x.toFixed(3)} Y${point.y.toFixed(3)})`;
+async function probeSequenceOnce(settings, point, pointLabel, limits, startingZ, attempt) {
+    const retryLabel = attempt === 1 ? ' (retry)' : '';
     const fastTravel = safeProbeTravel(limits.maxZ, 'Fast probe', pointLabel, startingZ, limits);
-    setNotice(`Fast probe on ${pointLabel}: up to ${fastTravel.toFixed(3)} mm available before the machine Z limit. Keep hands clear.`);
-    const fastProbe = await queryProbe(`G91 G38.2 Z-${fastTravel} F${settings.fastFeed}`, 45000, `Fast probe on ${pointLabel}`);
+    setNotice(`Fast probe on ${pointLabel}${retryLabel}: up to ${fastTravel.toFixed(3)} mm available before the machine Z limit. Keep hands clear.`);
+    const fastProbe = await queryProbe(`G91 G38.3 Z-${fastTravel} F${settings.fastFeed}`, 45000, `Fast probe on ${pointLabel}${retryLabel}`);
     const interimRetract = computePostProbeRetract(fastProbe.z, limits.maxZPosition, SHORT_RETRACT_MM);
     setNotice(`Fast contact found on ${pointLabel}. Retracting ${interimRetract.toFixed(3)} mm before the slow touch…`);
     await sendAndWait(`G91 G0 Z${interimRetract}`);
@@ -544,9 +581,45 @@ async function probeAt(settings, point, index, total, limits, startingZ) {
     const slowTravel = safeProbeTravel(settings.slowTravel, 'Slow probe', pointLabel, slowStart.mpos[2], limits);
     setNotice(slowTravel < settings.slowTravel
         ? `Slow probe at ${pointLabel}: limiting travel to ${slowTravel.toFixed(3)} mm to stay inside Z travel.`
-        : `Slow probe on ${pointLabel}…`);
-    const slowProbe = await queryProbe(`G91 G38.2 Z-${slowTravel} F${settings.slowFeed}`, 30000, `Slow probe on ${pointLabel}`);
+        : `Slow probe on ${pointLabel}${retryLabel}…`);
+    const slowProbe = await queryProbe(`G91 G38.3 Z-${slowTravel} F${settings.slowFeed}`, 30000, `Slow probe on ${pointLabel}${retryLabel}`);
     setNotice(`Slow probe contact registered on ${pointLabel}.`);
+    return slowProbe;
+}
+
+async function probeWithOneRetry(settings, point, pointLabel, limits, startingZ, retryZ = startingZ) {
+    try {
+        return await probeSequenceOnce(settings, point, pointLabel, limits, startingZ, 0);
+    } catch (error) {
+        if (!error.probeMiss) throw error;
+        await logCalibration(`PROBE MISS at ${pointLabel}: ${error.message} Returning to machine Z${retryZ.toFixed(3)} for one retry.`);
+        setNotice(`${error.message} Returning to a safe height for one retry at ${pointLabel}…`);
+        const status = await statusSnapshot();
+        if (status.state !== 'Idle') throw new Error(`${error.message} One retry was not possible because the controller is ${status.state}; resolve the controller state and restart.`);
+        if (retryZ < limits.minZ || retryZ > limits.maxZPosition) throw new Error(`${error.message} One retry was not possible because the saved safe retry Z is outside machine travel.`);
+        await sendAndWait(`G90 G53 G0 Z${retryZ.toFixed(3)}`);
+        const retryStart = await waitIdle();
+        await logCalibration(`Retrying ${pointLabel} once from machine Z${retryStart.mpos[2].toFixed(3)}.`);
+        setNotice(`Retrying probe at ${pointLabel} once…`);
+        try {
+            return await probeSequenceOnce(settings, point, pointLabel, limits, retryStart.mpos[2], 1);
+        } catch (retryError) {
+            if (retryError.probeMiss) {
+                const stopped = await statusSnapshot();
+                if (stopped.state === 'Idle') {
+                    await sendAndWait(`G90 G53 G0 Z${retryZ.toFixed(3)}`);
+                    await waitIdle();
+                }
+                throw new Error(`${retryError.message} The single retry also missed; calibration stopped at ${pointLabel}.`);
+            }
+            throw retryError;
+        }
+    }
+}
+
+async function probeAt(settings, point, index, total, limits, startingZ) {
+    const pointLabel = `point ${index + 1}/${total} (X${point.x.toFixed(3)} Y${point.y.toFixed(3)})`;
+    const slowProbe = await probeWithOneRetry(settings, point, pointLabel, limits, startingZ);
     return {
         z: slowProbe.z - (settings.surfaceType === 'puck' ? settings.puckThickness : 0),
         machineZ: slowProbe.z,
@@ -752,13 +825,7 @@ async function probeWposOrigin() {
         }
         await machine.setBusy(true, 'Probe WPOS origin and set G54 zero');
         const pointLabel = `${corner.replace('-', ' ')} WPOS origin`;
-        const fastTravel = safeProbeTravel(limits.maxZ, 'Origin fast probe', pointLabel, ready.mpos[2], limits);
-        const fastProbe = await queryProbe(`G91 G38.2 Z-${fastTravel} F${settings.fastFeed}`, 45000, `Origin fast probe (${pointLabel})`);
-        const shortRetract = computePostProbeRetract(fastProbe.z, limits.maxZPosition, SHORT_RETRACT_MM);
-        await sendAndWait(`G91 G0 Z${shortRetract.toFixed(3)}`);
-        const afterRetract = await waitIdle();
-        const slowTravel = safeProbeTravel(settings.slowTravel, 'Origin slow probe', pointLabel, afterRetract.mpos[2], limits);
-        const slowProbe = await queryProbe(`G91 G38.2 Z-${slowTravel} F${settings.slowFeed}`, 30000, `Origin slow probe (${pointLabel})`);
+        const slowProbe = await probeWithOneRetry(settings, { x: ready.mpos[0], y: ready.mpos[1] }, `WPOS origin (${pointLabel})`, limits, ready.mpos[2]);
         await sendAndWait('G90');
         const fullRetractMachineZ = round(slowProbe.z + settings.fullRetract);
         validateSettings(settings, limits, slowProbe.z);
@@ -1061,6 +1128,7 @@ async function start() {
         });
         $('compensate').addEventListener('click', compensateFile);
         machine.addListener('controller:state', (_type, controllerState) => {
+            state.machinePosition = positionVector(controllerState?.status?.mpos);
             if (!state.busy && state.wposOrigin && controllerState?.status?.activeState === 'Idle') {
                 const mpos = positionVector(controllerState.status.mpos);
                 const wpos = positionVector(controllerState.status.wpos);
@@ -1079,6 +1147,8 @@ async function start() {
         await refreshUi();
         try {
             const reduxState = await getReduxState();
+            state.machinePosition = positionVector(reduxState?.controller?.state?.status?.mpos);
+            await refreshUi();
             await adoptControllerHoming(Boolean(reduxState?.controller?.hasHomed));
         } catch (err) {
             setNotice(`Could not read gSender's existing homing state. Use Home machine in this plugin if needed. ${err.message}`, 'error');
