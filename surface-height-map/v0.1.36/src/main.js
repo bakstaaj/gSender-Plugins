@@ -832,8 +832,17 @@ async function compensateFile() {
         const g92 = offsets.G92;
         const targetG54 = computeG54ForMapOrigin({ x: state.map.originX, y: state.map.originY }, bounds, g92);
         const targetWorkOffset = { x: targetG54.x + g92[0], y: targetG54.y + g92[1] };
-        if (bounds.maxX - bounds.minX > state.map.lengthX + 1e-6 || bounds.maxY - bounds.minY > state.map.lengthY + 1e-6) {
-            throw new Error(`Toolpath size ${ (bounds.maxX - bounds.minX).toFixed(3) } × ${ (bounds.maxY - bounds.minY).toFixed(3) } mm is larger than the mapped area ${state.map.lengthX} × ${state.map.lengthY} mm.`);
+        const machineBounds = state.map.machineBounds ?? {
+            minX: state.map.originX, maxX: state.map.originX + state.map.lengthX,
+            minY: state.map.originY, maxY: state.map.originY + state.map.lengthY,
+        };
+        const toolpathMachineBounds = {
+            minX: bounds.minX + targetWorkOffset.x, maxX: bounds.maxX + targetWorkOffset.x,
+            minY: bounds.minY + targetWorkOffset.y, maxY: bounds.maxY + targetWorkOffset.y,
+        };
+        if (toolpathMachineBounds.minX < machineBounds.minX - 1e-6 || toolpathMachineBounds.maxX > machineBounds.maxX + 1e-6
+            || toolpathMachineBounds.minY < machineBounds.minY - 1e-6 || toolpathMachineBounds.maxY > machineBounds.maxY + 1e-6) {
+            throw new Error(`Toolpath extends beyond machine XY travel after alignment: X${toolpathMachineBounds.minX.toFixed(3)}..${toolpathMachineBounds.maxX.toFixed(3)} mm, Y${toolpathMachineBounds.minY.toFixed(3)}..${toolpathMachineBounds.maxY.toFixed(3)} mm. Machine coverage is X${machineBounds.minX.toFixed(3)}..${machineBounds.maxX.toFixed(3)} mm, Y${machineBounds.minY.toFixed(3)}..${machineBounds.maxY.toFixed(3)} mm.`);
         }
         // Preflight before updating the persistent controller offset, so invalid or
         // unsupported files cannot leave G54 changed without a usable output file.

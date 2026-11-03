@@ -22,8 +22,8 @@
         <h2>1. Map setup</h2>
         <h3 class="settings-group-title">Map area and sampling</h3>
         <div class="grid fields settings-grid">
-          <label title="Total material area width along work X. Any move outside the mapped rectangle cannot be compensated.">Length X (mm)<input id="lengthX" type="number" min="1" step="0.1" aria-describedby="mapSizeHint"></label>
-          <label title="Total material area depth along work Y. Any move outside the mapped rectangle cannot be compensated.">Width Y (mm)<input id="lengthY" type="number" min="1" step="0.1" aria-describedby="mapSizeHint"></label>
+          <label title="Total material area width along work X to probe. Beyond this probed rectangle, compensation uses the WPOS Z0 baseline through the machine travel limit.">Length X (mm)<input id="lengthX" type="number" min="1" step="0.1" aria-describedby="mapSizeHint"></label>
+          <label title="Total material area depth along work Y to probe. Beyond this probed rectangle, compensation uses the WPOS Z0 baseline through the machine travel limit.">Width Y (mm)<input id="lengthY" type="number" min="1" step="0.1" aria-describedby="mapSizeHint"></label>
           <label title="Number of evenly spaced probe points along X. More points capture smaller variations but increase calibration time.">X samples<input id="pointsX" type="number" min="2" max="101" step="1"></label>
           <label title="Number of evenly spaced probe points along Y. More points capture smaller variations but increase calibration time.">Y samples<input id="pointsY" type="number" min="2" max="101" step="1"></label>
         </div>
@@ -97,7 +97,7 @@
       </section>
       <section>
         <h2>3. Compensate a G-code file</h2>
-        <p class="hint">The plugin creates a new compensated file and loads it into gSender’s visualizer. It leaves the selected original untouched. On Apply, it aligns the selected file’s smallest X/Y coordinates to the captured map origin by updating saved G54 X/Y. This persistent offset also affects other G54 jobs until changed again. The file must use metric, absolute G0/G1 moves and fit inside the map.</p>
+        <p class="hint">The plugin creates a new compensated file and loads it into gSender’s visualizer. It leaves the selected original untouched. On Apply, it aligns the selected file’s smallest X/Y coordinates to the captured map origin by updating saved G54 X/Y. This persistent offset also affects other G54 jobs until changed again. The file must use metric, absolute G0/G1 moves and fit inside machine XY travel; unprobed areas use the WPOS Z0 baseline.</p>
         <div class="row"><input id="file" type="file" accept=".nc,.gcode,.tap,.ngc,.txt" title="Select a supported metric, absolute G-code file. The source file is left unchanged."><button id="compensate" class="primary" title="Create a compensated copy and load it into the visualizer. The toolpath must stay inside the calibrated map." disabled>Apply map and load copy</button></div>
         <div id="applyStatus" role="status" aria-live="polite"></div>
         <div id="fileLabel">No file selected.</div>

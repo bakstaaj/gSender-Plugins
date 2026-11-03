@@ -151,7 +151,7 @@ The current preprocessor deliberately supports a narrow format:
 - The file must explicitly select metric units with `G21` and absolute positioning with `G90`.
 - Use linear `G0`/`G1` moves, an active **G54** work coordinate system, and ordinary X/Y/Z axes.
 - The first positioning move must be a `G0` that specifies both X and Y. That move establishes the file start and is treated as setup travel; later supported XY path moves receive height correction.
-- The whole XY toolpath must fit within the mapped rectangle after alignment. The plugin refuses to extrapolate outside measured points.
+- The whole XY toolpath must fit within the machine travel limits after alignment. Points inside the probed rectangle use measured heights; points outside it use the WPOS Z0 baseline.
 - The plugin rejects arcs (`G2`/`G3`), incremental positioning (`G91`), coordinate-system changes and transforms in the file, canned cycles, macros/subprogram blocks, line numbers/checksums, rotary or additional axes, and spindle/tool `M`/`S`/`T` words on the same line as an XY move. Export plain metric, absolute, linear G-code if the file uses one of these features.
 
 ### Apply steps
@@ -181,7 +181,7 @@ The map and file are aligned by their XY coordinates: the smallest X/Y in the fi
 | `ok` appears but no `[PRB:...]` report arrives | The plugin waits for the probe position report as well as command acknowledgement. Confirm the controller's probe report reaches gSender's parsed response stream; `ok` alone is not a measured contact. |
 | Calibration rejects the start WPOS | Jog back to the material's lower-left corner and zero WPOS X, Y, and Z again. Do not jog after zeroing and before starting the calibration. |
 | Probe misses after its travel is limited | Move to a higher safe Z or reduce **Probe travel** and retry. The plugin limits each move to the available range from `$23` and `$132`. |
-| Toolpath leaves mapped area at X… Y… | Increase Length X/Width Y or capture a new origin/recalibrate to cover the full toolpath. The preprocessor will not extrapolate the surface beyond the sampled rectangle. |
+| Toolpath extends beyond machine XY travel after alignment | Adjust the file's placement/origin or machine travel configuration so its aligned bounds fit the reported X/Y limits. Unprobed areas inside those limits use the WPOS Z0 baseline. |
 | Active coordinate system is not G54 | Select G54 in gSender and retry. This version aligns only G54. |
 | Missing G54 or G92 in `$#` response | Confirm the controller returns `[G54:X,Y,Z,...]` and `[G92:X,Y,Z,...]` records and that gSender receives those records after querying `$#`. |
 | File rejected as unsupported | Export metric (`G21`), absolute (`G90`) linear G-code with a first `G0 X… Y…` positioning move. Remove unsupported arcs, transformations, macros, canned cycles, rotary axes, line numbers, or checksums. |
