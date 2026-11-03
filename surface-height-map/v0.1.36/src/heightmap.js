@@ -42,6 +42,55 @@ export function validateMap({ originX, originY, lengthX, lengthY, pointsX, point
     return grid;
 }
 
+/** Extend a measured grid to machine travel with untouched points at the origin probe baseline. */
+export function extendMapToMachineTravel(grid, z, limits, baselineZ) {
+    if (!Array.isArray(grid) || !grid.length || !Array.isArray(grid[0]) || !grid[0].length
+        || !Array.isArray(z) || z.length !== grid.length || z.some((row, index) => !Array.isArray(row) || row.length !== grid[index].length)
+        || !Number.isFinite(baselineZ)) {
+        throw new Error('The measured grid or origin probe baseline is incomplete; cannot extend the map to machine travel.');
+    }
+    const measuredX = grid[0].map((point) => roundTo(point.x, 4));
+    const measuredY = grid.map((row) => roundTo(row[0].y, 4));
+    const measuredBounds = {
+        minX: Math.min(measuredX[0], measuredX.at(-1)), maxX: Math.max(measuredX[0], measuredX.at(-1)),
+        minY: Math.min(measuredY[0], measuredY.at(-1)), maxY: Math.max(measuredY[0], measuredY.at(-1)),
+    };
+    const machineBounds = { minX: limits.minX, maxX: limits.maxX, minY: limits.minY, maxY: limits.maxY };
+    if (!Object.values(machineBounds).every(Number.isFinite)
+        || machineBounds.minX > measuredBounds.minX || machineBounds.maxX < measuredBounds.maxX
+        || machineBounds.minY > measuredBounds.minY || machineBounds.maxY < measuredBounds.maxY) {
+        throw new Error('The measured grid does not fit inside the controller-reported machine XY travel.');
+    }
+    const combine = (minimum, samples, maximum) => {
+        return [...new Set([minimum, ...samples, maximum].map((value) => roundTo(value, 4)))].sort((a, b) => a - b);
+    };
+    const xPositions = combine(machineBounds.minX, measuredX, machineBounds.maxX);
+    const yPositions = combine(machineBounds.minY, measuredY, machineBounds.maxY);
+    const xIndex = new Map(measuredX.map((value, index) => [value.toFixed(4), index]));
+    const yIndex = new Map(measuredY.map((value, index) => [value.toFixed(4), index]));
+    const paddedZ = yPositions.map((y) => xPositions.map((x) => {
+        const ix = xIndex.get(x.toFixed(4));
+        const iy = yIndex.get(y.toFixed(4));
+        return ix === undefined || iy === undefined ? baselineZ : z[iy][ix];
+    }));
+    return {
+        // Keep the measured front-left as the map origin so existing G-code
+        // placement remains tied to the material, while the coordinate axes
+        // cover the controller's full signed machine travel.
+        originX: measuredBounds.minX, originY: measuredBounds.minY,
+        lengthX: measuredBounds.maxX - measuredBounds.minX, lengthY: measuredBounds.maxY - measuredBounds.minY,
+        pointsX: xPositions.length, pointsY: yPositions.length,
+        xPositions, yPositions, z: paddedZ, baselineZ, probeBounds: measuredBounds, machineBounds,
+        probeCellX: (measuredBounds.maxX - measuredBounds.minX) / Math.max(1, measuredX.length - 1),
+        probeCellY: (measuredBounds.maxY - measuredBounds.minY) / Math.max(1, measuredY.length - 1),
+        directionX: 1, directionY: 1,
+    };
+}
+
+function roundTo(value, places) {
+    return Number(Number(value).toFixed(places));
+}
+
 export function validateMachineTarget({ x, y }, limits) {
     if (![limits.maxX, limits.maxY].every((limit) => Number.isFinite(limit) && limit > 0)) {
         throw new Error('Could not read valid machine XY travel limits from $130/$131.');
@@ -152,6 +201,33 @@ export function computeG54ForMapOrigin(mapOrigin, bounds, g92 = [0, 0, 0]) {
 
 export function interpolate(map, x, y) {
     const { originX, originY, lengthX, lengthY, pointsX, pointsY, z } = map;
+    if (Array.isArray(map.xPositions) && Array.isArray(map.yPositions)) {
+        const xAxis = map.xPositions;
+        const yAxis = map.yPositions;
+        const eps = 1e-7;
+        if (x < xAxis[0] - eps || x > xAxis.at(-1) + eps || y < yAxis[0] - eps || y > yAxis.at(-1) + eps) {
+            throw new Error(`Toolpath leaves mapped area at X${x.toFixed(3)} Y${y.toFixed(3)}.`);
+        }
+        const bounds = map.probeBounds;
+        if (bounds && (x < bounds.minX - eps || x > bounds.maxX + eps || y < bounds.minY - eps || y > bounds.maxY + eps)) {
+            return map.baselineZ;
+        }
+        const locate = (axis, value) => {
+            let low = 0, high = axis.length - 1;
+            while (high - low > 1) {
+                const mid = Math.floor((low + high) / 2);
+                if (axis[mid] <= value) low = mid;
+                else high = mid;
+            }
+            const index = Math.min(axis.length - 2, Math.max(0, low));
+            return { index, t: Math.min(1, Math.max(0, (value - axis[index]) / (axis[index + 1] - axis[index]))) };
+        };
+        const { index: x0, t: tx } = locate(xAxis, x);
+        const { index: y0, t: ty } = locate(yAxis, y);
+        const x1 = x0 + 1, y1 = y0 + 1;
+        const z00 = z[y0][x0], z10 = z[y0][x1], z01 = z[y1][x0], z11 = z[y1][x1];
+        return (z00 * (1 - tx) * (1 - ty)) + (z10 * tx * (1 - ty)) + (z01 * (1 - tx) * ty) + (z11 * tx * ty);
+    }
     const gx = ((x - originX) / (lengthX * (map.directionX ?? 1))) * (pointsX - 1);
     const gy = ((y - originY) / (lengthY * (map.directionY ?? 1))) * (pointsY - 1);
     if (gx < -1e-7 || gy < -1e-7 || gx > pointsX - 1 + 1e-7 || gy > pointsY - 1 + 1e-7) {
@@ -180,8 +256,8 @@ export function surfaceMapToStl(map) {
     }
     const referenceZ = Number.isFinite(map.referenceZ) ? map.referenceZ : z[0][0];
     const point = (ix, iy) => [
-        (lengthX * ix) / (pointsX - 1),
-        (lengthY * iy) / (pointsY - 1),
+        Array.isArray(map.xPositions) ? map.xPositions[ix] - map.xPositions[0] : (lengthX * ix) / (pointsX - 1),
+        Array.isArray(map.yPositions) ? map.yPositions[iy] - map.yPositions[0] : (lengthY * iy) / (pointsY - 1),
         z[iy][ix] - referenceZ,
     ];
     const fmt = (value) => Number(value.toFixed(6)).toString();
@@ -268,8 +344,8 @@ export function compensateGcode(source, map, workOffset = { x: 0, y: 0 }, active
     const unsupported = /(?:^|\s)G\s*(?:20|28|30|38\.[0-9]+|5[3]|5[4-9]\.\d+|8[0-9]|9[1]|9[2](?:\.\d+)?|10|50|51|52|54\.1|68|69|93)(?:\s|$)/i;
     const rows = [];
     let x = initialWorkPosition?.x ?? null, y = initialWorkPosition?.y ?? null, z = null, motion = null, feed = null, units = null, absolute = null;
-    const dx = map.lengthX / (map.pointsX - 1);
-    const dy = map.lengthY / (map.pointsY - 1);
+    const dx = map.probeCellX ?? (map.lengthX / (map.pointsX - 1));
+    const dy = map.probeCellY ?? (map.lengthY / (map.pointsY - 1));
     const maxSegment = Math.max(0.1, Math.min(dx, dy) / 2);
 
     for (const raw of source.replace(/^\uFEFF/, '').split(/\r?\n/)) {

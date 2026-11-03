@@ -2,7 +2,7 @@
 
 **Latest release package:** [Download surface-height-map-v0.1.36.zip?updated=20261102](https://github.com/bakstaaj/gSender-Plugins/releases/download/surface-height-map-v0.1.36/surface-height-map-v0.1.36.zip?updated=20261102)
 
-Surface Height Map is a community gSender plugin for measuring a work surface at a regular grid of probe points, then applying those readings to a supported G-code toolpath. Calibration is saved independently of any one job, so you can map the material or spoilboard once and use that map to preprocess files whose XY footprint fits inside the mapped area.
+Surface Height Map is a community gSender plugin for measuring a work surface at a regular grid of probe points, then applying those readings to a supported G-code toolpath. Calibration is saved independently of any one job. The measured material grid is extended to the controller's full machine XY travel; unprobed areas use the original WPOS Z0 probe reading as their height baseline.
 
 The plugin creates and loads a **new compensated copy**. It does not edit the selected source file. Its first supported workflow targets metric, absolute, linear G-code on GRBL-compatible machines.
 
@@ -10,7 +10,7 @@ The plugin creates and loads a **new compensated copy**. It does not edit the se
 
 *This earlier setup screenshot shows 140 × 100 mm and 5 × 5 samples. The current branch adds a homing, jog, WPOS touch-off, and calibration sequence; fresh-install map defaults are 150 × 110 mm and 15 × 11 points.*
 
-The WPOS-first workflow homes (or accepts gSender's existing homed state), provides bounded XYZ jog buttons, and probes the selected work origin before calibration. That touch-off sets G54 to WPOS X0 Y0 Z0 and retracts to a positive height above the measured surface. The map then scans front-left to back-right regardless of whether the chosen WPOS origin is a corner or the center. The complete grid is checked against signed machine travel before probing. `$23` determines the machine travel limits; it does not reverse the work-coordinate scan. The calibration log retains motion commands, controller replies, probe reports, and errors across restarts.
+The WPOS-first workflow homes (or accepts gSender's existing homed state), provides bounded XYZ jog buttons, and probes the selected work origin before calibration. That touch-off sets G54 to WPOS X0 Y0 Z0 and retracts to a positive height above the measured surface. The map then scans front-left to back-right regardless of whether the chosen WPOS origin is a corner or the center. The complete measured grid is checked against signed machine travel before probing. After probing, the stored map covers the full signed X/Y travel from `$23`, `$130`, and `$131`; every area outside the measured grid uses the WPOS origin Z0 probe value. `$23` determines the machine travel limits; it does not reverse the work-coordinate scan. The calibration log retains motion commands, controller replies, probe reports, and errors across restarts.
 
 ## What it does
 
@@ -84,7 +84,7 @@ The package includes the README screenshots so the relative image links work whe
 
 Settings are saved in gSender plugin storage as they are changed. More samples improve spatial detail but increase the number of machine moves and calibration time. A 15 × 11 grid requires 165 measured points.
 
-Set Length X and Width Y to the full material area you want to measure. The selected WPOS corner makes the area extend from that corner across the full dimensions; Center places half the dimensions on either side of WPOS X0 Y0. The plugin scans the physical grid front-left to back-right and checks it against `$130`/`$131`/`$132` interpreted using `$23`.
+Set Length X and Width Y to the material area you want to measure. The selected WPOS corner makes the area extend from that corner across the full dimensions; Center places half the dimensions on either side of WPOS X0 Y0. The plugin scans the physical grid front-left to back-right and checks it against `$130`/`$131`/`$132` interpreted using `$23`. After a successful calibration, map coverage is extended to the full machine XY travel from `$130`/`$131`; positions outside the probed material rectangle return the original WPOS Z0 probe reading, so compensation outside the measured rectangle applies zero surface correction.
 
 ### 2. Home, jog, and probe the WPOS origin
 
@@ -115,7 +115,7 @@ Keep the spindle off and remain at the machine during all automatic motion. If a
 
 ## Read and export the saved map
 
-The saved-map panel reports the dimensions, sample count, captured machine origin, capture time, and measured minimum/maximum/range. The 3D-style plot colors low-to-high measurements and connects the measured grid points. Adjust **Vertical exaggeration** to make small height changes easier to see; it affects the drawing only and does not change map data or compensation.
+The saved-map panel reports full machine coverage, the probed material dimensions, captured WPOS origin, capture time, and measured minimum/maximum/range. The 3D-style plot colors low-to-high measurements and connects the measured and baseline-filled grid points. Adjust **Vertical exaggeration** to make small height changes easier to see; it affects the drawing only and does not change map data or compensation.
 
 ### Save the prepared STL as a file
 
@@ -134,9 +134,9 @@ The plugin SDK used by current gSender Edge builds can persist plugin data, but 
 
 *After clicking **Copy STL text**, paste the clipboard contents into a plain-text editor and save using the displayed `.stl` filename. If clipboard access is blocked, the plugin selects the complete text in its text area; press Ctrl+C, then paste and save it manually.*
 
-The STL record is limited by the current gSender plugin storage bridge to 256 KiB per value. If a dense grid exceeds this cap, the plugin reports the size instead of claiming it was prepared. Reduce the X/Y sample counts and recalibrate to create a smaller mesh. The mesh uses the captured map origin as X/Y zero: its bounds span Length X and Width Y in millimetres at 1:1 scale. Each vertex's Z is the measured height change relative to the first probe reading. Preview exaggeration is not applied.
+The STL record is limited by the current gSender plugin storage bridge to 256 KiB per value. If a dense grid exceeds this cap, the plugin reports the size instead of claiming it was prepared. Reduce the X/Y sample counts and recalibrate to create a smaller mesh. The mesh spans the controller's full machine XY travel at 1:1 scale. Each vertex's Z is the height relative to the WPOS origin Z0 probe reading; unprobed areas are flat at that baseline. Preview exaggeration is not applied.
 
-The mesh uses the captured map origin as X/Y zero: its bounds span the configured Length X and Width Y in millimetres at 1:1 scale. Each vertex's Z is the measured height change relative to the first probe reading, also in millimetres. The preview's vertical exaggeration setting affects only the on-screen visualization and is not applied to the export.
+The mesh uses the machine's minimum X/Y coordinates as its local X/Y zero and spans the full reported travel at 1:1 scale. Its Z values are relative to the original WPOS Z0 probe reading. The preview's vertical exaggeration setting affects only the on-screen visualization and is not applied to the export.
 
 The STL is an open surface mesh with no side walls or bottom face. It is useful for inspecting or combining the measured surface in CAD/CAM software, but it is not a closed solid for 3D printing without additional modeling. The export is generated from the saved map and does not modify the map or the selected G-code file.
 

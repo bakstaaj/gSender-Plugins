@@ -39,7 +39,7 @@
         <div class="grid fields settings-grid retract-grid">
           <label class="full-retract-field" title="Clearance height above the probed WPOS Z0 surface, used before moving between XY points. Increase this for warped parts; it must remain within the machine's Z travel.">Full Retract Height (WPOS +Z mm)<input id="fullRetract" type="number" min="0.1" step="0.1" value="10"></label>
         </div>
-        <p id="mapSizeHint" class="hint map-size-hint">Set Length X and Width Y to the full area to probe. The origin selector places WPOS zero at a corner or center; the measured grid always spans the full area and scans front-left to back-right.</p>
+        <p id="mapSizeHint" class="hint map-size-hint">Set Length X and Width Y to the material area to probe. The origin selector places WPOS zero at a corner or center; the measured grid scans front-left to back-right. After probing, the map covers the full machine XY travel from $130/$131 and uses the WPOS origin Z0 probe value everywhere outside the measured grid.</p>
         <fieldset title="Choose how the probe makes contact at each measured point."><legend>Probe type</legend>
           <label class="inline" title="Conductive surface: attach the clip once and leave it connected for the whole calibration. The plugin prompts you to confirm the clip is attached."><input type="radio" name="surfaceType" value="conductive" checked> Conductive</label>
           <label class="inline" title="Puck: use a conductive probe puck on non-conductive material. The plugin pauses at every point so you can move it; enter its thickness above."><input type="radio" name="surfaceType" value="puck"> Puck</label>

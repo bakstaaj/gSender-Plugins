@@ -1,5 +1,5 @@
 import { gcode, getReduxState, machine, storage, workspace } from '@sienci/gsender-plugin-sdk';
-import { DEFAULTS, appendMachineOriginReturn, compensateGcode, computeG54ForMapOrigin, computePostProbeRetract, makeStlExportRecord, parseAbsoluteXYBounds, parseProbePosition, parseTravelLimits, parseWorkOffsetLine, validateMachineTarget, validateMap } from './heightmap.js';
+import { DEFAULTS, appendMachineOriginReturn, compensateGcode, computeG54ForMapOrigin, computePostProbeRetract, extendMapToMachineTravel, makeStlExportRecord, parseAbsoluteXYBounds, parseProbePosition, parseTravelLimits, parseWorkOffsetLine, validateMachineTarget, validateMap } from './heightmap.js';
 import './style.css';
 
 const $ = (id) => document.getElementById(id);
@@ -49,11 +49,15 @@ function drawSurfaceMap() {
     ctx.clearRect(0, 0, width, height);
     const nx = map.pointsX;
     const ny = map.pointsY;
+    const xStart = map.xPositions?.[0] ?? map.originX;
+    const yStart = map.yPositions?.[0] ?? map.originY;
+    const xSpan = map.xPositions ? map.xPositions.at(-1) - xStart : map.lengthX;
+    const ySpan = map.yPositions ? map.yPositions.at(-1) - yStart : map.lengthY;
     const span = Math.min(width * 0.40, height * 0.34);
     const lift = Math.min(height * 0.28, span * factor * 0.08);
     const points = map.z.map((row, iy) => row.map((z, ix) => {
-        const u = ix / (nx - 1);
-        const v = iy / (ny - 1);
+        const u = map.xPositions ? (map.xPositions[ix] - xStart) / xSpan : ix / (nx - 1);
+        const v = map.yPositions ? (map.yPositions[iy] - yStart) / ySpan : iy / (ny - 1);
         const level = range > 0 ? (z - min) / range : 0.5;
         return { x: width / 2 + (u - v) * span, y: height * 0.32 + (u + v) * span * 0.43 - level * lift, level };
     }));
@@ -318,9 +322,17 @@ async function refreshUi() {
     $('homeLabel').textContent = homed
         ? 'Machine already homed'
         : state.controllerHomed ? 'Machine homed · waiting for Idle position' : 'Machine not homed';
-    $('mapSummary').textContent = state.map
-        ? `${state.map.lengthX} × ${state.map.lengthY} mm · ${state.map.pointsX} × ${state.map.pointsY} points · captured at machine X${state.map.originX.toFixed(3)} Y${state.map.originY.toFixed(3)} · ${new Date(state.map.createdAt).toLocaleString()}`
-        : 'No height map saved.';
+    if (state.map?.machineBounds) {
+        const { minX, maxX, minY, maxY } = state.map.machineBounds;
+        const probed = state.map.probeBounds
+            ? `${(state.map.probeBounds.maxX - state.map.probeBounds.minX).toFixed(1)} × ${(state.map.probeBounds.maxY - state.map.probeBounds.minY).toFixed(1)} mm probed`
+            : `${state.map.lengthX} × ${state.map.lengthY} mm probed`;
+        $('mapSummary').textContent = `${(maxX - minX).toFixed(1)} × ${(maxY - minY).toFixed(1)} mm machine coverage · ${probed} · ${state.map.pointsX} × ${state.map.pointsY} grid nodes · WPOS origin at machine X${(state.map.wposOriginMachineX ?? state.map.originX).toFixed(3)} Y${(state.map.wposOriginMachineY ?? state.map.originY).toFixed(3)} · ${new Date(state.map.createdAt).toLocaleString()}`;
+    } else {
+        $('mapSummary').textContent = state.map
+            ? `${state.map.lengthX} × ${state.map.lengthY} mm · ${state.map.pointsX} × ${state.map.pointsY} points · captured at machine X${state.map.originX.toFixed(3)} Y${state.map.originY.toFixed(3)} · ${new Date(state.map.createdAt).toLocaleString()}`
+            : 'No height map saved.';
+    }
     drawSurfaceMap();
 }
 
@@ -745,7 +757,6 @@ async function calibrate() {
         await refreshUi();
         const flat = grid.flat();
         const measured = Array.from({ length: settings.pointsY }, () => Array(settings.pointsX));
-        let firstZ = null;
         for (let index = 0; index < flat.length; index += 1) {
             if (state.stopRequested) break;
             const point = flat[index];
@@ -768,7 +779,6 @@ async function calibrate() {
             await waitIdle();
             setNotice(`Point ${index + 1}/${flat.length} saved. Retract complete; moving to the next point…`);
             measured[point.iy][point.ix] = round(probe.z);
-            if (firstZ === null) firstZ = probe.z;
             $('progress').value = (index + 1) / flat.length;
         }
         if (state.stopRequested) throw new Error('Calibration stopped at a point boundary. Partial measurements were discarded; the previous saved map remains available.');
@@ -778,14 +788,15 @@ async function calibrate() {
         await waitIdle();
         await sendAndWait('G90 G53 G0 X0 Y0');
         await waitIdle();
+        const baselineZ = round(state.wposOrigin.surfaceMachineZ - (settings.surfaceType === 'puck' ? settings.puckThickness : 0));
+        const fullTravelMap = extendMapToMachineTravel(grid, measured, limits, baselineZ);
         state.map = {
-            originX: gridOrigin.x, originY: gridOrigin.y,
-            directionX: 1, directionY: 1,
-            lengthX: settings.lengthX, lengthY: settings.lengthY,
-            pointsX: settings.pointsX, pointsY: settings.pointsY,
+            ...fullTravelMap,
+            wposOriginMachineX: wposMachine.x, wposOriginMachineY: wposMachine.y,
             surfaceType: settings.surfaceType, puckThickness: settings.puckThickness,
-            referenceZ: round(firstZ), z: measured, createdAt: new Date().toISOString(),
+            referenceZ: baselineZ, createdAt: new Date().toISOString(),
         };
+        await logCalibration(`Extended map to machine XY travel X${limits.minX.toFixed(3)}..${limits.maxX.toFixed(3)}, Y${limits.minY.toFixed(3)}..${limits.maxY.toFixed(3)}. Every point outside the measured material grid uses the WPOS origin Z0 probe baseline ${baselineZ.toFixed(3)}.`);
         await storage.set('heightMap', state.map);
         await storage.delete('stlExport');
         state.stlExport = null;
