@@ -303,8 +303,11 @@ async function readTravelLimits() {
                 const pullOffMatch = pullOffLine?.match(/^\s*\$?27\s*=\s*(-?(?:\d+(?:\.\d*)?|\.\d+))(?:\s|$)/i);
                 const pullOff = pullOffMatch ? Number(pullOffMatch[1]) : 0;
                 if (hardLimitsEnabled && Number.isFinite(pullOff) && pullOff > 0) {
-                    limits.minZ += pullOff;
-                    limits.maxZPosition -= pullOff;
+                    // $132 is measured from the post-homing position. Keep
+                    // that Z=0 home endpoint valid and reserve pull-off at
+                    // the far end, where the remaining axis travel is shorter.
+                    if (limits.zHomePositive) limits.minZ += pullOff;
+                    else limits.maxZPosition -= pullOff;
                     if (limits.minZ >= limits.maxZPosition) throw new Error('$27 homing pull-off leaves no usable Z travel within $132=' + limits.maxZ + ' mm.');
                 }
                 await logCalibration('Controller Z travel: ' + limits.minZ + '..' + limits.maxZPosition + (hardLimitsEnabled && pullOff > 0 ? ' ($27=' + pullOff + ' mm pull-off clearance applied)' : '.') );
@@ -839,14 +842,19 @@ async function probeWposOrigin() {
             throw new Error('Machine position changed while preparing the origin probe. Return to the selected origin and try again.');
         }
         const retractDirection = limits.zHomePositive ? 1 : -1;
-        const probeStartMachineZ = round(ready.mpos[2] + retractDirection * settings.fullRetract);
+        const homeZLimit = limits.zHomePositive ? limits.maxZPosition : limits.minZ;
+        const requestedProbeStartMachineZ = ready.mpos[2] + retractDirection * settings.fullRetract;
+        const probeStartMachineZ = round(limits.zHomePositive
+            ? Math.min(requestedProbeStartMachineZ, homeZLimit)
+            : Math.max(requestedProbeStartMachineZ, homeZLimit));
         if (probeStartMachineZ < limits.minZ || probeStartMachineZ > limits.maxZPosition) {
             throw new Error(`Cannot back Z off by the configured Full Retract Height (${settings.fullRetract.toFixed(3)} mm) before probing: machine Z${probeStartMachineZ.toFixed(3)} would be outside travel ${limits.minZ}..${limits.maxZPosition} mm. Jog Z farther from its home end, then try again.`);
         }
         await machine.setBusy(true, 'Probe WPOS origin and set G54 zero');
-        await logCalibration(`WPOS origin pre-probe back-off: machine Z${ready.mpos[2].toFixed(3)} to Z${probeStartMachineZ.toFixed(3)} (${settings.fullRetract.toFixed(3)} mm toward the Z home end).`);
-        await sendAndWait(`G90 G53 G0 Z${probeStartMachineZ.toFixed(3)}`);
-        const backedOff = await waitIdle();
+        const actualBackoff = Math.abs(probeStartMachineZ - ready.mpos[2]);
+        await logCalibration(`WPOS origin pre-probe back-off: machine Z${ready.mpos[2].toFixed(3)} to Z${probeStartMachineZ.toFixed(3)} (${actualBackoff.toFixed(3)} mm toward the Z home end${actualBackoff + 0.001 < settings.fullRetract ? '; limited by the homed Z travel boundary' : ''}).`);
+        if (actualBackoff > 0.001) await sendAndWait(`G90 G53 G0 Z${probeStartMachineZ.toFixed(3)}`);
+        const backedOff = actualBackoff > 0.001 ? await waitIdle() : ready;
         if (backedOff.mpos.slice(0, 2).some((value, index) => Math.abs(value - ready.mpos[index]) > 0.05)
             || Math.abs(backedOff.mpos[2] - probeStartMachineZ) > 0.1) {
             throw new Error('Machine did not reach the expected safe Z height before the WPOS origin probe.');
