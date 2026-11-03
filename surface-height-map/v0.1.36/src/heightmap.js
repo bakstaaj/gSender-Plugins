@@ -4,7 +4,6 @@ export const DEFAULTS = Object.freeze({
     pointsX: 15,
     pointsY: 11,
     fullRetract: 10,
-    probeTravel: 25.5,
     fastFeed: 100,
     slowFeed: 20,
     slowTravel: 3,

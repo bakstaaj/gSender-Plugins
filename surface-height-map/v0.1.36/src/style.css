@@ -56,8 +56,10 @@ footer { opacity: .65; margin: 22px 0; font-size: .9em; }
 #stlText { box-sizing: border-box; width: 100%; min-height: 220px; margin: 8px 0; font-family: ui-monospace, monospace; font-size: 12px; white-space: pre; }
 .start-position { justify-content: flex-start; margin-top: 10px; }
 .start-position label { flex: 1 1 150px; max-width: 220px; }
-.origin-jog-layout { display: grid; grid-template-columns: minmax(220px, 1fr) minmax(260px, 1.2fr); gap: 14px; align-items: stretch; }
+.origin-jog-layout { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; align-items: stretch; }
 .origin-jog-layout fieldset { margin: 8px 0; padding: 10px 14px; }
+.probe-type-options { display: block; }
+.probe-type-options label.inline { display: inline-flex; vertical-align: middle; margin: 4px 24px 4px 0; }
 .origin-picker .hint { margin: 2px 0 10px; }
 .origin-grid { display: grid; grid-template-columns: repeat(3, minmax(72px, 1fr)); grid-template-rows: repeat(3, 62px); grid-template-areas: "rear-left . rear-right" ". center ." "front-left . front-right"; max-width: 320px; margin: auto; }
 .origin-point { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 3px; cursor: pointer; }
@@ -69,10 +71,15 @@ footer { opacity: .65; margin: 22px 0; font-size: .9em; }
 .origin-point input:focus-visible + span { outline: 2px solid #fff; outline-offset: 3px; }
 .origin-point em { font-size: .75em; font-style: normal; opacity: .8; white-space: nowrap; }
 .jog-controls > label { margin: 4px 0; }
-.jog-controls select { max-width: 120px; padding: 6px; font: inherit; }
-.jog-pad { display: grid; grid-template-columns: repeat(4, minmax(44px, 60px)); grid-template-rows: repeat(3, 42px); gap: 6px; justify-content: center; margin: 8px 0; }
+.jog-controls select { max-width: 190px; padding: 6px; font: inherit; }
+.jog-panel { min-width: 0; width: 100%; }
+.jog-pad { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(140px, .8fr); gap: 14px; align-items: center; max-width: 440px; margin: 8px auto; }
 .jog-pad button { padding: 4px; }
-#jogYPlus { grid-column: 2; grid-row: 1; } #jogXMinus { grid-column: 1; grid-row: 2; }
-#jogXPlus { grid-column: 3; grid-row: 2; } #jogYMinus { grid-column: 2; grid-row: 3; }
-#jogZPlus { grid-column: 4; grid-row: 1; } #jogZMinus { grid-column: 4; grid-row: 2; }
+.xy-jog-pad { display: grid; grid-template-columns: repeat(3, minmax(44px, 60px)); grid-template-rows: repeat(3, 42px); gap: 6px; justify-content: center; }
+.xy-jog-pad #jogYPlus { grid-column: 2; grid-row: 1; } .xy-jog-pad #jogXMinus { grid-column: 1; grid-row: 2; }
+.xy-jog-pad #jogXPlus { grid-column: 3; grid-row: 2; } .xy-jog-pad #jogYMinus { grid-column: 2; grid-row: 3; }
+.z-jog-pad { display: grid; grid-template-rows: auto repeat(3, 42px); gap: 6px; }
+.home-control { display: flex; flex-direction: column; gap: 4px; align-items: stretch; text-align: center; font-size: .85em; }
+.z-jog-pad #probeWpos { padding: 4px 6px; white-space: nowrap; }
 @media (max-width: 620px) { .origin-jog-layout { grid-template-columns: 1fr; } }
+@media (max-width: 420px) { .jog-pad { grid-template-columns: 1fr; } }

@@ -4,8 +4,8 @@ import './style.css';
 
 const $ = (id) => document.getElementById(id);
 const SHORT_RETRACT_MM = 2;
-const fields = ['lengthX', 'lengthY', 'pointsX', 'pointsY', 'fullRetract', 'probeTravel', 'fastFeed', 'slowFeed', 'slowTravel', 'puckThickness'];
-const state = { origin: null, wposOrigin: null, homeMachineZ: null, controllerHomed: false, adoptingHomedPosition: false, probeParserSequence: 0, offsetParserSequence: 0, map: null, stlExport: null, file: null, busy: false, stopRequested: false, abortPuck: null };
+const fields = ['lengthX', 'lengthY', 'pointsX', 'pointsY', 'fullRetract', 'fastFeed', 'slowFeed', 'slowTravel', 'puckThickness'];
+const state = { origin: null, wposOrigin: null, homeMachineZ: null, controllerHomed: false, adoptingHomedPosition: false, probeParserSequence: 0, offsetParserSequence: 0, map: null, stlExport: null, file: null, busy: false, stopRequested: false, abortPuck: null, continuousJog: null };
 const setNotice = (message, kind = '') => { $('notice').textContent = message; $('notice').className = kind; };
 const setApplyStatus = (message, kind = '') => { $('applyStatus').textContent = message; $('applyStatus').className = kind; };
 const n = (id) => Number($(id).value);
@@ -28,7 +28,22 @@ function drawSurfaceMap() {
     const map = state.map;
     panel.hidden = !map;
     if (!map) return;
-    const values = map.z.flat();
+    let surface = map.measuredSurface;
+    if (!surface && map.probeBounds && map.xPositions && map.yPositions) {
+        const measuredIndices = (axis, min, max, start) => {
+            const indices = axis.map((value, index) => ({ value, index }))
+                .filter(({ value }) => value >= min - 1e-4 && value <= max + 1e-4);
+            if (indices.length && Number.isFinite(start) && Math.abs(indices.at(-1).value - start) < Math.abs(indices[0].value - start)) indices.reverse();
+            return indices;
+        };
+        const xs = measuredIndices(map.xPositions, map.probeBounds.minX, map.probeBounds.maxX, map.probeStart?.x);
+        const ys = measuredIndices(map.yPositions, map.probeBounds.minY, map.probeBounds.maxY, map.probeStart?.y);
+        if (xs.length > 1 && ys.length > 1) {
+            surface = { z: ys.map(({ index: iy }) => xs.map(({ index: ix }) => map.z[iy][ix])) };
+        }
+    }
+    const surfaceZ = surface?.z ?? map.z;
+    const values = surfaceZ.flat();
     if (!values.length || values.some((value) => !Number.isFinite(value))) return;
     const min = Math.min(...values);
     const max = Math.max(...values);
@@ -47,19 +62,17 @@ function drawSurfaceMap() {
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     ctx.clearRect(0, 0, width, height);
-    const nx = map.pointsX;
-    const ny = map.pointsY;
-    const xStart = map.xPositions?.[0] ?? map.originX;
-    const yStart = map.yPositions?.[0] ?? map.originY;
-    const xSpan = map.xPositions ? map.xPositions.at(-1) - xStart : map.lengthX;
-    const ySpan = map.yPositions ? map.yPositions.at(-1) - yStart : map.lengthY;
-    const span = Math.min(width * 0.40, height * 0.34);
-    const lift = Math.min(height * 0.28, span * factor * 0.08);
-    const points = map.z.map((row, iy) => row.map((z, ix) => {
-        const u = map.xPositions ? (map.xPositions[ix] - xStart) / xSpan : ix / (nx - 1);
-        const v = map.yPositions ? (map.yPositions[iy] - yStart) / ySpan : iy / (ny - 1);
+    const ny = surfaceZ.length;
+    const nx = surfaceZ[0].length;
+    const span = Math.min(width * 0.38, height * 0.34);
+    const lift = Math.min(height * 0.24, span * factor * 0.08);
+    const frontY = height * 0.78;
+    const firstLevel = range > 0 ? (surfaceZ[0][0] - min) / range : 0.5;
+    const points = surfaceZ.map((row, iy) => row.map((z, ix) => {
+        const u = ix / (nx - 1);
+        const v = iy / (ny - 1);
         const level = range > 0 ? (z - min) / range : 0.5;
-        return { x: width / 2 + (u - v) * span, y: height * 0.32 + (u + v) * span * 0.43 - level * lift, level };
+        return { x: width / 2 + (u - v) * span, y: frontY - (u + v) * span * 0.43 - (level - firstLevel) * lift, level };
     }));
     const color = (level) => {
         const stops = [[36, 91, 219], [25, 185, 165], [184, 214, 60], [245, 140, 50], [216, 56, 56]];
@@ -93,10 +106,44 @@ function drawSurfaceMap() {
         ctx.fill();
     }
     ctx.font = '12px system-ui, sans-serif';
-    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
     ctx.fillStyle = getComputedStyle(canvas).color;
-    ctx.fillText('X', width / 2 + span + 14, height * 0.32 + span * 0.43);
-    ctx.fillText('Y', width / 2 - span - 14, height * 0.32 + span * 0.43);
+    const interpolatePoint = (xPosition, yPosition) => {
+        const x0 = Math.floor(xPosition);
+        const y0 = Math.floor(yPosition);
+        const x1 = Math.min(nx - 1, x0 + 1);
+        const y1 = Math.min(ny - 1, y0 + 1);
+        const tx = xPosition - x0;
+        const ty = yPosition - y0;
+        const blend = (a, b, t) => a + (b - a) * t;
+        return {
+            x: blend(blend(points[y0][x0].x, points[y0][x1].x, tx), blend(points[y1][x0].x, points[y1][x1].x, tx), ty),
+            y: blend(blend(points[y0][x0].y, points[y0][x1].y, tx), blend(points[y1][x0].y, points[y1][x1].y, tx), ty),
+        };
+    };
+    const corner = map.wposOriginCorner ?? 'front-left';
+    const originIndices = {
+        'front-left': [0, 0],
+        'front-right': [nx - 1, 0],
+        'rear-left': [0, ny - 1],
+        'rear-right': [nx - 1, ny - 1],
+        center: [(nx - 1) / 2, (ny - 1) / 2],
+    };
+    const [originXIndex, originYIndex] = originIndices[corner] ?? originIndices['front-left'];
+    const originPoint = interpolatePoint(originXIndex, originYIndex);
+    const xPoint = points[0][nx - 1];
+    const yPoint = points[ny - 1][0];
+    ctx.beginPath();
+    ctx.arc(originPoint.x, originPoint.y, 4.5, 0, Math.PI * 2);
+    ctx.strokeStyle = 'rgba(255,255,255,0.95)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+    ctx.textAlign = 'left';
+    ctx.fillText('0,0', originPoint.x + 9, originPoint.y - 10);
+    ctx.textAlign = 'left';
+    ctx.fillText('X', xPoint.x + 9, xPoint.y - 4);
+    ctx.textAlign = 'right';
+    ctx.fillText('Y', yPoint.x - 9, yPoint.y - 4);
 }
 
 function currentSettings() {
@@ -309,8 +356,10 @@ async function refreshUi() {
     $('connection').dataset.connected = String(connected);
     $('home').disabled = !connected || state.busy || homed;
     $('originSelector').disabled = !homed || state.busy;
-    $('jogControls').disabled = !homed || state.busy || Boolean(state.wposOrigin);
-    $('probeWpos').disabled = !homed || state.busy;
+    const jogDisabled = !homed || (state.busy && !state.continuousJog) || Boolean(state.wposOrigin);
+    $('jogStep').disabled = jogDisabled;
+    for (const id of ['jogXMinus', 'jogXPlus', 'jogYMinus', 'jogYPlus', 'jogZMinus', 'jogZPlus']) $(id).disabled = jogDisabled;
+    $('probeWpos').disabled = !homed || state.busy || Boolean(state.wposOrigin);
     $('calibrate').disabled = !homed || state.busy || !state.wposOrigin;
     $('stop').disabled = !state.busy;
     $('compensate').disabled = !state.map || !state.file || state.busy;
@@ -485,10 +534,8 @@ function safeProbeTravel(distance, stage, pointLabel, currentZ, limits) {
 
 async function probeAt(settings, point, index, total, limits, startingZ) {
     const pointLabel = `point ${index + 1}/${total} (X${point.x.toFixed(3)} Y${point.y.toFixed(3)})`;
-    const fastTravel = safeProbeTravel(settings.probeTravel, 'Fast probe', pointLabel, startingZ, limits);
-    setNotice(fastTravel < settings.probeTravel
-        ? `Fast probe at ${pointLabel}: limiting travel to ${fastTravel.toFixed(3)} mm to stay inside Z travel. Keep hands clear.`
-        : `Fast probe on ${pointLabel}… keep hands clear.`);
+    const fastTravel = safeProbeTravel(limits.maxZ, 'Fast probe', pointLabel, startingZ, limits);
+    setNotice(`Fast probe on ${pointLabel}: up to ${fastTravel.toFixed(3)} mm available before the machine Z limit. Keep hands clear.`);
     const fastProbe = await queryProbe(`G91 G38.2 Z-${fastTravel} F${settings.fastFeed}`, 45000, `Fast probe on ${pointLabel}`);
     const interimRetract = computePostProbeRetract(fastProbe.z, limits.maxZPosition, SHORT_RETRACT_MM);
     setNotice(`Fast contact found on ${pointLabel}. Retracting ${interimRetract.toFixed(3)} mm before the slow touch…`);
@@ -547,7 +594,6 @@ function validateSettings(s, limits, wposZeroMachineZ = null) {
             throw new Error(`Full Retract Height ${s.fullRetract.toFixed(3)} mm places machine Z at ${retractMachineZ.toFixed(3)} mm, outside the reported Z travel ${limits.minZ}..${limits.maxZPosition} mm. Reduce the height or choose an origin with more Z clearance.`);
         }
     }
-    if (s.probeTravel <= 0 || s.probeTravel > limits.maxZ) throw new Error(`Probe travel must be greater than zero and no more than the Z travel limit ${limits.maxZ} mm.`);
     if (s.slowTravel <= SHORT_RETRACT_MM) throw new Error(`Slow probe travel must be greater than the fixed ${SHORT_RETRACT_MM} mm short retract.`);
     if (s.fastFeed <= 0 || s.slowFeed <= 0) throw new Error('Probe feeds must be greater than zero.');
     if (s.puckThickness < 0) throw new Error('Probe puck thickness cannot be negative.');
@@ -615,6 +661,66 @@ async function jogMachine(axis, sign) {
     }
 }
 
+async function startContinuousJog(axis, sign, inputEvent) {
+    if (state.busy || !state.controllerHomed || !['X', 'Y', 'Z'].includes(axis) || ![-1, 1].includes(sign)) return;
+    const jog = { axis, sign, pointerId: inputEvent?.pointerId ?? null, key: inputEvent?.key ?? null, stopRequested: false, commandSent: false, cancelSent: false };
+    state.continuousJog = jog;
+    invalidateWposOrigin('Machine jogged. Probe the selected WPOS origin again before calibration.');
+    state.busy = true;
+    await refreshUi();
+    let busySet = false;
+    try {
+        const snapshot = await statusSnapshot();
+        if (snapshot.state !== 'Idle') throw new Error(`Jogging requires an idle machine (current state: ${snapshot.state}).`);
+        const limits = await readTravelLimits();
+        const index = { X: 0, Y: 1, Z: 2 }[axis];
+        const travel = axis === 'X' ? { min: limits.minX, max: limits.maxX }
+            : axis === 'Y' ? { min: limits.minY, max: limits.maxY }
+                : { min: limits.minZ, max: limits.maxZPosition };
+        const position = snapshot.mpos[index];
+        const targetLimit = sign > 0 ? travel.max : travel.min;
+        const distance = Math.abs(targetLimit - position) - 0.1;
+        if (!Number.isFinite(distance) || distance <= 0.1) throw new Error(`${axis} is already at its machine travel limit.`);
+        if (jog.stopRequested) return;
+        await machine.setBusy(true, `Continuous jog ${axis} ${sign > 0 ? '+' : '−'}`);
+        busySet = true;
+        const signedDistance = (sign * distance).toFixed(3);
+        const command = `$J=G21 G91 ${axis}${signedDistance} F500`;
+        jog.commandSent = true;
+        await sendAndWait(command, 10000);
+        setNotice(`Continuously jogging ${axis} ${sign > 0 ? '+' : '−'}. Release the button to stop.`);
+        while (!jog.stopRequested) await pause(40);
+        await machine.command('gcode', '[\\x85]');
+        jog.cancelSent = true;
+        await logCalibration(`Continuous jog cancelled by release: ${axis} ${sign > 0 ? '+' : '−'}.`);
+        await waitIdle();
+        await sendAndWait('G90');
+        setNotice('Continuous jog stopped. Probe the selected WPOS origin again before calibration.', 'success');
+    } catch (error) {
+        if (jog.commandSent && !jog.cancelSent) {
+            try {
+                await machine.command('gcode', '[\\x85]');
+                jog.cancelSent = true;
+                await waitIdle();
+            } catch { /* preserve the motion error for the operator */ }
+        }
+        setNotice(error.message, 'error');
+    } finally {
+        state.continuousJog = null;
+        state.busy = false;
+        if (busySet) try { await machine.setBusy(false); } catch { /* machine disconnected during cleanup */ }
+        await refreshUi();
+    }
+}
+
+function requestContinuousJogStop(event = null) {
+    const jog = state.continuousJog;
+    if (!jog) return;
+    if (jog.pointerId !== null && event?.pointerId !== undefined && event.pointerId !== jog.pointerId) return;
+    if (jog.key && event?.key && event.key !== jog.key) return;
+    jog.stopRequested = true;
+}
+
 async function probeWposOrigin() {
     if (state.busy || !state.controllerHomed) return;
     state.wposOrigin = null;
@@ -646,7 +752,7 @@ async function probeWposOrigin() {
         }
         await machine.setBusy(true, 'Probe WPOS origin and set G54 zero');
         const pointLabel = `${corner.replace('-', ' ')} WPOS origin`;
-        const fastTravel = safeProbeTravel(settings.probeTravel, 'Origin fast probe', pointLabel, ready.mpos[2], limits);
+        const fastTravel = safeProbeTravel(limits.maxZ, 'Origin fast probe', pointLabel, ready.mpos[2], limits);
         const fastProbe = await queryProbe(`G91 G38.2 Z-${fastTravel} F${settings.fastFeed}`, 45000, `Origin fast probe (${pointLabel})`);
         const shortRetract = computePostProbeRetract(fastProbe.z, limits.maxZPosition, SHORT_RETRACT_MM);
         await sendAndWait(`G91 G0 Z${shortRetract.toFixed(3)}`);
@@ -733,7 +839,7 @@ async function calibrate() {
         const wposMachine = { x: round(state.wposOrigin.mpos[0]), y: round(state.wposOrigin.mpos[1]) };
         const gridOrigin = mapFrontLeftFromWposOrigin(wposMachine, state.wposOrigin.corner, settings.lengthX, settings.lengthY);
         const retractMachineZ = round(state.wposOrigin.surfaceMachineZ + settings.fullRetract);
-        await logCalibration(`Settings: $23=${limits.homingMask}; selected WPOS origin=${state.wposOrigin.corner} at machine X${wposMachine.x.toFixed(3)} Y${wposMachine.y.toFixed(3)}; map front-left X${gridOrigin.x.toFixed(3)} Y${gridOrigin.y.toFixed(3)}; scan front-left to back-right (+WPOS X/+WPOS Y); machine travel X=${limits.minX}..${limits.maxX}, Y=${limits.minY}..${limits.maxY}; Full Retract WPOS Z+${settings.fullRetract.toFixed(3)} / machine Z${retractMachineZ.toFixed(3)}; short retract=${SHORT_RETRACT_MM} mm; probe travel=${settings.probeTravel} mm.`);
+        await logCalibration(`Settings: $23=${limits.homingMask}; $132 max Z travel=${limits.maxZ} mm; selected WPOS origin=${state.wposOrigin.corner} at machine X${wposMachine.x.toFixed(3)} Y${wposMachine.y.toFixed(3)}; map front-left X${gridOrigin.x.toFixed(3)} Y${gridOrigin.y.toFixed(3)}; scan front-left to back-right (+WPOS X/+WPOS Y); machine travel X=${limits.minX}..${limits.maxX}, Y=${limits.minY}..${limits.maxY}; Full Retract WPOS Z+${settings.fullRetract.toFixed(3)} / machine Z${retractMachineZ.toFixed(3)}; short retract=${SHORT_RETRACT_MM} mm; fast probe travel is calculated from available Z travel per point.`);
         validateSettings(settings, limits, state.wposOrigin.surfaceMachineZ);
         if (initialStatus.mpos[2] < limits.minZ - 0.1 || initialStatus.mpos[2] > limits.maxZPosition + 0.1) throw new Error(`Current machine Z${initialStatus.mpos[2].toFixed(3)} is outside the reported Z travel ${limits.minZ}..${limits.maxZPosition} mm.`);
         const grid = validateMap({ originX: gridOrigin.x, originY: gridOrigin.y, lengthX: settings.lengthX, lengthY: settings.lengthY, pointsX: settings.pointsX, pointsY: settings.pointsY, directionX: 1, directionY: 1 }, limits);
@@ -792,6 +898,13 @@ async function calibrate() {
         const fullTravelMap = extendMapToMachineTravel(grid, measured, limits, baselineZ);
         state.map = {
             ...fullTravelMap,
+            probeStart: { x: round(grid[0][0].x), y: round(grid[0][0].y) },
+            measuredSurface: {
+                x: grid[0].map((point) => round(point.x)),
+                y: grid.map((row) => round(row[0].y)),
+                z: measured.map((row) => row.slice()),
+            },
+            wposOriginCorner: state.wposOrigin.corner,
             wposOriginMachineX: wposMachine.x, wposOriginMachineY: wposMachine.y,
             surfaceType: settings.surfaceType, puckThickness: settings.puckThickness,
             referenceZ: baselineZ, createdAt: new Date().toISOString(),
@@ -899,12 +1012,32 @@ async function start() {
             saveSettings();
         });
         $('home').addEventListener('click', homeMachine);
-        $('jogXMinus').addEventListener('click', () => jogMachine('X', -1));
-        $('jogXPlus').addEventListener('click', () => jogMachine('X', 1));
-        $('jogYMinus').addEventListener('click', () => jogMachine('Y', -1));
-        $('jogYPlus').addEventListener('click', () => jogMachine('Y', 1));
-        $('jogZMinus').addEventListener('click', () => jogMachine('Z', -1));
-        $('jogZPlus').addEventListener('click', () => jogMachine('Z', 1));
+        for (const [id, axis, sign] of [
+            ['jogXMinus', 'X', -1], ['jogXPlus', 'X', 1], ['jogYMinus', 'Y', -1],
+            ['jogYPlus', 'Y', 1], ['jogZMinus', 'Z', -1], ['jogZPlus', 'Z', 1],
+        ]) {
+            const button = $(id);
+            button.addEventListener('click', (event) => {
+                if ($('jogStep').value === 'continuous') { event.preventDefault(); return; }
+                void jogMachine(axis, sign);
+            });
+            button.addEventListener('pointerdown', (event) => {
+                if ($('jogStep').value !== 'continuous' || event.button !== 0) return;
+                event.preventDefault();
+                try { button.setPointerCapture(event.pointerId); } catch { /* window release listener remains as fallback */ }
+                void startContinuousJog(axis, sign, event);
+            });
+            button.addEventListener('keydown', (event) => {
+                if ($('jogStep').value !== 'continuous' || !['Enter', ' '].includes(event.key) || event.repeat) return;
+                event.preventDefault();
+                void startContinuousJog(axis, sign, event);
+            });
+            button.addEventListener('keyup', (event) => requestContinuousJogStop(event));
+        }
+        window.addEventListener('pointerup', requestContinuousJogStop, true);
+        window.addEventListener('pointercancel', requestContinuousJogStop, true);
+        window.addEventListener('blur', () => requestContinuousJogStop());
+        document.addEventListener('visibilitychange', () => { if (document.hidden) requestContinuousJogStop(); });
         $('probeWpos').addEventListener('click', probeWposOrigin);
         for (const input of document.querySelectorAll('input[name="wposOrigin"]')) input.addEventListener('change', async () => {
             invalidateWposOrigin('Work origin changed. Jog to the selected origin, then probe WPOS origin again.');

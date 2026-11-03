@@ -17,7 +17,7 @@ The WPOS-first workflow homes (or accepts gSender's existing homed state), provi
 - Detects existing gSender homing state or runs the homing cycle. Bounded XYZ jog controls position the probe; Probe WPOS origin performs a two-touch Z probe and sets G54 WPOS X0 Y0 Z0. Select front-left, front-right, rear-left, rear-right, or center as the work origin. The measured map is always stored and scanned front-left to back-right.
 - Supports three probe types: **Conductive** prompts once to confirm the clip is attached; **Puck** pauses at each point for the probe puck and corrects readings for its thickness; **Switch** probes like Conductive without the clip prompt.
 - Saves the measured map and calibration settings in gSender plugin storage so the map is available after restarting gSender.
-- Shows the sampled surface as a color-coded 3D-style grid, with minimum, maximum, range, and a vertical exaggeration control.
+- Shows the sampled surface as a color-coded ISO grid, with minimum, maximum, range, and a vertical exaggeration control. The `(0,0)` marker follows the WPOS origin selected for calibration; X and Y labels sit at the right and left corners.
 - Prepares a true-scale STL surface mesh in millimetres and stores the generated text in gSender plugin storage for copying into a local `.stl` file; vertical exaggeration affects the preview only.
 - Preprocesses compatible G-code using bilinear interpolation, writes a new `-heightmapped` file, and loads that copy into gSender's visualizer.
 - Aligns the selected file's minimum X/Y coordinates to the captured map origin by updating the controller's saved G54 X/Y offsets after confirmation.
@@ -75,7 +75,7 @@ The package includes the README screenshots so the relative image links work whe
 | X samples | 15 | Number of evenly spaced probe locations along X, including both edges. |
 | Y samples | 11 | Number of evenly spaced probe locations along Y, including both edges. |
 | Full Retract Height | 10 mm | Positive clearance above the probed WPOS Z0 surface, used before XY travel between points and for the final park. Increase it for warped parts; it must fit within the available machine Z travel and clear the highest feature. |
-| Probe travel | 25.5 mm | Maximum downward distance for each initial fast touch. Choose enough travel to reach the surface safely. |
+| Fast probe travel | Automatic | Read from `$132` and calculated at every touch from the current Z position to the safe machine Z limit, leaving a 0.1 mm margin. |
 | Fast feed | 100 mm/min | Feed for the first touch. |
 | Slow feed | 20 mm/min | Feed for the repeat touch. |
 | Slow probe travel | 3 mm | Maximum downward travel for the slow touch. It must exceed the interim retract distance. |
@@ -86,14 +86,14 @@ Settings are saved in gSender plugin storage as they are changed. More samples i
 
 Set Length X and Width Y to the material area you want to measure. The selected WPOS corner makes the area extend from that corner across the full dimensions; Center places half the dimensions on either side of WPOS X0 Y0. The plugin scans the physical grid front-left to back-right and checks it against `$130`/`$131`/`$132` interpreted using `$23`. After a successful calibration, map coverage is extended to the full machine XY travel from `$130`/`$131`; positions outside the probed material rectangle return the original WPOS Z0 probe reading, so compensation outside the measured rectangle applies zero surface correction.
 
-### 2. Home, jog, and probe the WPOS origin
+### 2. Home, position the probe, and set the WPOS origin
 
 1. Home the machine in gSender or click **Home machine**. If gSender already reports it homed, this step is satisfied and the button is disabled.
-2. Select the desired origin: one of the four material corners or the center. The buttons jog by the selected millimetre step and are checked against the reported machine travel. Raise Z clear before jogging X or Y.
+2. Select the desired origin: one of the four material corners or the center. The jog panel supports 0.1, 1, or 10 mm steps, or continuous jogging while a direction button is held. Jog moves are checked against reported machine travel. Raise Z clear before jogging X or Y.
 3. Put the probe above the selected origin and click **Probe WPOS origin**. The plugin performs a fast and slow Z touch, using a fixed 2 mm short retract between them, then issues `G21 G90 G10 L20 P1 X0 Y0 Z0` to set G54 WPOS zero. This changes the saved G54 offset; other G54 jobs use the new origin until you set it again. The plugin then retracts to Full Retract Height.
 4. **Start calibration** becomes available after the controller confirms the WPOS zero and retract position. If the machine moves or the selected origin changes, touch off again. The map scans the full area from front-left to back-right, including when WPOS zero is at another corner or the center.
 
-### 3. Select the probe type
+Choose the probe type in **1. Map setup**; its options are arranged together horizontally:
 
 - **Conductive:** connect the probe clip to the conductive material and leave it attached for the entire calibration. The plugin pauses once before the first point so you can confirm the clip is attached.
 - **Puck:** use a probe puck on an insulating surface. Set **Probe puck thickness** to its actual thickness. The plugin pauses at every point so you can place or move the puck; keep hands clear before continuing each prompt.
@@ -101,7 +101,7 @@ Set Length X and Width Y to the material area you want to measure. The selected 
 
 The puck-thickness value applies only to Puck probing; it is ignored for Conductive and Switch.
 
-### 4. Start and supervise probing
+### 3. Start and supervise probing
 
 Before calibration, the plugin checks that the controller is idle, the machine remains at the verified WPOS touch-off, Full Retract Height is inside Z travel, and the entire XY grid is within signed machine travel. It first moves to Full Retract Height, then to the physical front-left grid point.
 
@@ -115,13 +115,13 @@ Keep the spindle off and remain at the machine during all automatic motion. If a
 
 ## Read and export the saved map
 
-The saved-map panel reports full machine coverage, the probed material dimensions, captured WPOS origin, capture time, and measured minimum/maximum/range. The 3D-style plot colors low-to-high measurements and connects the measured and baseline-filled grid points. Adjust **Vertical exaggeration** to make small height changes easier to see; it affects the drawing only and does not change map data or compensation.
+The saved-map panel reports full machine coverage, the probed material dimensions, captured WPOS origin, capture time, and measured minimum/maximum/range. The ISO plot keeps the probe grid's measured X/Y orientation: the selected WPOS origin is marked at its chosen corner or at the center, with X at the right corner and Y at the left. Adjust **Vertical exaggeration** to make small height changes easier to see; it affects the drawing only and does not change map data or compensation.
 
 ### Save the prepared STL as a file
 
 The plugin SDK used by current gSender Edge builds can persist plugin data, but it does not expose a supported API for writing a file into Downloads or another folder. The STL workflow therefore prepares the file text in plugin storage and lets you save it manually:
 
-1. In **2. Saved map**, click **Prepare STL text**. The plugin creates an ASCII STL and stores its filename and text with the saved map in gSender plugin storage. It does not create a file on disk or save to Downloads.
+1. In **4. Saved map**, click **Prepare STL text**. The plugin creates an ASCII STL and stores its filename and text with the saved map in gSender plugin storage. It does not create a file on disk or save to Downloads.
 2. The export panel opens and displays the generated filename, stored size, and STL text. The prepared export remains available after restarting gSender. A new successful calibration replaces the old map and clears its prior STL export; deleting the map clears both.
 3. Click **Copy STL text**. When clipboard access succeeds, the plugin confirms the text was copied. Paste it into a plain-text editor such as Notepad.
 4. Save the text using the exact `.stl` filename shown in the panel. In Notepad’s Save As dialog, set **Save as type** to **All files (*.*)** so Windows does not append `.txt`; UTF-8 encoding is suitable.
@@ -156,9 +156,9 @@ The current preprocessor deliberately supports a narrow format:
 
 ### Apply steps
 
-1. Confirm the correct completed map is shown in **2. Saved map**.
+1. Confirm the correct completed map is shown in **4. Saved map**.
 2. In gSender, select **G54** and make sure the machine is idle. The plugin reads `$G` to confirm the active work coordinate system, and reads `$#` for G54 and G92 offsets.
-3. In **3. Compensate a G-code file**, choose the original file, then click **Apply map and load copy**.
+3. In **5. Compensate a G-code file**, choose the original file, then click **Apply map and load copy**.
 4. If the file's minimum X/Y coordinates require an offset change, review the confirmation dialog. The plugin sets G54 X/Y so the file's minimum X/Y land on the captured map origin. The G54 Z offset is left alone. The plugin reads the saved offsets back and refuses to load the file if the controller's response does not match.
 5. Review the loaded compensated copy in gSender's visualizer. If your gSender build does not support automatic navigation, open **Carve** manually after the success message.
 
@@ -168,7 +168,7 @@ The selected source file is not modified. The generated copy is named `<source-n
 
 G54 is stored by the controller and is shared by other jobs. When the plugin aligns the file, it writes G54 X/Y using `G10 L2 P1`, accounts for the reported G92 offset in its calculation, and verifies the resulting `$#` data. This can change how other G54 programs are positioned until you set a different work offset. Check the confirmation dialog and verify your offsets before running a job. The plugin does not auto-align G55 through G59.
 
-The map and file are aligned by their XY coordinates: the smallest X/Y in the file maps to the saved map origin, and the file's X/Y spans must not exceed the map's Length X/Width Y. For a project wider than the measured rectangle, enlarge the map and recalibrate; do not shrink or crop the job just to hide an out-of-map error unless that is intended.
+The map and file are aligned by their XY coordinates: the smallest X/Y in the file maps to the saved map origin. The aligned toolpath must fit within machine travel. A toolpath may extend beyond the measured rectangle; those unprobed positions use the WPOS Z0 baseline.
 
 ## Troubleshooting
 
@@ -180,7 +180,7 @@ The map and file are aligned by their XY coordinates: the smallest X/Y in the fi
 | Probe did not trigger, or `PRB` reports failure | Check the probe wiring, contact, polarity, travel distance, and whether the controller reports probe contact (often `Pn:P`). Test contact before probing the full grid. |
 | `ok` appears but no `[PRB:...]` report arrives | The plugin waits for the probe position report as well as command acknowledgement. Confirm the controller's probe report reaches gSender's parsed response stream; `ok` alone is not a measured contact. |
 | Calibration rejects the start WPOS | Jog back to the material's lower-left corner and zero WPOS X, Y, and Z again. Do not jog after zeroing and before starting the calibration. |
-| Probe misses after its travel is limited | Move to a higher safe Z or reduce **Probe travel** and retry. The plugin limits each move to the available range from `$23` and `$132`. |
+| Probe misses before finding the surface | Move to a higher safe Z and retry. Fast probe travel is calculated automatically from the available Z range reported in `$132`; slow travel remains limited by its configured value and the remaining machine Z range. |
 | Toolpath extends beyond machine XY travel after alignment | Adjust the file's placement/origin or machine travel configuration so its aligned bounds fit the reported X/Y limits. Unprobed areas inside those limits use the WPOS Z0 baseline. |
 | Active coordinate system is not G54 | Select G54 in gSender and retry. This version aligns only G54. |
 | Missing G54 or G92 in `$#` response | Confirm the controller returns `[G54:X,Y,Z,...]` and `[G92:X,Y,Z,...]` records and that gSender receives those records after querying `$#`. |
