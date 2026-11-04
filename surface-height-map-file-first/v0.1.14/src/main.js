@@ -440,7 +440,9 @@ function receiveProbeMotionStatus(report) {
     const statusFields = match[1].split('|');
     state.probeMotionStatus = statusFields[0];
     const pinState = statusFields.find((field) => field.startsWith('Pn:'));
-    state.probePinKnown = Boolean(pinState);
+    // GRBL omits Pn entirely when no input pins are active. A valid status
+    // report without Pn therefore means the probe input is clear, not unknown.
+    state.probePinKnown = true;
     state.probePinActive = Boolean(pinState && pinState.slice(3).includes('P'));
     state.probeStatusSequence += 1;
     const guard = state.probeMoveGuard;
