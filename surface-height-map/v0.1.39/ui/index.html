@@ -1,0 +1,131 @@
+<!doctype html>
+<html lang="en">
+  <head>
+
+
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Surface Height Map</title>
+    <script type="importmap">{
+  "imports": {
+    "@sienci/gsender-plugin-sdk": "/plugin-sdk/index.js",
+    "@sienci/gsender-plugin-sdk/react": "/plugin-sdk/react.js",
+    "@sienci/gsender-plugin-sdk/viewer": "/plugin-sdk/viewer.js",
+    "react": "./vendor/react.js",
+    "react-dom": "./vendor/react-dom.js",
+    "react-dom/client": "./vendor/react-dom-client.js",
+    "react/jsx-runtime": "./vendor/react-jsx-runtime.js",
+    "react/jsx-dev-runtime": "./vendor/react-jsx-dev-runtime.js"
+  }
+}</script>
+    <script type="module" crossorigin src="./assets/index-Q_Fsdkfp.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DgVRHwws.css">
+  </head>
+  <body>
+    <main>
+      <header>
+        <div><h1>Surface Height Map</h1><p>Calibrate a surface, then make a compensated copy of a G-code file.</p></div>
+        <span id="connection" class="badge">Checking connection…</span>
+      </header>
+      <div id="notice" role="status" aria-live="polite"></div>
+      <details id="calibrationLogPanel">
+        <summary>Calibration log (kept across restarts)</summary>
+        <p class="hint">The latest controller commands, replies, probe results, homing direction, and errors are saved here for troubleshooting.</p>
+        <textarea id="calibrationLog" rows="10" readonly spellcheck="false" aria-label="Persistent calibration diagnostic log"></textarea>
+        <div class="row"><button id="copyCalibrationLog" class="secondary" type="button">Copy log</button></div>
+      </details>
+      <section>
+        <h2>1. Map setup</h2>
+        <h3 class="settings-group-title">Map area and sampling</h3>
+        <div class="grid fields settings-grid">
+          <label title="Total material area width along work X to probe. Outside the probed rectangle, edge rows and columns extend outward; corners extrapolate diagonally at 45 degrees.">Length X (mm)<input id="lengthX" type="number" min="1" step="0.1"></label>
+          <label title="Total material area depth along work Y to probe. Outside the probed rectangle, edge rows and columns extend outward; corners extrapolate diagonally at 45 degrees.">Width Y (mm)<input id="lengthY" type="number" min="1" step="0.1"></label>
+          <label title="Number of evenly spaced probe points along X. More points capture smaller variations but increase calibration time.">X samples<input id="pointsX" type="number" min="2" max="101" step="1"></label>
+          <label title="Number of evenly spaced probe points along Y. More points capture smaller variations but increase calibration time.">Y samples<input id="pointsY" type="number" min="2" max="101" step="1"></label>
+        </div>
+        <h3 class="settings-group-title">Probe feeds</h3>
+        <div class="grid fields settings-grid">
+          <label title="Feed rate used for the initial fast touch, in millimeters per minute.">Fast feed (mm/min)<input id="fastFeed" type="number" min="1" step="1"></label>
+          <label title="Feed rate used for the slower, more repeatable touch after the fast probe retracts.">Slow feed (mm/min)<input id="slowFeed" type="number" min="1" step="1"></label>
+          <label id="puckThicknessField" title="Puck probing only: enter the thickness of the puck placed between the probe and material. This value is subtracted from each measured contact height." hidden>Probe puck thickness (mm, Puck only)<input id="puckThickness" type="number" min="0" step="0.01"></label>
+        </div>
+        <fieldset class="probe-type-options" title="Fast uses one touch at Fast feed. Precise uses the existing fast touch, short retract, and slow touch sequence."><legend>Probe method</legend>
+          <label class="inline" title="One probe touch at Fast feed, then move on."><input type="radio" name="probeMode" value="fast"> Fast (single touch)</label>
+          <label class="inline" title="Fast touch, retract, then slow touch for a more repeatable reading."><input type="radio" name="probeMode" value="precise" checked> Precise (double tap)</label>
+        </fieldset>
+        <h3 class="settings-group-title">Retracts</h3>
+        <div class="grid fields settings-grid retract-grid">
+          <label class="full-retract-field" title="Clearance height above the probed WPOS Z0 surface, used before moving between XY points. Increase this for warped parts; it must remain within the machine's Z travel.">Full Retract Height (WPOS +Z mm)<input id="fullRetract" type="number" min="0.1" step="0.1" value="10"></label>
+        </div>
+        <h3 class="settings-group-title">After calibration</h3>
+        <div class="grid fields settings-grid">
+          <label for="parkMode">Park location<select id="parkMode" title="Choose where the tool head moves after the final probe."><option value="wpos-origin">WPOS X0 Y0 (raise to Full Retract Height)</option><option value="machine-zero">Machine X0 Y0 (raise to machine Z0)</option><option value="custom-machine">Custom machine X/Y (raise to Full Retract Height)</option></select></label>
+        </div>
+        <div id="customParkFields" class="grid fields settings-grid retract-grid" hidden>
+          <label>Park machine X (mm)<input id="parkX" type="number" step="0.001"></label>
+          <label>Park machine Y (mm)<input id="parkY" type="number" step="0.001"></label>
+        </div>
+        <fieldset class="probe-type-options" title="Choose how the probe makes contact at each measured point."><legend>Probe type</legend>
+          <label class="inline" title="Conductive surface: attach the clip once and leave it connected for the whole calibration. The plugin prompts you to confirm the clip is attached."><input type="radio" name="surfaceType" value="conductive" checked> Conductive</label>
+          <label class="inline" title="Puck: use a conductive probe puck on non-conductive material. The plugin pauses at every point so you can move it; enter its thickness above."><input type="radio" name="surfaceType" value="puck"> Puck</label>
+          <label class="inline" title="Switch: use a controller-connected probe switch. It probes like Conductive, without the clip confirmation prompt."><input type="radio" name="surfaceType" value="switch"> Switch</label>
+        </fieldset>
+        <h3>2. Home, choose the work origin, and position the probe</h3>
+        <div class="origin-jog-layout">
+          <fieldset id="originSelector" class="origin-picker"><legend>WPOS origin</legend><p class="hint">Choose where X0 Y0 will be on the material.</p><div class="origin-grid" role="radiogroup" aria-label="Work coordinate origin">
+            <label class="origin-point rear-left" title="Rear left origin"><input type="radio" name="wposOrigin" value="rear-left"><span></span><em>Rear left</em></label>
+            <label class="origin-point rear-right" title="Rear right origin"><input type="radio" name="wposOrigin" value="rear-right"><span></span><em>Rear right</em></label>
+            <label class="origin-point center" title="Center origin"><input type="radio" name="wposOrigin" value="center"><span></span><em>Center</em></label>
+            <label class="origin-point front-left" title="Front left origin"><input type="radio" name="wposOrigin" value="front-left" checked><span></span><em>Front left</em></label>
+            <label class="origin-point front-right" title="Front right origin"><input type="radio" name="wposOrigin" value="front-right"><span></span><em>Front right</em></label>
+          </div></fieldset>
+          <fieldset class="jog-panel"><legend>Jog and probe</legend><div id="jogControls" class="jog-controls"><div class="jog-top-row"><label class="jog-step-control" for="jogStep">Jog step<select id="jogStep"><option value="0.1">0.1 mm</option><option value="1" selected>1 mm</option><option value="10">10 mm</option><option value="continuous">Continuous (hold)</option></select></label><div class="home-control"><button id="home" title="Home the machine if it is not already homed. This gate is satisfied automatically when gSender reports homed.">Home machine</button><span id="homeLabel">Machine not homed</span></div></div><div class="machine-dro" aria-label="Position coordinates"><button id="coordinateMode" class="dro-mode" type="button" title="Toggle between machine position and G54 work position." aria-pressed="true">WPOS</button><span><strong>X:</strong><output id="droX">—</output></span><span><strong>Y:</strong><output id="droY">—</output></span><span><strong>Z:</strong><output id="droZ">—</output></span></div><div class="jog-pad" aria-label="Machine jog controls">
+              <div class="xy-jog-pad"><button id="jogYPlus" title="Jog positive work Y">Y+</button><button id="jogXMinus" title="Jog negative work X">X−</button><button id="jogXPlus" title="Jog positive work X">X+</button><button id="jogYMinus" title="Jog negative work Y">Y−</button></div>
+              <div class="z-jog-pad"><button id="probeWpos" title="Verify the probe input, then probe the selected origin and set G54 WPOS X0 Y0 Z0." disabled>Probe WPOS origin</button><button id="jogZPlus" title="Jog Z up">Z+</button><button id="jogZMinus" title="Jog Z down">Z−</button><button id="gotoOrigin" title="Raise to Full Retract Height, then return to the captured WPOS origin." disabled>Go to origin</button></div>
+            </div></div></fieldset>
+        </div>
+        <h3>3. Start calibration</h3>
+        <div class="row"><button id="calibrate" class="primary" title="Probe the map from front-left to back-right after the WPOS origin touch-off." disabled>Start calibration</button><span id="originLabel">Probe the selected WPOS origin to enable calibration</span><button id="resumeProbe" class="secondary" type="button" hidden disabled>Resume calibration</button><button id="stop" class="danger" title="Finish the current probe/move safely, then stop without saving an incomplete map." disabled>Stop after current move</button></div>
+        <progress id="progress" max="1" value="0" hidden></progress>
+      </section>
+      <section>
+        <h2>4. Saved map</h2>
+        <div id="mapSummary">No height map saved.</div>
+        <div id="mapVisual" class="map-visual" hidden>
+          <div class="map-visual-heading">
+            <div>
+              <h3>Measured surface</h3>
+              <p id="mapStats" class="hint"></p>
+            </div>
+            <label class="exaggeration-control" title="Scale the displayed Z variation for visibility. This changes the visualization only, not the measurements or compensation.">Vertical exaggeration <output id="exaggerationValue">6×</output>
+              <input id="exaggeration" type="range" min="1" max="12" step="1" value="6">
+            </label>
+          </div>
+          <canvas id="surfaceCanvas" aria-label="Three-dimensional view of the measured height map"></canvas>
+          <div class="height-legend"><span>Low</span><div></div><span>High</span></div>
+          <p class="hint">Compensated files begin with a retract to machine Z0 before moving to the file start. The first rapid XY move is positioning travel; map correction applies to subsequent moves. This view exaggerates the measured Z variation for visibility. It is a visualization of probe readings, not the machine’s physical scale.</p>
+          <div class="row export-row"><button id="exportStl" class="secondary" title="Generate a true-scale STL and store its text in gSender plugin storage." disabled>Prepare STL text</button><span class="hint">Creates a 1:1 ASCII STL in millimetres and saves the text in plugin storage. Use Copy STL text, then paste into a plain-text editor and save as .stl. Z is relative to the first probe reading; this is an open surface mesh, not a closed solid.</span></div>
+          <div id="stlStatus" role="status" aria-live="polite"></div>
+          <details id="stlExportPanel" hidden>
+            <summary id="stlExportSummary">Saved STL text</summary>
+            <label for="stlText">STL text (manual save fallback)</label>
+            <textarea id="stlText" rows="12" readonly spellcheck="false"></textarea>
+            <div class="row"><button id="copyStlText" class="secondary" type="button">Copy STL text</button><span id="copyStlStatus" role="status" aria-live="polite"></span></div>
+          </details>
+        </div>
+        <button id="clearMap" class="secondary" disabled>Delete saved map</button>
+      </section>
+      <section>
+        <h2>5. Compensate a G-code file</h2>
+        <p class="hint">The plugin creates a new compensated file and loads it into gSender’s visualizer. It leaves the selected original untouched. On Apply, it aligns the selected file’s smallest X/Y coordinates to the captured map origin by updating saved G54 X/Y. This persistent offset also affects other G54 jobs until changed again. The file must use metric, absolute G0/G1 moves and fit inside machine XY travel; unprobed edge strips extend from their nearest measured row or column, and corners extrapolate along 45-degree diagonals.</p>
+        <div class="row"><input id="file" type="file" accept=".nc,.gcode,.tap,.ngc,.txt" title="Select a supported metric, absolute G-code file. The source file is left unchanged."><button id="compensate" class="primary" title="Create a compensated copy and load it into the visualizer. The toolpath must stay inside the calibrated map." disabled>Apply map and load copy</button></div>
+        <div id="applyStatus" role="status" aria-live="polite"></div>
+        <div id="fileLabel">No file selected.</div>
+      </section>
+      <dialog id="alignDialog"><h2>Align G54 to this map?</h2><p id="alignPrompt"></p><div class="row"><button id="cancelAlign" class="secondary">Cancel</button><button id="confirmAlign" class="primary">Set G54 and load copy</button></div></dialog>
+      <dialog id="puckDialog"><h2 id="dialogTitle">Move the probe puck</h2><p id="puckPrompt"></p><div class="row"><button id="continuePuck" class="primary">Puck is in place</button><button id="cancelPuck" class="danger">Cancel calibration</button></div></dialog>
+      <dialog id="probeSignalDialog" class="probe-signal-dialog"><h2>Verify probe signal</h2><p>Keep the machine idle. The plugin is checking the probe input automatically. Activate the probe, then release it when prompted. Status is polled about every 0.7 seconds.</p><p id="probeSignalDialogStatus" class="probe-signal-status error" role="status" aria-live="polite"></p><div class="row"><button id="cancelProbeSignalTest" class="secondary">Cancel WPOS probe</button><button id="continueProbeSignalTest" class="primary" disabled>Continue to WPOS probe</button></div></dialog>
+      <footer>Community plugin prototype · Review the loaded toolpath before running it.</footer>
+    </main>
+  </body>
+</html>
