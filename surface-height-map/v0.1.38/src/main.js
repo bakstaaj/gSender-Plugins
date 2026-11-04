@@ -532,7 +532,7 @@ async function refreshUi() {
     $('connection').textContent = connected ? 'Connected' : 'Not connected';
     renderMachineDro();
     $('connection').dataset.connected = String(connected);
-    $('home').disabled = !connected || state.busy || homed;
+    $('home').disabled = !connected || state.busy;
     $('originSelector').disabled = !homed || state.busy;
     const jogDisabled = !homed || (state.busy && !state.continuousJog) || Boolean(state.wposOrigin);
     $('jogStep').disabled = jogDisabled;

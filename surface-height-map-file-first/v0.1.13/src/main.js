@@ -593,7 +593,7 @@ async function refreshUi() {
     $('connection').textContent = connected ? 'Connected' : 'Not connected';
     renderMachineDro();
     $('connection').dataset.connected = String(connected);
-    $('home').disabled = !connected || state.busy || state.analyzingProject || homed;
+    $('home').disabled = !connected || state.busy || state.analyzingProject;
     $('checkProject').disabled = !connected || !state.file || state.busy || state.analyzingProject;
     $('originSelector').disabled = !homed || state.busy;
     $('probeWpos').disabled = !homed || state.busy || !state.project || !validateProjectGeometryState();
