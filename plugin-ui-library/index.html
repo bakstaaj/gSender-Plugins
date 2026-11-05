@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#111820">
+  <title>gSender Plugin UI Library</title>
+  <link rel="stylesheet" href="./shared.css">
+</head>
+<body>
+  <div class="library-shell">
+    <aside class="library-sidebar">
+      <a class="brand" href="#top"><span class="brand-mark">g</span><span>PLUGIN UI<br><strong>STANDARD</strong></span></a>
+      <div class="sidebar-label">COMPONENT INDEX</div>
+      <nav id="componentNav" aria-label="Component index">
+        <a href="#foundation">Foundation</a>
+        <a href="#map-setup">Settings groups</a>
+        <a href="#origin-picker">Origin location picker</a>
+        <a href="#jog-panel">Jog and control panel</a>
+        <a href="#surface-map">Surface map viewer</a>
+        <a href="#workflow">Workflow and progress</a>
+        <a href="#status-cards">Status and diagnostics</a>
+        <a href="#file-actions">File actions</a>
+      </nav>
+      <div class="sidebar-note">Clickable examples<br><span>Preview only · no machine commands</span></div>
+    </aside>
+
+    <main id="top" class="library-main">
+      <header class="page-header">
+        <div><div class="eyebrow">GSENDER PLUGIN DESIGN SYSTEM · 01</div><h1>Shared UI objects</h1><p>A consistent starting point for plugin layouts, based on Surface Height Map v0.1.39 and patterns found across the plugin suite.</p></div>
+        <span class="version-pill"><i></i> Draft standard</span>
+      </header>
+      <section id="foundation" class="intro-grid">
+        <article class="intro-card"><div class="card-kicker">BASELINE</div><h2>Surface Height Map</h2><p>Clear setup sections, deliberate machine controls, and a strong measured-map visualization establish the baseline.</p><a href="#surface-map">View map object <span>↗</span></a></article>
+        <article class="intro-card"><div class="card-kicker">ONE CSS</div><h2>Shared tokens and patterns</h2><p>Use <code>shared.css</code> for color, spacing, type, fields, cards, actions, and responsive layouts.</p><a href="#map-setup">Browse standards <span>↗</span></a></article>
+        <article class="intro-card"><div class="card-kicker">REUSE</div><h2>Objects with a source</h2><p>Each specimen names the plugin patterns it represents so future work can adopt and improve the same object.</p><a href="#origin-picker">Browse objects <span>↗</span></a></article>
+      </section>
+
+      <section id="map-setup" class="specimen-section">
+        <div class="section-heading"><div><div class="eyebrow">01 · INPUTS</div><h2>Settings group</h2></div><span class="source-tag">Surface Height Map</span></div>
+        <p class="section-copy">Group related values under a short heading, keep field labels above controls, and let the grid collapse naturally on narrow plugin panels.</p>
+        <div class="specimen settings-demo">
+          <div class="group-heading"><span>Map area and sampling</span><span class="help-dot" title="Evenly spaced sample points across the work area">?</span></div>
+          <div class="field-grid"><label>Length X <small>mm</small><input type="number" value="300.0"></label><label>Width Y <small>mm</small><input type="number" value="180.0"></label><label>X samples<input type="number" value="9"></label><label>Y samples<input type="number" value="7"></label></div>
+          <div class="group-heading second-group"><span>Probe method</span></div>
+          <div class="segmented"><button class="selected" data-select="probe-method">Precise <small>double tap</small></button><button data-select="probe-method">Fast <small>single touch</small></button></div>
+        </div>
+        <div class="source-note">Pattern collected from the map setup, probe feeds, retracts, probe method, and probe type sections.</div>
+      </section>
+
+      <section id="origin-picker" class="specimen-section">
+        <div class="section-heading"><div><div class="eyebrow">02 · POSITION</div><h2>Origin location picker</h2></div><span class="source-tag">Surface Height Map · File First · Surface Perimeter Mapper</span></div>
+        <p class="section-copy">A workpiece diagram makes the coordinate choice visible. Keep radio semantics so keyboard and assistive technology users can select a point.</p>
+        <div class="specimen origin-specimen">
+          <div class="object-title"><div><h3>Work origin</h3><p>Choose where X0 Y0 will be on the material.</p></div><span class="state-chip">WPOS</span></div>
+          <div class="stock-wrap"><div class="axis axis-y">Y</div><div class="stock"><span class="stock-label rear">REAR</span><span class="stock-label front">FRONT</span>
+            <label class="origin-choice rear-left" title="Rear left"><input type="radio" name="origin" value="Rear left"><span></span><em>Rear left</em></label>
+            <label class="origin-choice rear-right" title="Rear right"><input type="radio" name="origin" value="Rear right"><span></span><em>Rear right</em></label>
+            <label class="origin-choice center" title="Center"><input type="radio" name="origin" value="Center"><span></span><em>Center</em></label>
+            <label class="origin-choice front-left" title="Front left"><input type="radio" name="origin" value="Front left" checked><span></span><em>Front left</em></label>
+            <label class="origin-choice front-right" title="Front right"><input type="radio" name="origin" value="Front right"><span></span><em>Front right</em></label>
+          </div><div class="axis axis-x">X <span>+</span></div></div>
+          <div class="object-footer"><span id="originReadout">Selected origin: <strong>Front left</strong></span><span class="helper-text">Click a point to preview selection</span></div>
+        </div>
+        <div class="source-note">Source: Surface Height Map v0.1.39 origin picker. The perimeter mapper adds a related rectangle-origin capture step.</div>
+      </section>
+
+      <section id="jog-panel" class="specimen-section">
+        <div class="section-heading"><div><div class="eyebrow">03 · MACHINE CONTROL</div><h2>Jog and control panel</h2></div><span class="source-tag">Surface Height Map · File First · Surface Perimeter Mapper</span></div>
+        <p class="section-copy">Keep position readouts, step size, homing state, directional jog, and purpose-specific actions together. This specimen is visual only; its buttons do not send commands.</p>
+        <div class="specimen jog-specimen">
+          <div class="object-title"><div><h3>Jog and probe</h3><p>Position the tool before capturing the origin.</p></div><span class="state-chip good"><i></i> Connected</span></div>
+          <div class="jog-top"><label>Jog step<select><option>0.1 mm</option><option selected>1 mm</option><option>10 mm</option><option>Continuous (hold)</option></select></label><button class="button button-outline" id="homeButton">⌂ &nbsp;Home machine</button><span class="homed-state" id="homeState">Machine not homed</span></div>
+          <div class="dro"><button class="dro-mode" id="droMode">WPOS</button><span><b>X</b><output>125.000</output></span><span><b>Y</b><output>82.500</output></span><span><b>Z</b><output>6.200</output></span></div>
+          <div class="jog-layout"><div class="xy-pad"><button aria-label="Jog Y positive">Y<span>+</span></button><button aria-label="Jog X negative">X−</button><span class="pad-center">✣</span><button aria-label="Jog X positive">X+</button><button aria-label="Jog Y negative">Y<span>−</span></button></div><div class="z-pad"><button>Z+</button><div class="z-label">Z AXIS</div><button>Z−</button></div><div class="control-actions"><button class="button button-primary">Probe origin</button><button class="button button-outline">Go to XY</button><button class="button button-quiet">Go to origin</button></div></div>
+          <div class="preview-warning"><span>ⓘ</span> Preview only. Jog controls are inactive in this catalog.</div>
+        </div>
+        <div class="source-note">Source: Surface Height Map v0.1.39 machine DRO, jog step selector, XY/Z pad, home, probe, GOTO XY, and go-to-origin actions.</div>
+      </section>
+
+      <section id="surface-map" class="specimen-section">
+        <div class="section-heading"><div><div class="eyebrow">04 · VISUALIZATION</div><h2>Surface map viewer</h2></div><span class="source-tag">Surface Height Map</span></div>
+        <p class="section-copy">Present the measured data with summary values, a meaningful color legend, and an explicit visual exaggeration control.</p>
+        <div class="specimen map-specimen">
+          <div class="object-title"><div><h3>Measured surface</h3><p>63 probe points <span class="dot-sep">·</span> 300 × 180 mm</p></div><div class="map-summary"><span>MIN <b>−0.42</b></span><span>MAX <b>+0.68</b></span><span>RANGE <b>1.10 mm</b></span></div></div>
+          <div class="map-stage"><div class="map-grid" id="mapGrid" role="img" aria-label="Colored surface height grid"></div><div class="map-scale"><span>+0.68 mm</span><div></div><span>−0.42 mm</span></div><div class="map-axis-labels"><span>Y 180</span><span>Y 0</span><span>X 0</span><span>X 300</span></div></div>
+          <div class="map-controls"><label>Vertical exaggeration <output id="exaggerationOutput">6×</output><input id="exaggeration" type="range" min="1" max="12" value="6"></label><button class="button button-outline">Prepare STL</button></div>
+          <div class="preview-warning"><span>ⓘ</span> Height colors visualize relative readings; this is not a physical-scale model.</div>
+        </div>
+        <div class="source-note">Source: Surface Height Map v0.1.39 saved map summary, canvas, height legend, exaggeration range, and STL export.</div>
+      </section>
+
+      <section id="workflow" class="specimen-section">
+        <div class="section-heading"><div><div class="eyebrow">05 · SEQUENCING</div><h2>Workflow and progress</h2></div><span class="source-tag">Surface Perimeter Mapper · Surface Height Map</span></div>
+        <p class="section-copy">Number complex processes, summarize each step's readiness, and show progress close to the action that starts it.</p>
+        <div class="specimen workflow-specimen"><div class="workflow-item complete"><span class="step-number">✓</span><div><h3>Describe the probe</h3><p>Tip diameter and usable shaft length</p></div><span class="workflow-state">READY</span></div><div class="workflow-item active"><span class="step-number">02</span><div><h3>Define the search area</h3><p>Rectangle includes calculated clearance</p></div><span class="workflow-state">IN PROGRESS</span></div><div class="workflow-progress"><div class="progress-label"><span>Map calibration</span><b>42%</b></div><progress max="100" value="42"></progress><p>Probe point 26 of 63 · Estimated 2 min 10 sec</p></div><div class="workflow-actions"><button class="button button-primary">Start calibration</button><button class="button button-danger">Stop after current move</button></div></div>
+        <div class="source-note">Source: Surface Perimeter Mapper's gated steps and Surface Height Map's calibration progress/status controls.</div>
+      </section>
+
+      <section id="status-cards" class="specimen-section">
+        <div class="section-heading"><div><div class="eyebrow">06 · FEEDBACK</div><h2>Status and diagnostics</h2></div><span class="source-tag">CNC Machine Diagnostics · Machine Event Notifier · Camera Monitor</span></div>
+        <p class="section-copy">Use clear state labels and one-line explanations. Diagnostics can expose detailed readings without making the whole screen feel like a log.</p>
+        <div class="status-grid"><article class="status-card"><div class="status-card-top"><span class="status-icon green">✓</span><span class="status-label">CONTROLLER</span><span class="status-live">ONLINE</span></div><h3>GRBL 1.1h</h3><p>Connected over serial · 115200 baud</p><div class="status-meta"><span>Firmware</span><b>1.1h</b></div><div class="status-meta"><span>State</span><b class="text-green">Idle</b></div></article><article class="status-card"><div class="status-card-top"><span class="status-icon amber">!</span><span class="status-label">PROBE INPUT</span><span class="status-live amber-text">CHECK</span></div><h3>Probe signal is clear</h3><p>Activate and release the probe to verify input.</p><button class="button button-outline full-button">Test probe signal</button></article><article class="status-card"><div class="status-card-top"><span class="status-icon blue">◉</span><span class="status-label">CAMERA</span><span class="status-live blue-text">READY</span></div><h3>USB camera</h3><p>Camera only · no CNC commands</p><div class="camera-mini"><span>LIVE PREVIEW</span><b>1920 × 1080</b></div></article></div>
+        <div class="source-note">Sources: CNC Machine Diagnostics health and firmware cards; Surface Height Map probe signal flow; Camera Monitor's source and safety status.</div>
+      </section>
+
+      <section id="file-actions" class="specimen-section">
+        <div class="section-heading"><div><div class="eyebrow">07 · OUTPUT</div><h2>File action row</h2></div><span class="source-tag">Surface Height Map · Image Heightmap Engraver · CAMLab</span></div>
+        <p class="section-copy">Keep file selection, the primary transform, and current file status adjacent. Make it clear when the source remains intact.</p>
+        <div class="specimen file-specimen"><div class="file-drop"><span class="file-icon">↑</span><div><b>Choose a G-code file</b><p>NC, GCODE, TAP, NGC, TXT · Metric, absolute moves</p></div><button class="button button-outline">Browse files</button></div><div class="file-selected"><div class="file-type">NC</div><div><b>cabinet-panel.nc</b><p>Source file stays unchanged</p></div><span class="file-size">248 KB</span></div><div class="file-bottom"><span class="helper-text"><i class="green-dot"></i> Surface map ready to apply</span><button class="button button-primary">Apply map and load copy <span>→</span></button></div></div>
+        <div class="source-note">Source: Surface Height Map file selection/compensation; related file workflows in Image Heightmap Engraver and CAMLab.</div>
+      </section>
+
+      <footer class="library-footer"><span>gSender Plugin UI Standard · Design reference</span><a href="#top">Back to top ↑</a></footer>
+    </main>
+  </div>
+  <script src="./library.js"></script>
+</body>
+</html>
