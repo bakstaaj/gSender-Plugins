@@ -4,7 +4,7 @@ Source repository for gSender plugins maintained by Bakstaaj. Plugin version fol
 
 ## Plugins
 
-- [CAMLab](model-tab-cam/v0.1.11/README.md) — version 0.1.11; top-side profile CAM and flipped-side internal undercut paths from STL/STEP models.
+- [CAMLab](CAMLab/v0.1.11/README.md) — version 0.1.11; top-side profile CAM and flipped-side internal undercut paths from STL/STEP models.
 - [Machine Event Notifications](machine-event-notifier/v0.1.21/README.md) — version 0.1.21; background gSender Wireless Control event monitoring with email and ntfy alerts, including controller alarm text in machine alert messages. The single-download helper package includes the plugin ZIP and supports automatic local pairing.
 - [CNC Job Setup](cnc-job-setup/v0.2.46/README.md) — version 0.2.46; configurable gSender streaming or Makera Z1 SD-card playback, with improved probe/tool prompts and alarm recovery.
 - [Roughing Blank Planner](roughing-blank-planner/v0.2.1/README.md) — version 0.2.1; analyzes a part NC envelope, compares billet and workholding clearances, selects a low-volume roughing blank, and generates stock-preparation G-code for Carve review.
