@@ -1,6 +1,6 @@
 # CAMLab
 
-**Prototype v0.1.11 · gSender 1.7.0-Edge-2 · Plugin SDK 0.2.2**
+**Prototype v0.1.11 · gSender 1.7.0-Edge-2 · Plugin SDK 0.2.2** · [Download CAMLab v0.1.11 release package](https://github.com/bakstaaj/gSender-Plugins/releases/download/camlab-v0.1.11/camlab-v0.1.11.zip)
 
 Import an STL or STEP model, enter blank stock dimensions, select an end mill, and generate mesh-slice contour finishing paths. The plugin intersects the model mesh at successive Z levels, offsets each closed contour by the tool radius, and retains internal contours such as through-holes and slots. Changing cross-sections follow stepped or tapered model sides. Two tabs are placed at one-third and two-thirds along the longest straight segment of the outside contour during the final stock cut.
 
