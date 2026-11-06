@@ -4,7 +4,7 @@ An initial shared CSS foundation and clickable component catalog for future gSen
 
 ## Browse online
 
-The catalog is prepared for GitHub Pages at [plugins.bakstaaj.com](https://plugins.bakstaaj.com/). Once Pages and its DNS CNAME are active, open the [UI object gallery](https://plugins.bakstaaj.com/) or the [functional code library](https://plugins.bakstaaj.com/functions.html) in a browser.
+The catalog is published through GitHub Pages at [plugins.bakstaaj.com](https://plugins.bakstaaj.com/). Open the [UI object gallery](https://plugins.bakstaaj.com/) or the [functional code library](https://plugins.bakstaaj.com/functions.html) in a browser.
 
 ## Open the catalog
 
@@ -18,7 +18,7 @@ Open `index.html` directly in a browser. It has no build step and does not conne
 - `functions.html` — clickable index of copyable behavior blocks, grouped by machine motion, probing, travel limits, and coordinate moves.
 - `functions-data.js` — generated source excerpts from the current plugin baseline.
 - `functions.js` — renders code cards and copy controls.
-- `build-functions.mjs` — refreshes the excerpts from the listed plugin source functions.
+- `build-functions.mjs` — refreshes the excerpts from tracked plugin source functions and includes reusable parser contracts.
 
 ## Catalog contents and source patterns
 
@@ -34,7 +34,7 @@ Open `index.html` directly in a browser. It has no build step and does not conne
 
 ## Functional code blocks
 
-The code catalog extracts current source from Surface Height Map `v0.2.0` and Surface Perimeter Mapper `v0.1.0`, including homing, incremental and hold-to-jog, probe signal verification, probe travel and retry handling, WPOS origin capture, GOTO XY, return-to-origin, and shared motion helpers. Each block links to its source and lists its helper dependencies. Refresh the blocks from the repository root with `node plugin-ui-library/build-functions.mjs` after those source functions change.
+The code catalog extracts current source from the tracked Surface Height Map `v0.2.0` baseline, including homing, incremental and hold-to-jog, probe signal verification, probe travel and retry handling, WPOS origin capture, GOTO XY, return-to-origin, and shared motion helpers. Reusable patterns such as the confirmed-`Pn:` probe parser contract are included directly. Probe state remains unknown until a `Pn:` field confirms reporting; after confirmation, an omitted `Pn:` is clear/released, allowing the required clear → pressed → released sequence. Probe-motion guards and origin probing rely on this contract. Refresh the blocks from the repository root with `node plugin-ui-library/build-functions.mjs` after those source functions change.
 
 ## Adoption guidance
 

@@ -24,11 +24,13 @@ for (const category of categories) {
   for (const item of blocks) {
     const card = document.createElement('details');
     card.className = 'code-card';
-    const path = `../${item.path}#L${item.line}`;
+    const source = item.path
+      ? `<a href="../${escapeHtml(item.path)}#L${item.line}" target="_blank" rel="noreferrer">Source: ${escapeHtml(item.path)} · line ${item.line} ↗</a>`
+      : `<span>${escapeHtml(item.sourceLabel ?? 'Reusable pattern')}</span>`;
     const lines = item.code.split('\n').length;
     card.innerHTML = `<summary><span class="code-card-title">${escapeHtml(item.title)}</span><span class="code-card-summary">${escapeHtml(item.description)}</span></summary>
       <div class="code-card-body">
-        <div class="code-meta"><a href="${path}" target="_blank" rel="noreferrer">Source: ${escapeHtml(item.path)} · line ${item.line} ↗</a><div class="code-toolbar"><span class="code-line-count">${lines} lines</span><button class="copy-code" type="button">Copy code</button><span class="copy-state" aria-live="polite"></span></div></div>
+        <div class="code-meta">${source}<div class="code-toolbar"><span class="code-line-count">${lines} lines</span><button class="copy-code" type="button">Copy code</button><span class="copy-state" aria-live="polite"></span></div></div>
         <p class="code-requires"><b>Needs:</b> ${escapeHtml(item.requires)}</p>
         <pre class="code-frame"><code>${escapeHtml(item.code)}</code></pre>
       </div>`;

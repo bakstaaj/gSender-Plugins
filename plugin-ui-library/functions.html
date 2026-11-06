@@ -19,7 +19,7 @@
         <div><div class="eyebrow">GSENDER PLUGIN DESIGN SYSTEM · 02</div><h1>Functional code library</h1><p>Reusable CNC behavior blocks captured from the current Surface Height Map baseline. Each block links back to its source and lists the surrounding helpers it depends on.</p></div>
         <a class="version-pill code-back" href="./index.html">← Component gallery</a>
       </header>
-      <div class="code-callout"><b>Use as source material, then adapt and validate.</b> These functions assume the gSender plugin API and Surface Height Map state/helpers shown in the source link. They are not safe drop-in commands for another controller or machine configuration. This page does not send CNC commands.</div>
+      <div class="code-callout"><b>Probe status contract:</b> keep probe-pin state unknown until a status report contains <code>Pn:</code>. After reporting is confirmed, an omitted <code>Pn:</code> means clear/released. Probe signal verification must observe clear → pressed → released. Probe-motion guards and the origin workflow depend on this parser behavior. Use these blocks as source material, then adapt and validate; this page does not send CNC commands.</div>
       <div id="codeSections"></div>
       <footer class="library-footer"><span>Functional code references · Surface Height Map v0.2.0</span><a href="#top" onclick="window.scrollTo({top:0,behavior:'smooth'});return false">Back to top ↑</a></footer>
     </main>
