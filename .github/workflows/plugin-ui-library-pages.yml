@@ -1,0 +1,37 @@
+name: Deploy plugin UI library
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'plugin-ui-library/**'
+      - '.github/workflows/plugin-ui-library-pages.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: github-pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+      - name: Upload plugin UI library
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: plugin-ui-library
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5.0.1
