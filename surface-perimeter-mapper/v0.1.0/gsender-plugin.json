@@ -1,0 +1,27 @@
+{
+  "id": "com.bakstaaj.surface-perimeter-mapper",
+  "name": "3D Surface Perimeter Mapper",
+  "description": "Plan a safe, guided perimeter probe scan with a 3D touch probe.",
+  "version": "0.1.0",
+  "engine": ">=1.7.0-Edge-1",
+  "ui": {
+    "entry": "ui/index.html",
+    "contributions": [
+      { "slot": "tools-page", "route": "surface-perimeter-mapper", "label": "3D Surface Perimeter Mapper" }
+    ]
+  },
+  "parsers": [
+    {
+      "id": "perimeter-probe-status",
+      "label": "Probe input state",
+      "mode": "line",
+      "match": { "source": "^<(?<status>[^>]+)>$" }
+    }
+  ],
+  "permissions": ["machine:read", "machine:write", "machine:parse", "machine:query", "redux:read", "storage"],
+  "capabilities": {
+    "requestTypes": ["machine:get:context", "machine:command", "machine:query", "machine:busy:set", "redux:get:state", "storage:get", "storage:set"],
+    "topics": ["controller"],
+    "allowedFunctions": ["machine", "redux", "storage"]
+  }
+}
