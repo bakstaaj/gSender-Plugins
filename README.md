@@ -11,7 +11,7 @@ Source repository for gSender plugins maintained by Bakstaaj. Plugin version fol
 - [Spindle Tramming](spindle-tramming/README.md) — version 0.4.4; persistent local setup settings, tilt and nod measurements for gSender 1.7.0-Edge-2.
 - [Surface Height Map](surface-height-map/v0.2.0/README.md) — version 0.2.0; WPOS-first probing, safer XY travel confirmation, and conditional retract-height moves.
 - [Surface Height Map (File First)](surface-height-map-file-first/v0.2.0/README.md) — version 0.2.0; file-first WPOS probing, contour mapping, and configurable post-calibration parking.
-- [3D Surface Perimeter Mapper](surface-perimeter-mapper/v0.1.0/README.md) — prototype 0.1.0; guided WPOS setup, 3D touch-probe signal checks, and supervised cylinder perimeter and interior scans.
+- [3D Surface Perimeter Mapper](surface-perimeter-mapper/v0.1.2/README.md) — prototype 0.1.2; guided 3D probing and surface scans, simulator-tested with circles, squares, rectangles, and right and equilateral triangles.
 - [Camera Align & Print Registration](camera-align-print-registration/v0.2.0/README.md) — version 0.2.0; live camera, selectable G54–G59 work zero, and two-point printed-artwork registration.
 - [CNC Camera Monitor](camera-monitor/v0.1.9/README.md) — prototype 0.1.9; USB/network camera monitoring, optional second camera, and a persistent Carve overlay with feed controls.
 - [Makera Z1 File Transfer](makera-z1-upload/v0.1.9/README.md) — prototype 0.1.9; single installer bundles NSSM, installs the bridge service to `C:\gsender_file_bridge`, and updates the gSender plugin.
