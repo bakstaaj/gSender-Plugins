@@ -61,7 +61,7 @@ document.querySelector('#app').innerHTML = `
       <aside class="caution"><strong>Flip and re-zero for bottom-side file</strong><p>The bottom-side file includes only internal undercut paths missed by the top-side tool access check. It excludes the outside perimeter and tabs to avoid releasing the part. It uses the same stock XY origin and work offset as the top-side file. Flip 180° around the stock's centered X axis (front/back flips; left/right stays fixed): Y mirrors across the stock centerline, X stays unchanged, and only Z0 is reset to the newly exposed face. Secure the part and preserve the XY registration. Simulate both files before cutting.</p></aside>
     </div>
   </div>
-  <footer>CAMLab v0.1.12 · G-code generation only · no job is started</footer>
+  <footer>CAMLab v0.1.13 · G-code generation only · no job is started</footer>
 `;
 
 const TAB_SETTINGS_KEY = 'com.bakstaaj.camlab.tab-settings.v1';

@@ -1,6 +1,6 @@
 # CAMLab
 
-**Prototype v0.1.12 · gSender 1.7.0-Edge-2 · Plugin SDK 0.2.2** · [Download CAMLab v0.1.12 release package](https://github.com/bakstaaj/gSender-Plugins/releases/download/camlab-v0.1.12/camlab-v0.1.12.zip)
+**Prototype v0.1.13 · gSender 1.7.0-Edge-2 · Plugin SDK 0.2.2** · [Download CAMLab v0.1.13 release package](https://github.com/bakstaaj/gSender-Plugins/releases/download/camlab-v0.1.13/camlab-v0.1.13.zip)
 
 Import an STL or STEP model, enter blank stock dimensions, select an end mill, and generate mesh-slice contour finishing paths. The plugin intersects the model mesh at successive Z levels, offsets each closed contour by the tool radius, and retains internal contours such as through-holes and slots. Changing cross-sections follow stepped or tapered model sides. Two tabs are placed at one-third and two-thirds along the longest straight segment of the outside contour during the final stock cut.
 
@@ -31,7 +31,7 @@ Hover over any setting to see a tooltip explaining its purpose and effect. Tab w
 
 Separate top-side and bottom-side panes display the complete G-code and can be scrolled vertically and horizontally. Each pane has a Copy all button for copying its entire program.
 
-Run `npm ci`, `npm run build`, and `npm run package` from this version folder in MSYS2/Git Bash. Import `camlab-v0.1.12.zip` using gSender's plugin manager. Approve the Visualizer Load permission to use the Load into gSender buttons. Loading replaces the current visualizer file; it does not start the job.
+Run `npm ci`, `npm run build`, and `npm run package` from this version folder in MSYS2/Git Bash. Import `camlab-v0.1.13.zip` using gSender's plugin manager. Approve the Visualizer Load permission to use the Load into gSender buttons. Loading replaces the current visualizer file; it does not start the job.
 
 ## Third-party components
 

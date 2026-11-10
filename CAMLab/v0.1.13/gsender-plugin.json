@@ -1,7 +1,7 @@
 {
   "id": "com.bakstaaj.model-tab-cam",
   "name": "CAMLab",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "Generate top-side profiles and flipped-side undercut paths from STL or STEP models.",
   "engine": "1.7.0-Edge-2",
   "permissions": ["visualizer:load"],
