@@ -54,7 +54,8 @@ svg { display: block; width: 100%; height: min(52vh, 440px); }
 pre { max-height: 360px; overflow: auto; margin: 0; padding: 12px; border-radius: 8px; background: #14232d; color: #d9e8ef; font: .72rem/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; white-space: pre; }
 .caution { padding: 12px 14px; border: 1px solid #ead7ad; border-radius: 9px; background: #fff8ea; color: #6e572c; font-size: .77rem; }
 .caution p { margin: 5px 0 0; line-height: 1.5; }
-footer { padding: 7px; color: var(--muted); text-align: center; font-size: .72rem; }
+footer { display: block; position: static; padding: 7px; color: var(--muted); text-align: center; font-size: .72rem; }
+#copyright-footer { display: block; position: static; padding-top: 3px; color: var(--muted); font-size: .68rem; }
 html.dark { color: #e3edf3; background: #162530; --panel: #1e303b; --line: #3a515e; --muted: #afc0ca; }
 html.dark input, html.dark select, html.dark button.secondary { background: #182934; color: #e3edf3; border-color: #536b78; }
 html.dark .file-drop, html.dark .preview-wrap { background: #1a2d39; }
