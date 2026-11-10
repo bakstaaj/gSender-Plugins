@@ -93,12 +93,35 @@ export function offsetOutline(points, diameter) {
   return solution[0].map(({ X, Y }) => [X / SCALE, Y / SCALE]);
 }
 
-function longestEdge(points) {
-  let best = { index: 0, length: 0 };
+function edgesOf(points) {
+  const edges = [];
   for (let i = 0; i < points.length; i += 1) {
     const a = points[i]; const b = points[(i + 1) % points.length];
-    const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
-    if (length > best.length) best = { index: i, length };
+    const dx = b[0] - a[0]; const dy = b[1] - a[1];
+    const length = Math.hypot(dx, dy);
+    edges.push({ index: i, length, dx: dx / length, dy: dy / length, midpoint: [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2] });
+  }
+  return edges;
+}
+
+function longestEdge(edges) {
+  return edges.reduce((best, edge) => edge.length > best.length ? edge : best, { index: 0, length: 0 });
+}
+
+function opposingEdgePair(edges, tabWidth) {
+  let best = null;
+  for (let i = 0; i < edges.length; i += 1) {
+    const first = edges[i];
+    if (first.length < tabWidth * 1.5) continue;
+    for (let j = i + 1; j < edges.length; j += 1) {
+      const second = edges[j];
+      if (second.length < tabWidth * 1.5) continue;
+      const alignment = first.dx * second.dx + first.dy * second.dy;
+      if (alignment > -0.85) continue;
+      const separation = Math.hypot(second.midpoint[0] - first.midpoint[0], second.midpoint[1] - first.midpoint[1]);
+      const score = first.length + second.length + separation * 0.1 + Math.abs(alignment) * Math.min(first.length, second.length) * 0.05;
+      if (!best || score > best.score) best = { first, second, score };
+    }
   }
   return best;
 }
@@ -115,26 +138,35 @@ export function makeCutPath(points, tabWidth) {
     return lengths < 1e-8 || Math.abs(ax * by - ay * bx) / lengths > 1e-5 || ax * bx + ay * by < 0;
   });
   if (simplified.length >= 3) points = simplified;
-  const edge = longestEdge(points);
-  if (edge.length < tabWidth * 2.25) throw new Error('The longest model side is too short for two tabs of this width.');
-  const tabCenters = [edge.length / 3, edge.length * 2 / 3];
-  const intervals = tabCenters.map((center) => [center - tabWidth / 2, center + tabWidth / 2]);
+  const edges = edgesOf(points);
+  const edge = longestEdge(edges);
+  const opposing = opposingEdgePair(edges, tabWidth);
+  const intervalsByEdge = new Map();
+  if (opposing) {
+    for (const side of [opposing.first, opposing.second]) {
+      intervalsByEdge.set(side.index, [[side.length / 2 - tabWidth / 2, side.length / 2 + tabWidth / 2]]);
+    }
+  } else {
+    if (edge.length < tabWidth * 2.25) throw new Error('The longest model side is too short for two tabs of this width.');
+    intervalsByEdge.set(edge.index, [edge.length / 3, edge.length * 2 / 3].map((center) => [center - tabWidth / 2, center + tabWidth / 2]));
+  }
   const path = [];
   for (let i = 0; i < points.length; i += 1) {
     const a = points[i]; const b = points[(i + 1) % points.length];
     const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
     const cuts = [0, 1];
-    if (i === edge.index) for (const [lo, hi] of intervals) cuts.push(lo / length, hi / length);
+    const intervals = intervalsByEdge.get(i) || [];
+    for (const [lo, hi] of intervals) cuts.push(lo / length, hi / length);
     cuts.sort((x, y) => x - y);
     const unique = cuts.filter((v, k) => k === 0 || Math.abs(v - cuts[k - 1]) > 1e-8);
     for (let k = 0; k < unique.length - 1; k += 1) {
       const t = unique[k];
       const distance = t * length;
-      const onTab = i === edge.index && intervals.some(([lo, hi]) => distance >= lo - 1e-7 && distance < hi - 1e-7);
+      const onTab = intervals.some(([lo, hi]) => distance >= lo - 1e-7 && distance < hi - 1e-7);
       path.push({ point: pointAlong(a, b, t), tab: onTab });
     }
   }
-  return { path, edgeLength: edge.length };
+  return { path, edgeLength: edge.length, oppositeSides: Boolean(opposing) };
 }
 
 export function generateGcode({ layers, stock, settings, tool, side = 'top' }) {
