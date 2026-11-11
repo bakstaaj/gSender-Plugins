@@ -1,0 +1,62 @@
+{
+  "id": "com.bakstaaj.3d-part-mapping-experimental",
+  "name": "3D Part Mapping",
+  "description": "Contact-driven perimeter and surface mapping.",
+  "version": "0.1.7",
+  "engine": ">=1.7.0-Edge-1",
+  "ui": {
+    "entry": "ui/index.html",
+    "contributions": [
+      {
+        "slot": "tools-page",
+        "route": "3d-part-mapping-experimental",
+        "label": "3D Part Mapping"
+      }
+    ]
+  },
+  "parsers": [
+    {
+      "id": "perimeter-probe-status",
+      "label": "Probe input state",
+      "mode": "line",
+      "match": {
+        "source": "^<(?<status>[^>]+)>$"
+      }
+    },
+    {
+      "id": "perimeter-probe-contact",
+      "label": "Probe contact response",
+      "mode": "line",
+      "match": {
+        "source": "^\\[PRB:[^\\]]+\\]$"
+      }
+    }
+  ],
+  "permissions": [
+    "machine:read",
+    "machine:write",
+    "machine:parse",
+    "machine:query",
+    "redux:read",
+    "storage"
+  ],
+  "capabilities": {
+    "requestTypes": [
+      "machine:get:context",
+      "machine:command",
+      "machine:query",
+      "machine:busy:set",
+      "redux:get:state",
+      "storage:get",
+      "storage:set"
+    ],
+    "topics": [
+      "controller"
+    ],
+    "allowedFunctions": [
+      "machine",
+      "redux",
+      "storage"
+    ]
+  }
+}
