@@ -68,5 +68,5 @@ The same workflow applies to the other plugins that provide an npm project and p
 
 ## GitHub Releases
 
-Use a separate tag and GitHub Release for each plugin or companion package version, such as `camlab-v0.1.13`, `surface-height-map-v0.2.0`, `surface-height-map-file-first-v0.2.0`, `surface-perimeter-mapper-v0.1.0`, `camera-monitor-v0.1.9`, `machine-event-notifier-v0.1.21`, or `roughing-blank-planner-v0.2.1`. Attach the matching install ZIP from that version folder to its GitHub Release. Machine Event Notifications uses one combined download containing the Windows helper and its gSender plugin ZIP. The ZIP can also be downloaded directly from the repository's version folder.
+Use a separate tag and GitHub Release for each plugin or companion package version, such as `camlab-v0.1.13`, `surface-height-map-v0.2.0`, `surface-height-map-file-first-v0.2.0`, `surface-perimeter-mapper-v0.1.7`, `camera-monitor-v0.1.9`, `machine-event-notifier-v0.1.21`, or `roughing-blank-planner-v0.2.1`. Attach the matching install ZIP from that version folder to its GitHub Release. Machine Event Notifications uses one combined download containing the Windows helper and its gSender plugin ZIP. The ZIP can also be downloaded directly from the repository's version folder.
 
