@@ -983,18 +983,34 @@ async function readProbeLimits() {
                     if (match) settings.set(Number(match[1]), Number(match[2]));
                 }
                 const homingMask = settings.get(23);
-                const travelSettings = [130, 131, 132].map((setting) => [setting, settings.get(setting)]);
-                const missing = travelSettings.filter(([, value]) => !Number.isFinite(value) || value <= 0).map(([setting]) => `$${setting}`);
+                const hardLimitsSetting = settings.get(21);
+                const homingPullOffSetting = settings.get(27);
+                const configuredTravelSettings = [130, 131, 132].map((setting) => [setting, settings.get(setting)]);
+                const missing = configuredTravelSettings.filter(([, value]) => !Number.isFinite(value) || value <= 0).map(([setting]) => '$' + setting);
                 if (!Number.isInteger(homingMask) || homingMask < 0) missing.unshift('$23');
+                if (hardLimitsSetting !== 0 && hardLimitsSetting !== 1) missing.unshift('$21');
+                if (!Number.isFinite(homingPullOffSetting) || homingPullOffSetting < 0) missing.unshift('$27');
+                const pullOffClearance = hardLimitsSetting === 1 && Number.isFinite(homingPullOffSetting) && homingPullOffSetting >= 0
+                    ? homingPullOffSetting
+                    : 0;
+                const effectiveTravelSettings = configuredTravelSettings.map(([setting, value]) => [setting, value - pullOffClearance]);
+                const tooSmallAfterPullOff = effectiveTravelSettings.filter(([, value]) => !Number.isFinite(value) || value <= Z_LIMIT_MARGIN);
+                missing.push(...tooSmallAfterPullOff.map(([setting]) => '$' + setting + ' after homing pull-off'));
                 if (missing.length === 0) {
-                    const travels = travelSettings.map(([, value]) => value);
+                    const configuredTravels = configuredTravelSettings.map(([, value]) => value);
+                    const travels = effectiveTravelSettings.map(([, value]) => value);
                     logHomingDiagnostic(`Controller travel settings parsed on attempt ${attempt}/3`, {
-                        homingMask, x: travels[0], y: travels[1], z: travels[2]
+                        homingMask,
+                        hardLimitsEnabled: hardLimitsSetting === 1,
+                        configuredTravels,
+                        homingPullOffMm: pullOffClearance,
+                        effectiveTravels: travels
                     });
                     controllerMaxProbeLengthMm = travels[2] - FIXED_VERTICAL_CLEARANCE_MM;
                     probeLengthLimitsLoaded = true;
                     probeLengthLimitRetryAt = 0;
-                    if (enforceProbeLengthLimit(controllerMaxProbeLengthMm, `configured machine Z travel (${travels[2].toFixed(1)} mm) minus ${FIXED_VERTICAL_CLEARANCE_MM.toFixed(1)} mm clearance`)) {
+                    const limitDescription = 'effective machine Z travel (' + travels[2].toFixed(1) + ' mm after ' + pullOffClearance.toFixed(1) + ' mm hard-limit homing pull-off) minus ' + FIXED_VERTICAL_CLEARANCE_MM.toFixed(1) + ' mm clearance';
+                    if (enforceProbeLengthLimit(controllerMaxProbeLengthMm, limitDescription)) {
                         update();
                         persistSettingsSoon();
                     }
@@ -1008,7 +1024,7 @@ async function readProbeLimits() {
                     const y = axis(2, travels[1]);
                     const zHomePositive = (homingMask & 4) === 0;
                     const z = { homePositive: zHomePositive, min: zHomePositive ? -travels[2] : 0, max: zHomePositive ? 0 : travels[2] };
-                    return { x, y, z, zHomePositive: z.homePositive, minZ: z.min, maxZ: z.max };
+                    return { x, y, z, zHomePositive: z.homePositive, minZ: z.min, maxZ: z.max, hardLimitsEnabled: hardLimitsSetting === 1, homingPullOffMm: pullOffClearance };
                 }
                 lastError = `Missing or invalid ${missing.join(', ')} in the controller's $$ response.`;
                 logHomingDiagnostic(`Controller $$ settings parse failed on attempt ${attempt}/3`, { missing, parsed: Object.fromEntries(settings) });

@@ -2,7 +2,7 @@
   "id": "com.bakstaaj.3d-part-mapping-experimental",
   "name": "3D Part Mapping",
   "description": "Contact-driven perimeter and surface mapping.",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "engine": ">=1.7.0-Edge-1",
   "ui": {
     "entry": "ui/index.html",
