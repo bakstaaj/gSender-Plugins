@@ -1,7 +1,7 @@
 {
   "id": "com.bakstaaj.camera-monitor",
   "name": "CNC Camera Monitor",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "View USB and network camera feeds in gSender while a CNC job is running.",
   "engine": "1.7.0-Edge-2",
   "permissions": ["camera", "media", "storage"],
@@ -9,7 +9,7 @@
     "entry": "ui/index.html",
     "contributions": [
       { "slot": "tools-page", "route": "camera-monitor", "label": "CNC Camera Monitor" },
-      { "slot": "visualizer-overlay", "label": "CNC Camera Monitor", "icon": "📷" }
+      { "slot": "tools-tab", "label": "Camera" }
     ]
   },
   "capabilities": {

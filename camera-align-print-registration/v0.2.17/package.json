@@ -1,6 +1,6 @@
 {
   "name": "camera-align-print-registration",
-  "version": "0.2.11",
+  "version": "0.2.17",
   "private": true,
   "type": "module",
   "scripts": {

@@ -2,7 +2,8 @@ $ErrorActionPreference = 'Stop'
 
 $buildRoot = Join-Path ([System.IO.Path]::GetTempPath()) "camera-monitor-plugin-$([guid]::NewGuid().ToString('N'))"
 $stagePath = Join-Path $buildRoot 'plugin'
-$outputPath = Join-Path $PSScriptRoot 'camera-monitor-v0.1.9.zip'
+$manifest = Get-Content (Join-Path $PSScriptRoot 'gsender-plugin.json') -Raw | ConvertFrom-Json
+$outputPath = Join-Path $PSScriptRoot "camera-monitor-v$($manifest.version).zip"
 $include = @(
   'screenshots',
   'src',

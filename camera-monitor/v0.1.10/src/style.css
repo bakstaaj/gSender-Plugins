@@ -9,18 +9,7 @@
 
 @media(max-width:560px){html,body{height:100%}}
 
-/* gSender renders the visualizer overlay in a narrow plugin iframe. Keep that
-   surface focused on the live feed; the Tools page retains the full controls. */
-@media(max-width:560px){
-  html,body{width:100%;height:100%;min-width:0;overflow:hidden;background:#071017}
-  .page{display:block;width:100%;height:100vh;min-width:0;max-width:none;margin:0;padding:0;overflow:hidden}
-  .topbar,.setup,.page>footer,.view-panel>.panel-head,.view-panel>.caption{display:none!important}
-  .view-panel{width:100%;height:100vh;min-width:0;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
-  .view-panel>.preview{width:100%;height:100vh;min-height:0;border:0;border-radius:0;background:#071017}
-  .view-panel>.preview img,.view-panel>.preview video{object-fit:contain}
-  .view-panel>.preview video{pointer-events:none}
-  .view-panel .placeholder,.view-panel .crosshair,.view-panel .frame-badge{display:none!important}
-}
+
 
 .second-camera-toggle{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin-top:18px;padding:14px 16px;background:#152b37;border-radius:12px}
 .second-camera-toggle label{display:flex;align-items:center;gap:9px;font-weight:700;cursor:pointer}
@@ -31,24 +20,24 @@
 .second-camera-config .source-row{grid-template-columns:repeat(2,minmax(0,1fr))}
 .second-camera-config .options-row{margin-top:12px}
 .second-camera-config>button{margin-top:14px}
-.overlay-toolbar{display:none}
+.preview-toolbar{display:none}
 .feed-health{display:flex;align-items:center;gap:7px;color:#a8bbc5;font-size:11px;line-height:1;white-space:nowrap}
 .feed-health i{width:8px;height:8px;border-radius:50%;background:#788b95;flex:none}
 .feed-health.live i{background:#58d494;box-shadow:0 0 8px #58d49466}
 .feed-health.stale i{background:#ff806f}
-.overlay-toolbar-top,.picture-controls,.camera-switcher{display:flex;align-items:center;gap:5px}
-.overlay-toolbar-top{justify-content:space-between;min-height:28px}
+.preview-toolbar-top,.picture-controls,.camera-switcher{display:flex;align-items:center;gap:5px}
+.preview-toolbar-top{justify-content:space-between;min-height:28px}
 .picture-controls{justify-content:flex-start}
 .mini-button{height:27px;min-width:29px;padding:0 7px;border:1px solid #496471;border-radius:6px;background:#19323f;color:#dce8ed;font-family:inherit;font-size:11px;font-weight:600;cursor:pointer}
 .mini-button:hover{background:#254654}
 .mini-button.active{border-color:#23b6d3;color:#67d7e9;background:#123744}
-#zoomReadout{min-width:35px;text-align:center;color:#a8bbc5;font-size:10px}
+
 
 @media(max-width:560px){
   .page{display:flex;flex-direction:column;height:100vh}
   .view-panel{display:flex;flex-direction:column;flex:1;height:auto;min-height:0}
-  .overlay-toolbar{display:flex;flex:none;flex-direction:column;gap:5px;padding:5px 7px;background:#0b1820}
-  .overlay-toolbar-top{width:100%}
+  .preview-toolbar{display:flex;flex:none;flex-direction:column;gap:5px;padding:5px 7px;background:#0b1820}
+  .preview-toolbar-top{width:100%}
   .picture-controls{width:100%;gap:4px}
   .picture-controls .mini-button{flex:1}
   .view-panel>.preview{flex:1;height:auto;min-height:0}
@@ -57,3 +46,51 @@
 .preview iframe{width:100%;height:100%;border:0;background:#071017}.preview iframe{transform-origin:center}
 .bridge-setup{margin:0 0 16px;padding:14px 16px;background:#152b37;border:1px solid #365260;border-radius:11px}.bridge-actions{display:flex;align-items:center;gap:20px;flex-wrap:wrap}.bridge-config-dialog{position:fixed;inset:0;z-index:10000;display:grid;place-items:center;padding:18px;background:#061018e8}.bridge-config-card{display:flex;flex-direction:column;width:min(1100px,96vw);height:min(850px,94vh);overflow:hidden;background:#142935;border:1px solid #5b7886;border-radius:14px;box-shadow:0 18px 70px #000a}.bridge-config-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:10px 16px;background:#1a3240;border-bottom:1px solid #365260}.bridge-config-heading strong{font-size:16px}.bridge-config-message{margin:0;padding:8px 16px;color:#c1d0d8;font-size:12px}.bridge-config-card iframe{flex:1;min-height:0;width:100%;border:0;background:#fff}.bridge-config-footer{padding:8px 16px;color:#c1d0d8;font-size:12px}.bridge-config-footer code{color:#83d9e7}
 .bridge-setup{margin:0 0 16px;padding:14px 16px;background:#152b37;border:1px solid #365260;border-radius:11px}.bridge-actions{display:flex;align-items:center;gap:20px;flex-wrap:wrap}.bridge-actions a{color:#45c3d9;font-weight:750;text-decoration:none}.bridge-actions a:hover{text-decoration:underline}.bridge-start-instructions{margin-top:10px;color:#c1d0d8;line-height:1.5}.bridge-start-instructions p{margin:8px 0}.bridge-start-instructions code{color:#83d9e7}
+
+/* The Carve tools-tab is a short panel: keep it focused on the saved live view. */
+@media(max-height:480px){
+  html,body{height:100%;min-height:0;overflow:hidden}
+  .page{display:flex;flex-direction:column;width:100%;height:100vh;max-width:none;min-width:0;margin:0;padding:0;overflow:hidden}
+  .topbar,.setup,.page>footer,.view-panel>.panel-head,.view-panel>.caption{display:none!important}
+  .view-panel{display:flex;flex:1;flex-direction:column;width:100%;height:auto;min-height:0;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+  .preview-toolbar{display:flex;flex:none;flex-direction:column;gap:5px;padding:5px 7px;background:#0b1820}
+  .preview-toolbar-top,.picture-controls{width:100%}
+  .picture-controls .mini-button{flex:1}
+  .view-panel>.preview{flex:1;width:100%;height:auto;min-height:0;border:0;border-radius:0;background:#071017}
+}
+
+/* Carve Camera tab: overlay matching controls on the full preview surface. */
+@media(max-height:520px){
+  html,body{height:100%;min-height:0;overflow:hidden}
+  .page{display:flex;flex-direction:column;width:100%;height:100vh;max-width:none;min-width:0;margin:0;padding:0;overflow:hidden}
+  .topbar,.setup,.page>footer,.view-panel>.panel-head,.view-panel>.caption{display:none!important}
+  .view-panel{position:relative;display:flex;flex:1;width:100%;height:auto;min-height:0;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;overflow:hidden}
+  .view-panel>.preview{position:absolute;inset:0;z-index:1;width:100%;height:100%;min-height:0;border:0;border-radius:0;background:#071017}
+  .preview-toolbar{position:absolute;top:7px;left:7px;z-index:5;display:flex;align-items:center;gap:6px;width:min(calc(100% - 14px),730px);min-width:0;padding:5px 7px;border:1px solid #8fa9b566;border-radius:8px;background:#0b1820dc;box-shadow:0 2px 8px #0005;backdrop-filter:blur(5px);white-space:nowrap}
+  .toolbar-toggle{display:inline-flex;flex:none;align-items:center;justify-content:center;width:34px;height:34px;min-width:34px;min-height:34px;padding:0}
+  .toolbar-toggle svg{display:block;width:14px;height:14px}
+  .toolbar-toggle svg path{fill:none;stroke:currentColor;stroke-width:2.2;stroke-linecap:round;stroke-linejoin:round}
+  .preview-toolbar-top{display:flex;flex:1 1 auto;align-items:center;justify-content:flex-start;gap:6px;width:auto;min-width:0;min-height:0}
+  .feed-health{flex:0 1 auto;max-width:145px;overflow:hidden;text-overflow:ellipsis}
+  .preview-toolbar .mini-button{height:34px;min-width:34px;padding:4px 9px;font-size:.72rem}
+  .preview-toolbar .toolbar-toggle{padding:0}
+  .camera-switcher{flex:none;gap:4px}
+  .picture-controls{display:flex;flex:none;align-items:center;justify-content:flex-end;gap:4px;width:auto;min-width:0;margin-left:auto}
+  .picture-controls .mini-button{flex:0 0 34px;width:34px;min-width:34px;padding:0}
+  .preview-toolbar.toolbar-collapsed{width:auto;min-width:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none;backdrop-filter:none}
+  .preview-toolbar.toolbar-collapsed .preview-toolbar-top,.preview-toolbar.toolbar-collapsed .picture-controls{display:none!important}
+  .preview-toolbar.toolbar-collapsed .toolbar-toggle{width:22px;height:22px;min-width:22px;min-height:22px}
+}
+
+/* Compact lower-right Carve tab layout. */
+@media(max-height:480px){
+  html,body{height:100%;min-height:0;overflow:hidden}
+  .page{display:flex;flex-direction:column;width:100%;height:100vh;max-width:none;min-width:0;margin:0;padding:0;overflow:hidden}
+  .topbar,.setup,.page>footer,.view-panel>.panel-head,.view-panel>.caption{display:none!important}
+  .view-panel{display:flex;flex:1;flex-direction:column;width:100%;height:auto;min-height:0;margin:0;padding:0;border:0;border-radius:0;background:transparent;box-shadow:none}
+  .preview-toolbar{display:flex;flex:none;flex-direction:row;align-items:center;justify-content:space-between;gap:8px;padding:5px 7px;background:#0b1820;white-space:nowrap}
+  .preview-toolbar-top{display:flex;flex:0 1 auto;align-items:center;justify-content:flex-start;gap:6px;width:auto;min-width:0}
+  .picture-controls{display:flex;flex:0 1 auto;align-items:center;justify-content:flex-end;gap:5px;width:auto;min-width:0}
+  .picture-controls .mini-button{flex:0 1 38px;min-width:30px}
+  .view-panel>.preview{flex:1;width:100%;height:auto;min-height:0;border:0;border-radius:0;background:#071017}
+}

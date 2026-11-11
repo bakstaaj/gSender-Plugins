@@ -74,7 +74,7 @@ document.querySelector('#app').innerHTML = `
   </section>
 
   <section id="jogPanel" class="panel jog-panel" data-tab-panel="position" role="tabpanel" aria-labelledby="tabPosition" hidden>
-    <div class="section-heading"><div><div class="step">03 · POSITION</div><h2>Jog and set work zero</h2></div></div>
+    <div class="section-heading"><div><div class="step">03 · POSITION</div><h2>Set X/Y work zero</h2></div></div>
     <p class="instruction compact-instruction">Raise Z to safe clearance and confirm clear travel before jogging.</p>
     <div class="jog-workspace">
       <div class="camera-inline-preview jog-camera-preview" aria-label="Live camera preview while jogging"><video autoplay muted playsinline data-camera-mini-video hidden></video><div class="camera-inline-placeholder" data-camera-mini-placeholder><strong>Camera preview is off</strong><span>Start the camera on the Camera tab to keep the crosshair visible.</span><button class="secondary" type="button" data-open-camera-tab>Open Camera tab</button></div><div class="reticle" aria-hidden="true"><i></i><b></b></div><div class="image-label">CROSSHAIR CENTER</div></div>
@@ -91,9 +91,9 @@ document.querySelector('#app').innerHTML = `
           </div>
         </div>
         <div class="zero-controls">
-          <div class="section-heading"><div><div class="step">04 · WORK ZERO</div><h3>Set work zero</h3></div><div class="wcs-chip" id="wcsSummary">WCS not checked</div></div>
+          <div class="section-heading"><div><div class="step">04 · WORK ZERO</div><h3>Set work zero</h3></div><div class="zero-toolbar"><div class="wcs-chip" id="wcsSummary">WCS not checked</div></div></div>
           <p class="instruction compact-instruction">Center the crosshair on the origin, then choose its work coordinate system.</p>
-          <div class="zero-actions"><label class="wcs-target">Coordinate system<select id="wcsSelect"><option value="G54">G54</option><option value="G55">G55</option><option value="G56">G56</option><option value="G57">G57</option><option value="G58">G58</option><option value="G59">G59</option></select></label><button id="setZero" class="primary large" disabled>Set G54 work zero at crosshair</button></div>
+          <div class="zero-actions align-toolbar-row" id="zeroActions"><button id="toggleAlignToolbar" class="secondary align-toolbar-toggle" type="button" aria-expanded="true" aria-label="Hide alignment controls" title="Hide alignment controls" aria-controls="zeroCameraToggle wcsSelect setZero"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m5 15 7-7 7 7" /></svg></button><button id="zeroCameraToggle" class="secondary zero-camera-toggle" type="button">Start camera</button><label class="wcs-target"><span class="wcs-label-full">Coordinate system</span><span class="wcs-label-compact">WCS</span><select id="wcsSelect"><option value="G54">G54</option><option value="G55">G55</option><option value="G56">G56</option><option value="G57">G57</option><option value="G58">G58</option><option value="G59">G59</option></select></label><button id="setZero" class="primary large" disabled>Set G54 work zero at crosshair</button></div>
           <p class="hint compact-hint">Writes persistent X/Y offset only. Does not change Z zero, move the machine, or start a job.</p>
         </div>
       </div>
@@ -132,7 +132,7 @@ document.querySelector('#app').innerHTML = `
     </div>
   </section>
 
-  <div id="notice" class="notice" role="status" aria-live="polite">Allow camera access, calibrate the offset, and confirm safe clearance before setting zero.</div>
+  <div id="notice" class="notice" role="status" aria-live="polite" hidden>Start the camera, calibrate the offset, center the crosshair, then set X/Y zero.</div>
   <details id="cameraDiagnostics" class="camera-help diagnostics" hidden><summary>Camera access diagnostics</summary><pre id="cameraDiagnosticsText"></pre></details>
 
   <dialog id="confirmDialog"><div class="dialog-icon">!</div><h2>Update work coordinate offset?</h2><p id="confirmText"></p><div class="button-row"><button id="cancelConfirm" class="secondary">Cancel</button><button id="acceptConfirm" class="primary">Write offset</button></div></dialog>
@@ -164,12 +164,17 @@ const state = {
   markB: null,
   registrationBusy: false,
   cameraPoppedOut: false,
+  alignToolbarCollapsed: false,
+  noticeTimer: null,
   cameraDrag: null,
 };
 
 const setNotice = (message, kind = '') => {
   $('notice').textContent = message;
   $('notice').className = `notice ${kind}`;
+  $('notice').hidden = false;
+  if (state.noticeTimer) window.clearTimeout(state.noticeTimer);
+  state.noticeTimer = window.setTimeout(() => { $('notice').hidden = true; }, kind === 'error' ? 10000 : 5000);
 };
 const round4 = (value) => Number(Number(value).toFixed(4));
 
@@ -320,6 +325,15 @@ function render() {
   $('wcsSummary').textContent = state.activeWcs ? `Active ${state.activeWcs}` : 'WCS not checked';
   if (state.selectedWcs) $('wcsSelect').value = state.selectedWcs;
   $('setZero').textContent = `Set ${state.selectedWcs ?? 'G54'} work zero at crosshair`;
+  $('zeroCameraToggle').textContent = state.stream ? 'Stop camera' : 'Start camera';
+  $('zeroCameraToggle').disabled = state.busy;
+  $('toggleAlignToolbar').innerHTML = state.alignToolbarCollapsed
+    ? '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m5 9 7 7 7-7" /></svg>'
+    : '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="m5 15 7-7 7 7" /></svg>';
+  $('toggleAlignToolbar').setAttribute('aria-expanded', String(!state.alignToolbarCollapsed));
+  $('toggleAlignToolbar').setAttribute('aria-label', state.alignToolbarCollapsed ? 'Show alignment controls' : 'Hide alignment controls');
+  $('toggleAlignToolbar').title = state.alignToolbarCollapsed ? 'Show alignment controls' : 'Hide alignment controls';
+  $('jogPanel').classList.toggle('align-toolbar-collapsed', state.alignToolbarCollapsed);
   const canRecordMark = Boolean(state.registrationText && state.offset && state.stream && state.connected);
   $('recordMarkA').disabled = state.registrationBusy || !canRecordMark;
   $('recordMarkB').disabled = state.registrationBusy || !canRecordMark;
@@ -819,6 +833,23 @@ $('startCamera').onclick = async () => {
   }
 };
 $('stopCamera').onclick = () => { stopCamera(); setNotice('Camera stopped.'); };
+$('zeroCameraToggle').onclick = async () => {
+  try {
+    if (state.stream) {
+      stopCamera();
+      setNotice('Camera stopped.');
+    } else {
+      await startCamera();
+      setNotice('Live camera started. Center the crosshair over the X/Y origin.');
+    }
+  } catch (error) {
+    setNotice(`Could not start the camera: ${error.message}`, 'error');
+  }
+};
+$('toggleAlignToolbar').onclick = () => {
+  state.alignToolbarCollapsed = !state.alignToolbarCollapsed;
+  render();
+};
 $('toggleCameraWindow').onclick = toggleCameraWindow;
 document.querySelectorAll('[data-tab]').forEach((tab) => {
   tab.onclick = () => { state.activeTab = tab.dataset.tab; render(); };

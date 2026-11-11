@@ -1,9 +1,9 @@
 # CNC Camera Monitor
-**Latest release package:** [Download camera-monitor-v0.1.9.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/camera-monitor-v0.1.9/camera-monitor-v0.1.9.zip)
+**Latest release package:** [Download camera-monitor-v0.1.10.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/camera-monitor-v0.1.10/camera-monitor-v0.1.10.zip)
 
-**Prototype 0.1.9 · gSender 1.7.0-Edge-2 · Plugin SDK 0.2.2**
+**Prototype 0.1.10 · gSender 1.7.0-Edge-2 · Plugin SDK 0.2.2**
 
-A view-only camera plugin for monitoring USB and compatible network camera feeds while gSender runs a CNC job. It does not access machine controls, send G-code, or change job state.
+A view-only camera plugin for monitoring USB and compatible network camera feeds while gSender runs a CNC job. In Carve, its controls overlay the live preview and collapse to a small chevron so the camera can use the full tab area. It does not access machine controls, send G-code, or change job state.
 
 ## Screenshot
 
@@ -22,11 +22,7 @@ The Makera Z1 preset fills the editable IP camera settings and shows the connect
 
 ## View the camera over Carve
 
-Connect the camera from the Tools page. A successful connection saves the selected camera settings automatically. In Carve, click the round **📷 camera button** on the left side of the visualizer to open CNC Camera Monitor as an overlay. The plugin reconnects using the saved camera settings when that overlay opens. The viewer stays over the Carve workspace while you work with the toolpath and normal Carve controls. Closing the overlay stops the camera feed.
-
-![Current gSender Carve workspace with the camera button and live CNC Camera Monitor overlay](screenshots/04-carve-camera-view.png)
-
-The screenshot shows where to open the viewer and what it looks like over Carve. Its status line shows whether the feed is live, along with the reported frame rate and image size. The controls let you zoom, switch between Fill and Fit, flip or rotate the image, and refresh the view. The feed is view-only and does not start, pause, stop, or change the CNC job.
+Configure the camera from the Tools page. A successful connection saves the selected camera settings automatically. In Carve, the **Camera** tab in the lower-right panel reconnects using those saved settings and shows a compact live view with connect/disconnect, feed health, camera switching, zoom, fit, flip, and rotate controls. The feed is view-only and does not start, pause, stop, or change the CNC job.
 
 ## ONVIF and RTSP using the local bridge
 
@@ -36,9 +32,7 @@ In the bridge page, use **add** to discover/test ONVIF cameras, then use **confi
 
 The bridge viewer reports its own stream errors inside the preview; the plugin can detect that the viewer page loaded, but cannot read its internal frame rate or video dimensions.
 
-This uses gSender's supported visualizer overlay. The plugin iframe does not have permission to open separate windows.
-
-The Carve visualizer overlay keeps camera monitoring separate from CNC controls. Its small feed-health indicator reports when frames stop arriving; MJPEG sources are marked connected because Chromium does not expose reliable per-frame timing for those streams. The view defaults to Fill so the image uses the full preview height; Fit, zoom, flip, and rotate controls remain available. The outer overlay size is set by gSender.
+The Camera tab shows feed health and image controls. MJPEG sources are marked connected because Chromium does not expose reliable per-frame timing for those streams. The view defaults to Fill; Fit, zoom, flip, and rotate controls remain available.
 
 ### Makera Z1
 
@@ -52,7 +46,7 @@ The address is editable because the machine’s IP can change. A successful conn
 
 ## Optional second camera
 
-On the Tools page, select **Configure a second camera**, choose its source type, and enter the USB device or network stream details. Connect/test the second camera to confirm its feed. Once enabled and configured, **Camera 1** and **Camera 2** buttons appear in the Carve overlay; if the second camera is disabled or incomplete, the switcher stays hidden. Both camera profiles are saved in gSender plugin storage.
+On the Tools page, select **Configure a second camera**, choose its source type, and enter the USB device or network stream details. Connect/test the second camera to confirm its feed. Once enabled and configured, **Camera 1** and **Camera 2** buttons appear in the Carve Camera tab; if the second camera is disabled or incomplete, the switcher stays hidden. Both camera profiles are saved in gSender plugin storage.
 
 ![Second-camera configuration expanded on the Tools page](screenshots/02-second-camera-setup.png)
 
