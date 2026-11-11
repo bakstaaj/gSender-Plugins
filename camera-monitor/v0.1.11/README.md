@@ -1,9 +1,9 @@
 # CNC Camera Monitor
-**Latest release package:** [Download camera-monitor-v0.1.10.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/camera-monitor-v0.1.10/camera-monitor-v0.1.10.zip)
+**Latest release package:** [Download camera-monitor-v0.1.11.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/camera-monitor-v0.1.11/camera-monitor-v0.1.11.zip)
 
-**Prototype 0.1.10 · gSender 1.7.0-Edge-2 · Plugin SDK 0.2.2**
+**Prototype 0.1.11 · gSender 1.7.0-Edge-2 · Plugin SDK 0.2.2**
 
-A view-only camera plugin for monitoring USB and compatible network camera feeds while gSender runs a CNC job. In Carve, its controls overlay the live preview and collapse to a small chevron so the camera can use the full tab area. It does not access machine controls, send G-code, or change job state.
+A view-only camera plugin for monitoring USB and compatible network camera feeds while gSender runs a CNC job. In Carve, its controls overlay the live preview and collapse to a small chevron so the camera can use the full tab area. The preview has no center crosshair; use Camera Align & Print Registration for alignment. It does not access machine controls, send G-code, or change job state.
 
 ## Screenshot
 
