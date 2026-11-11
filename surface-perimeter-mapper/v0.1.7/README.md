@@ -4,7 +4,7 @@
 
 The initial bed probe now ends 0.5 mm inside the configured Z travel boundary to avoid a soft-limit Alarm 2.
 
-This package enables the contact-driven workflow on a connected controller. It has been tested with a simulated controller, including GRBL-format probe reports and signed machine coordinates; it has not been tested on a physical machine. Probe deflection, missed contacts, controller timing, workholding and inaccessible or ambiguous features can affect the result.
+This package enables the contact-driven workflow on a connected controller. It has been tested with a simulated controller, including GRBL-format probe reports and signed machine coordinates, and on a physical CNC machine. Different controllers and probes can behave differently, so use caution when testing. Probe deflection, missed contacts, controller timing, workholding and inaccessible or ambiguous features can affect the result.
 
 Use a homed machine with G54 selected, a verified probe signal and a controller that supports G38.2, G38.3, G10 L20 and the position/status reports used by gSender. The plugin interprets $23 and $130–$132 as its machine-coordinate travel limits; verify those limits match the machine. The test build supports positive-up Z and requires sufficient Z travel for L + 1 mm above the bed. Probe contacts release with a normal rapid backoff; the workflow does not use G38.5.
 
