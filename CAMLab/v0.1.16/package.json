@@ -1,0 +1,21 @@
+{
+  "name": "gsender-camlab",
+  "version": "0.1.16",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/copy-occt.js && vite build",
+    "package": "bash scripts/package.sh"
+  },
+  "dependencies": {
+    "@sienci/gsender-plugin-sdk": "0.2.2",
+    "clipper-lib": "^6.4.2",
+    "occt-import-js": "^0.0.23",
+    "polygon-clipping": "^0.15.7",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "vite": "6.4.5"
+  }
+}
