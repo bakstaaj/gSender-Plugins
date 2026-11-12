@@ -11,7 +11,7 @@ function intersects(a,b,c,d){const e=1e-8,ab1=cross(a,b,c),ab2=cross(a,b,d),cd1=
     const on=(p,q,v)=>Math.abs(cross(p,q,v))<e&&v.x>=Math.min(p.x,q.x)-e&&v.x<=Math.max(p.x,q.x)+e&&v.y>=Math.min(p.y,q.y)-e&&v.y<=Math.max(p.y,q.y)+e;
     return on(a,b,c)||on(a,b,d)||on(c,d,a)||on(c,d,b);
 }
-export function planPolygonSurface(raw,{diameter,spacing,maxSamples=12000}){
+export function planPolygonSurface(raw,{diameter,spacing,maxSamples=15000,firstOnly=false}){
     if(!Array.isArray(raw)||!Number.isFinite(diameter)||diameter<=0||!Number.isFinite(spacing)||spacing<=0)throw new Error('Valid polygon contacts, probe diameter and sampling spacing are required.');
     const polygon=[];for(const p of raw){if(!Number.isFinite(p.x)||!Number.isFinite(p.y))throw new Error('Polygon contains an invalid contact.');if(!polygon.length||distance(p,polygon[polygon.length-1])>.02)polygon.push({x:p.x,y:p.y});}
     if(polygon.length>1&&distance(polygon[0],polygon[polygon.length-1])<=.02)polygon.pop();
@@ -22,7 +22,7 @@ export function planPolygonSurface(raw,{diameter,spacing,maxSamples=12000}){
     }
     const xs=polygon.map(p=>p.x),ys=polygon.map(p=>p.y);
     const span=Math.hypot(Math.max(...xs)-Math.min(...xs),Math.max(...ys)-Math.min(...ys));
-    if(span/spacing>maxSamples)throw new Error('Polygon surface passes are too large; increase spacing.');
+    if(!firstOnly&&span/spacing>maxSamples)throw new Error('Polygon surface passes are too large; increase spacing.');
     const samples=[],rings=[];
     // Raw probe centers sit about 0.5D outside the part edge. Start the probe
     // path about 0.25D inside the real edge, so inset the raw trace by 0.75D.
@@ -44,9 +44,9 @@ export function planPolygonSurface(raw,{diameter,spacing,maxSamples=12000}){
             const perimeter=lengths.reduce((a,b)=>a+b,0);
             if(perimeter<0.01)continue;
             const count=Math.max(1,Math.ceil(perimeter/spacing));
-            if(samples.length+count>maxSamples)throw new Error('Polygon surface scan exceeds the sample limit. Increase spacing.');
+            if(!firstOnly&&samples.length+count>maxSamples)throw new Error('Polygon surface scan exceeds the sample limit. Increase spacing.');
             const ring=[];let edgeIndex=0,edgeStart=0;
-            for(let i=0;i<count;i++){
+            for(let i=0;i<(firstOnly?1:count);i++){
                 const along=perimeter*i/count;
                 while(edgeIndex<lengths.length-1&&edgeStart+lengths[edgeIndex]<along){edgeStart+=lengths[edgeIndex];edgeIndex++;}
                 const a=vertices[edgeIndex],b=vertices[(edgeIndex+1)%vertices.length],t=lengths[edgeIndex]?(along-edgeStart)/lengths[edgeIndex]:0;
@@ -58,6 +58,7 @@ export function planPolygonSurface(raw,{diameter,spacing,maxSamples=12000}){
             // Start each loop at its closest point to the preceding one.
             if(samples.length){const last=samples[samples.length-1];let nearest=0;for(let i=1;i<ring.length;i++)if(distance(last,ring[i])<distance(last,ring[nearest]))nearest=i;ring.push(...ring.splice(0,nearest));}
             rings.push(ring);samples.push(...ring);
+            if(firstOnly)return {polygon,samples,clearance,rings};
         }
     }
     if(!samples.length)throw new Error('No polygon surface points fit inside the candidate outline with probe clearance.');

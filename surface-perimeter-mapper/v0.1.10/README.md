@@ -1,6 +1,10 @@
-# 3D Part Mapping v0.1.9 — machine-test build
+# 3D Part Mapping v0.1.10 — machine-test release
 
-**Release package:** [Download the v0.1.9 install ZIP](https://github.com/bakstaaj/gSender-Plugins/releases/download/surface-perimeter-mapper-v0.1.9/surface-perimeter-mapper-v0.1.9.zip)
+**Release package:** [Download the v0.1.10 install ZIP](https://github.com/bakstaaj/gSender-Plugins/releases/download/surface-perimeter-mapper-v0.1.10/surface-perimeter-mapper-v0.1.10.zip)
+
+This version raises the surface-planning limit to 15,000 points. Outside-perimeter-only scans plan just the one surface-height touch required to set the model top; they do not calculate the interior surface grid.
+
+DXF export offers a 2D perimeter drawing or a 3D model. The 2D option writes the compensated outer boundary and detected cutout outlines as closed polylines in actual millimeters. The 3D option writes a deduplicated indexed polyface with coordinates enlarged by 100× to keep short edges distinct. CAD import compatibility has not been confirmed: a plugin-generated 3D DXF was rejected by SketchUp as unsupported, and QCAD did not display the tested files. Treat DXF output as unvalidated; use STL when you need a confirmed 3D export. Do not use the unscaled 3D DXF coordinates for machining.
 
 When hard limits are enabled ($21=1), the plugin subtracts the controller-reported homing pull-off ($27) from configured axis travel before calculating machine bounds and the probe-length limit. It then applies the existing 0.5 mm probe-boundary margin.
 
@@ -19,4 +23,4 @@ Recovery behavior is automatic where the controller state makes the next move un
 Stay with the machine and be ready to use its physical stop. The plugin's **Stop after current move** button requests a stop after the current command; it is not an emergency stop. Stop the test if any position, direction, probe behavior or clearance is unexpected.
 
 
-DXF export is available alongside STL export. The DXF contains 3DFACE triangles in millimeters, uses the selected Results view, keeps XY in the active WPOS coordinates, and expresses Z relative to the probed bed. The surface-only view exports an open surface; perimeter-only and combined views retain their corresponding solid geometry.
+DXF export is available alongside STL and RAW CSV export. The 2D option writes closed polylines for the compensated outer perimeter and detected cutout boundaries in true millimeters. The surface-only view exports an open surface; perimeter-only and combined views retain their corresponding 3D geometry.

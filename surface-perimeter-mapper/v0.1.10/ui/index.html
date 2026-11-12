@@ -1,9 +1,25 @@
 <!doctype html>
 <html lang="en">
   <head>
+
+
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>3D Part Mapping</title>
+    <script type="importmap">{
+  "imports": {
+    "@sienci/gsender-plugin-sdk": "/plugin-sdk/index.js",
+    "@sienci/gsender-plugin-sdk/react": "/plugin-sdk/react.js",
+    "@sienci/gsender-plugin-sdk/viewer": "/plugin-sdk/viewer.js",
+    "react": "./vendor/react.js",
+    "react-dom": "./vendor/react-dom.js",
+    "react-dom/client": "./vendor/react-dom-client.js",
+    "react/jsx-runtime": "./vendor/react-jsx-runtime.js",
+    "react/jsx-dev-runtime": "./vendor/react-jsx-dev-runtime.js"
+  }
+}</script>
+    <script type="module" crossorigin src="./assets/index-CcUFyv4J.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-CyZBE7w5.css">
   </head>
   <body>
     <main class="app-shell">
@@ -139,7 +155,7 @@
               <canvas id="surfaceCanvas" class="surface-canvas" aria-label="Isometric view of the measured top surface"></canvas>
               <div class="surface-legend"><span>Low</span><i></i><span>High</span></div>
             </section>
-              <section class="stl-export"><h3>Export Results</h3><div class="result-export-controls"><label for="resultExportFormat">Export format<select id="resultExportFormat"><option value="stl">STL mesh</option><option value="dxf">DXF 3DFACE mesh</option><option value="raw">RAW probe data (CSV)</option></select></label><div class="model-export-actions"><button id="copySelectedExport" class="secondary" type="button" disabled>Copy STL</button><button id="downloadSelectedExport" class="secondary" type="button" disabled>Download STL</button></div></div><p id="resultExportDescription" class="field-help">STL mesh from the selected Results view. XY uses WPOS; Z is relative to the probed bed.</p><span id="resultExportStatus" class="inline-status" role="status" aria-live="polite"></span><textarea id="resultExportText" rows="12" readonly spellcheck="false" aria-label="Selected export data"></textarea></section>
+              <section class="stl-export"><h3>Export Results</h3><div class="result-export-controls"><label for="resultExportFormat">Export format<select id="resultExportFormat"><option value="stl">STL mesh</option><option value="dxf">DXF</option><option value="raw">RAW probe data (CSV)</option></select></label><label id="resultDxfModeWrap" for="resultDxfMode" hidden>DXF content<select id="resultDxfMode"><option value="model3d">3D model (100× for SketchUp)</option><option value="perimeter2d">2D perimeter only (mm)</option></select></label><div class="model-export-actions"><button id="copySelectedExport" class="secondary" type="button" disabled>Copy STL</button><button id="downloadSelectedExport" class="secondary" type="button" disabled>Download STL</button></div></div><p id="resultExportDescription" class="field-help">STL mesh from the selected Results view. XY uses WPOS; Z is relative to the probed bed.</p><span id="resultExportStatus" class="inline-status" role="status" aria-live="polite"></span><textarea id="resultExportText" rows="12" readonly spellcheck="false" aria-label="Selected export data"></textarea></section>
           </div>
           <div hidden><button id="saveSetup" class="primary" type="button" disabled>Save setup</button><span id="saveStatus" class="inline-status" role="status"></span></div>
         </div>
@@ -155,6 +171,5 @@
       <footer>Perimeter and surface probing is a first test build. Confirm the entered geometry and watch the machine throughout every automated move.</footer>
       <footer id="copyright-footer">Copyright 2026 bakStaaJ Designs LLC.</footer>
     </main>
-    <script type="module" src="/src/main.js"></script>
   </body>
 </html>

@@ -8,6 +8,7 @@ import { polygonMesh, polygonMeshStl, polygonPerimeterMesh, polygonSurfaceOnlyMe
 import { planUltraCorner, sampleUltraCorner } from './ultra-corner.js';
 import { recessCandidates } from './recess-detection.js';
 import { compensateContour } from './perimeter-compensation.js';
+import { buildPerimeterDxf, buildSurfaceMeshDxf } from './dxf-export.js';
 import './style.css';
 
 const $ = (id) => document.getElementById(id);
@@ -22,7 +23,7 @@ const MAX_HOMING_DIAGNOSTICS = 500;
 const FEATURE_WIDTH_MULTIPLIER = 4;
 const PERIMETER_RELEASE_DIAMETER_FACTOR = 0.75;
 const Z_LIMIT_MARGIN = 0.5;
-const MAX_SURFACE_SAMPLES = 12000;
+const MAX_SURFACE_SAMPLES = 15000;
 const MAX_PERIMETER_SAMPLES = 1200;
 const state = { connected: false, controllerHomed: false, homingStateInitialized: false, homingEventReceived: false, homedPositionCaptured: false, homingError: null, motionState: 'Unknown', machinePosition: null, workPosition: null, lastProbeStatusAt: 0, lastControllerStatusAt: 0, lastStatusQueryAt: 0, statusQueryAttempts: 0, statusOutageStartedAt: 0, lastStatusQueryError: null, statusRecoveryPromise: null, recoveryDialogOpen: false, recoveryCanceled: false, recoveryHoldInFlight: false, positionMode: 'wpos', gotoXYContext: null, xyMoveGuard: null, busy: false, continuousJog: null, rectangleOriginMachine: null, wposZeroMachine: null, bedWposZ: null, bedOriginWpos: null, bedStartMpos: null, originSafeRetract: false, originMessage: null, probePinKnown: false, probePinActive: false, probePinReportingSeen: false, lastProbeStatusLine: null, lastProbeStatusHadPinField: false, probeStatusSequence: 0, probeContactSequence: 0, lastProbeContact: null, activeProbeCapture: null, probeSignalTested: false, probeTestRunning: false, cancelProbeTest: false, finishProbeTest: null, scanRunning: false, stopScan: false, scanCheckpoint: null, incompleteScan: null, perimeterPoints: [], surfaceRings: [], surfaceCenter: null, surfaceComplete: false, fullSurfaceAvailable: false, latest: null };
 let persistenceTimer = 0;
@@ -107,6 +108,7 @@ function readSettings() {
         scanMode: document.querySelector('input[name="scanMode"]:checked')?.value ?? 'both',
         resultRepresentation: $('resultRepresentation')?.value ?? 'both',
         resultExportFormat: $('resultExportFormat')?.value ?? 'stl',
+        resultDxfMode: $('resultDxfMode')?.value ?? 'model3d',
         skipProbeSignalTest: $('skipProbeSignalTest').checked,
         rectangleCorner: document.querySelector('input[name="rectangleCorner"]:checked')?.value ?? 'center',
         positionMode: state.positionMode
@@ -137,6 +139,7 @@ function writeSettings(settings = {}) {
     }
     if (['perimeter', 'surface', 'both'].includes(settings.resultRepresentation) && $('resultRepresentation')) $('resultRepresentation').value = settings.resultRepresentation;
     if (['stl', 'dxf', 'raw'].includes(settings.resultExportFormat) && $('resultExportFormat')) $('resultExportFormat').value = settings.resultExportFormat;
+    if (['perimeter2d', 'model3d'].includes(settings.resultDxfMode) && $('resultDxfMode')) $('resultDxfMode').value = settings.resultDxfMode;
     if (settings.rectangleCorner) {
         const corner = document.querySelector(`input[name="rectangleCorner"][value="${settings.rectangleCorner}"]`);
         if (corner) corner.checked = true;
@@ -1530,7 +1533,7 @@ async function runSimplifiedScan(cfg,limits,{resumeRecord=null}={}){
         await scanPolygonPrototype(cfg,limits,bedZ,{direction:4,initialTarget:[0,yMax],cursor:resuming?state.scanCheckpoint.cursor:null,pendingObservation:resuming?state.scanCheckpoint.pendingObservation:null,checkpointStage:'outer-perimeter'});
         const current=await currentSnapshot();await scanMove([current.wpos[0],current.wpos[1],safeZ],limits,'Perimeter complete: raise to clearance');
         if(scanMode==='perimeter'){
-            const surfacePlan=planPolygonSurface(state.perimeterPoints,{diameter:cfg.diameter,spacing:cfg.spacing,maxSamples:MAX_SURFACE_SAMPLES});
+            const surfacePlan=planPolygonSurface(state.perimeterPoints,{diameter:cfg.diameter,spacing:cfg.spacing,maxSamples:MAX_SURFACE_SAMPLES,firstOnly:true});
             const first=surfacePlan.samples[0];
             if(!first)throw Error('The measured perimeter does not leave a safe location for the first surface-height touch.');
             const heightPoint=await probeSurfacePoint(first.x,first.y,cfg,limits,safeZ,bedZ,'Perimeter-only first surface-height touch');
@@ -2544,11 +2547,13 @@ function hasRawProbeData() {
 
 function updateResultExport(selectedView = $('resultRepresentation')?.value ?? 'both') {
     const format = $('resultExportFormat')?.value ?? 'stl';
+    const dxfMode = $('resultDxfMode')?.value ?? 'model3d';
     const rawAvailable = hasRawProbeData();
     const available = format === 'raw' ? rawAvailable : state.surfaceComplete;
     const copyButton = $('copySelectedExport');
     const downloadButton = $('downloadSelectedExport');
     const field = $('resultExportText');
+    $('resultDxfModeWrap').hidden = format !== 'dxf';
     const labels = {
         stl: { copy: 'Copy STL', download: 'Download STL', ext: 'stl' },
         dxf: { copy: 'Copy DXF', download: 'Download DXF', ext: 'dxf' },
@@ -2566,7 +2571,9 @@ function updateResultExport(selectedView = $('resultRepresentation')?.value ?? '
             : 'Closed perimeter and surface model with a bed-level bottom; edge heights are estimated from nearby readings.';
     const descriptions = {
         stl: `STL mesh from the selected Results view. ${viewDescription} XY uses WPOS; Z is relative to the probed bed.`,
-        dxf: `DXF 3DFACE mesh from the selected Results view. ${viewDescription} XY uses WPOS; Z is relative to the probed bed.`,
+        dxf: dxfMode === 'perimeter2d'
+            ? '2D DXF polylines for the compensated outer perimeter and detected cutout outlines, in actual millimeters. Z is flattened to zero.'
+            : `3D DXF indexed polyface mesh from the selected Results view. Coordinates are enlarged 100× to avoid SketchUp's short-edge import tolerance; scale the imported geometry to 1% to restore the measured size. ${viewDescription} XY uses WPOS; Z is relative to the probed bed.`,
         raw: 'RAW CSV includes the bed reference, raw outer-perimeter contacts, captured surface readings, and recess boundaries. It includes partial results while a scan is in progress.'
     };
     $('resultExportDescription').textContent = descriptions[format] ?? descriptions.stl;
@@ -2576,7 +2583,7 @@ function updateResultExport(selectedView = $('resultRepresentation')?.value ?? '
         return;
     }
     try {
-        field.value = format === 'raw' ? rawProbeDataToCsv() : format === 'dxf' ? surfaceMeshToDxf() : surfaceMeshToStl();
+        field.value = format === 'raw' ? rawProbeDataToCsv() : format === 'dxf' ? (dxfMode === 'perimeter2d' ? perimeterToDxf() : surfaceMeshToDxf()) : surfaceMeshToStl();
         if (!$('resultExportStatus').textContent) $('resultExportStatus').textContent = '';
     } catch (error) {
         field.value = '';
@@ -2712,31 +2719,17 @@ function surfaceMeshToDxf() {
     if (!state.surfaceComplete) throw new Error('Complete a surface scan before exporting the DXF.');
     const mesh = selectedResultMesh() ?? state.polygonMesh;
     if (!Array.isArray(mesh?.triangles) || !mesh.triangles.length) throw new Error('The selected Results view does not have a completed triangle mesh.');
-    const bedZ = Number.isFinite(mesh.bedZ) ? mesh.bedZ : 0;
-    const fmt = (value) => {
-        if (!Number.isFinite(value)) throw new Error('The selected mesh contains an invalid coordinate.');
-        return Number(value.toFixed(6)).toString();
-    };
-    const lines = [
-        '0', 'SECTION', '2', 'HEADER',
-        '9', '$ACADVER', '1', 'AC1015',
-        '9', '$INSUNITS', '70', '4',
-        '9', '$MEASUREMENT', '70', '1',
-        '0', 'ENDSEC',
-        '0', 'SECTION', '2', 'ENTITIES'
-    ];
-    for (const triangle of mesh.triangles) {
-        if (!Array.isArray(triangle) || triangle.length !== 3) throw new Error('The selected mesh contains an invalid face.');
-        const [a, b, c] = triangle;
-        const vertices = [a, b, c, c];
-        lines.push('0', '3DFACE', '8', 'MESH');
-        vertices.forEach((point, index) => {
-            const code = 10 + index;
-            lines.push(String(code), fmt(point.x), String(20 + index), fmt(point.y), String(30 + index), fmt(point.z - bedZ));
-        });
-    }
-    lines.push('0', 'ENDSEC', '0', 'EOF');
-    return lines.join('\n') + '\n';
+    return buildSurfaceMeshDxf(mesh);
+}
+
+function perimeterToDxf() {
+    if (!state.surfaceComplete) throw new Error('Complete the scan before exporting the DXF perimeter.');
+    if (!Array.isArray(state.perimeterPoints) || state.perimeterPoints.length < 3) throw new Error('At least three measured outer-perimeter contacts are required.');
+    const cutouts = (state.recesses ?? [])
+        .filter(recess => !recess.raised)
+        .map(recess => recess.contour ?? [])
+        .filter(loop => loop.length >= 3);
+    return buildPerimeterDxf(state.perimeterPoints, cutouts);
 }
 
 function rawProbeDataToCsv() {
@@ -2794,7 +2787,11 @@ function selectedExportPayload() {
     const format = $('resultExportFormat')?.value ?? 'stl';
     if (format === 'raw') return { format, extension: 'csv', mime: 'text/csv;charset=utf-8', filename: 'raw-probe-data.csv', content: rawProbeDataToCsv(), label: 'RAW CSV' };
     if (!state.surfaceComplete) throw new Error('Complete the scan before exporting a mesh.');
-    if (format === 'dxf') return { format, extension: 'dxf', mime: 'application/dxf', filename: 'measured-surface.dxf', content: surfaceMeshToDxf(), label: 'DXF' };
+    if (format === 'dxf') {
+        const dxfMode = $('resultDxfMode')?.value ?? 'model3d';
+        if (dxfMode === 'perimeter2d') return { format, extension: 'dxf', mime: 'application/dxf', filename: 'measured-perimeter-2d.dxf', content: perimeterToDxf(), label: 'DXF 2D perimeter' };
+        return { format, extension: 'dxf', mime: 'application/dxf', filename: 'measured-surface-100x.dxf', content: surfaceMeshToDxf(), label: 'DXF 3D model 100×' };
+    }
     return { format: 'stl', extension: 'stl', mime: 'model/stl', filename: 'measured-surface.stl', content: surfaceMeshToStl(), label: 'STL' };
 }
 
@@ -4265,7 +4262,7 @@ async function startPerimeterScan() {
     const releaseDistance = cfg.diameter * PERIMETER_RELEASE_DIAMETER_FACTOR;
     const estimatedInnerRadius = circleScan ? radius : Math.min(cfg.boundsX, cfg.boundsY) / 2;
     const estimatedInteriorRings = Math.max(0, Math.floor((estimatedInnerRadius - releaseDistance) / cfg.spacing) + 1);
-    const estimatedSurfacePoints = estimatedInteriorRings * sampleCount + 1;
+    const estimatedSurfacePoints = scanMode==='perimeter' ? 1 : estimatedInteriorRings * sampleCount + 1;
     if (estimatedSurfacePoints > MAX_SURFACE_SAMPLES) throw new Error(`The requested interior scan would use about ${estimatedSurfacePoints.toLocaleString()} points, above the ${MAX_SURFACE_SAMPLES.toLocaleString()}-point safety limit. Increase Perimeter sample spacing.`);
     if (!state.bedOriginWpos || Math.abs(initial.wpos[0] - state.bedOriginWpos[0]) > 0.1 || Math.abs(initial.wpos[1] - state.bedOriginWpos[1]) > 0.1 || initial.wpos[2] < safeZ - 0.1) {
         throw new Error(`Return to the probed front-bed XY and raise to at least WPOS Z${safeZ.toFixed(2)} mm before starting the scan.`);
@@ -5099,6 +5096,7 @@ async function initialize() {
     }));
     $('resultRepresentation').addEventListener('change', () => { renderPerimeterResult(); persistSettingsSoon(); });
     $('resultExportFormat').addEventListener('change', () => { $('resultExportStatus').textContent = ''; renderPerimeterResult(); persistSettingsSoon(); });
+    $('resultDxfMode').addEventListener('change', () => { $('resultExportStatus').textContent = ''; renderPerimeterResult(); persistSettingsSoon(); });
     document.querySelectorAll('input[name="rectangleCorner"]').forEach((radio) => radio.addEventListener('change', persistSettingsSoon));
     $('probeOriginButton').addEventListener('click', () => { void startSimplifiedWorkflow(); });
     $('cancelProbeTest').addEventListener('click', cancelProbeSignalCheck);

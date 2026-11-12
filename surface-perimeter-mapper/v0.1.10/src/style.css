@@ -175,6 +175,7 @@
 .app-shell .stl-export > h3 { margin: 0 0 10px; }
 .app-shell .result-export-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-bottom: 8px; }
 .app-shell .result-export-controls > label { display: grid; gap: 5px; min-width: min(100%,280px); }
+.app-shell .result-export-controls > label[hidden] { display: none; }
 .app-shell .result-export-controls select { min-height: 42px; padding: 8px 10px; border: 1px solid #465563; border-radius: 7px; color: #eef3f8; background: #1e252c; font: inherit; }
 .app-shell .model-export-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .app-shell .stl-export > p { margin: 4px 0 8px; }
