@@ -4,7 +4,7 @@ Source repository for gSender plugins maintained by Bakstaaj. Plugin version fol
 
 ## Plugins
 
-- [CAMLab](CAMLab/v0.1.13/README.md) — version 0.1.13; top-side profile CAM and flipped-side internal undercut paths from STL/STEP models.
+- [CAMLab](CAMLab/v0.1.14/README.md) — version 0.1.14; top, bottom, front, and back contour paths from STL/STEP models.
 - [Machine Event Notifications](machine-event-notifier/v0.1.21/README.md) — version 0.1.21; background gSender Wireless Control event monitoring with email and ntfy alerts, including controller alarm text in machine alert messages. The single-download helper package includes the plugin ZIP and supports automatic local pairing.
 - [CNC Job Setup](cnc-job-setup/v0.2.46/README.md) — version 0.2.46; configurable gSender streaming or Makera Z1 SD-card playback, with improved probe/tool prompts and alarm recovery.
 - [Roughing Blank Planner](roughing-blank-planner/v0.2.1/README.md) — version 0.2.1; analyzes a part NC envelope, compares billet and workholding clearances, selects a low-volume roughing blank, and generates stock-preparation G-code for Carve review.
@@ -68,5 +68,5 @@ The same workflow applies to the other plugins that provide an npm project and p
 
 ## GitHub Releases
 
-Use a separate tag and GitHub Release for each plugin or companion package version, such as `camlab-v0.1.13`, `surface-height-map-v0.2.0`, `surface-height-map-file-first-v0.2.0`, `surface-perimeter-mapper-v0.1.7`, `camera-align-print-registration-v0.2.17`, `camera-monitor-v0.1.11`, `machine-event-notifier-v0.1.21`, or `roughing-blank-planner-v0.2.1`. Attach the matching install ZIP from that version folder to its GitHub Release. Machine Event Notifications uses one combined download containing the Windows helper and its gSender plugin ZIP. The ZIP can also be downloaded directly from the repository's version folder.
+Use a separate tag and GitHub Release for each plugin or companion package version, such as `camlab-v0.1.14`, `surface-height-map-v0.2.0`, `surface-height-map-file-first-v0.2.0`, `surface-perimeter-mapper-v0.1.7`, `camera-align-print-registration-v0.2.17`, `camera-monitor-v0.1.11`, `machine-event-notifier-v0.1.21`, or `roughing-blank-planner-v0.2.1`. Attach the matching install ZIP from that version folder to its GitHub Release. Machine Event Notifications uses one combined download containing the Windows helper and its gSender plugin ZIP. The ZIP can also be downloaded directly from the repository's version folder.
 

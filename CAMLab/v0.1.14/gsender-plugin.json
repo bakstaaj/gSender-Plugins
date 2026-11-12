@@ -1,0 +1,18 @@
+{
+  "id": "com.bakstaaj.model-tab-cam",
+  "name": "CAMLab",
+  "version": "0.1.14",
+  "description": "Generate top, bottom, front, and back contour paths from STL or STEP models.",
+  "engine": "1.7.0-Edge-2",
+  "permissions": ["visualizer:load"],
+  "ui": {
+    "entry": "ui/index.html",
+    "contributions": [
+      { "slot": "tools-page", "route": "camlab", "label": "CAMLab" }
+    ]
+  },
+  "capabilities": {
+    "requestTypes": ["gcode:load:to:visualizer"],
+    "allowedFunctions": ["gcode"]
+  }
+}
