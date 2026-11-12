@@ -4,7 +4,7 @@ Source repository for gSender plugins maintained by Bakstaaj. Plugin version fol
 
 ## Plugins
 
-- [CAMLab](CAMLab/v0.1.16/README.md) — version 0.1.16; top, bottom, front, and back contour paths from STL/STEP models.
+- [CAMLab](CAMLab/v0.1.23/README.md) — version 0.1.23; four-side top → front → back → bottom machining, stock-aware roughing, retained top tabs, and continuous spiral perimeter passes. [Download the CAMLab v0.1.23 release ZIP](https://github.com/bakstaaj/gSender-Plugins/releases/download/camlab-v0.1.23/camlab-v0.1.23.zip).
 - [Machine Event Notifications](machine-event-notifier/v0.1.21/README.md) — version 0.1.21; background gSender Wireless Control event monitoring with email and ntfy alerts, including controller alarm text in machine alert messages. The single-download helper package includes the plugin ZIP and supports automatic local pairing.
 - [CNC Job Setup](cnc-job-setup/v0.2.46/README.md) — version 0.2.46; configurable gSender streaming or Makera Z1 SD-card playback, with improved probe/tool prompts and alarm recovery.
 - [Roughing Blank Planner](roughing-blank-planner/v0.2.1/README.md) — version 0.2.1; analyzes a part NC envelope, compares billet and workholding clearances, selects a low-volume roughing blank, and generates stock-preparation G-code for Carve review.

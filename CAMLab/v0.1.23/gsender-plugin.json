@@ -1,0 +1,18 @@
+{
+  "id": "com.bakstaaj.model-tab-cam",
+  "name": "CAMLab",
+  "version": "0.1.23",
+  "description": "Generate four-sided contour paths and top/front/back roughing from STL or STEP models, with bottom and back undercut paths.",
+  "engine": "1.7.0-Edge-2",
+  "permissions": ["visualizer:load"],
+  "ui": {
+    "entry": "ui/index.html",
+    "contributions": [
+      { "slot": "tools-page", "route": "camlab", "label": "CAMLab" }
+    ]
+  },
+  "capabilities": {
+    "requestTypes": ["gcode:load:to:visualizer"],
+    "allowedFunctions": ["gcode"]
+  }
+}
