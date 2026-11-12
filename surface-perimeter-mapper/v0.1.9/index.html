@@ -1,25 +1,9 @@
 <!doctype html>
 <html lang="en">
   <head>
-
-
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>3D Part Mapping</title>
-    <script type="importmap">{
-  "imports": {
-    "@sienci/gsender-plugin-sdk": "/plugin-sdk/index.js",
-    "@sienci/gsender-plugin-sdk/react": "/plugin-sdk/react.js",
-    "@sienci/gsender-plugin-sdk/viewer": "/plugin-sdk/viewer.js",
-    "react": "./vendor/react.js",
-    "react-dom": "./vendor/react-dom.js",
-    "react-dom/client": "./vendor/react-dom-client.js",
-    "react/jsx-runtime": "./vendor/react-jsx-runtime.js",
-    "react/jsx-dev-runtime": "./vendor/react-jsx-dev-runtime.js"
-  }
-}</script>
-    <script type="module" crossorigin src="./assets/index-BABcVO0F.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-B2MCW7OJ.css">
   </head>
   <body>
     <main class="app-shell">
@@ -151,11 +135,11 @@
             <strong hidden>Measured perimeter and surface</strong>
             <p id="perimeterStats" class="field-help" hidden></p>
             <section class="surface-visual" aria-label="Measured surface visualization">
-              <div class="surface-visual-heading"><div><strong>Surface Map</strong><p id="surfaceStats" class="field-help">Surface results will appear after probing.</p></div><div class="surface-view-options"><label>Display and STL view<select id="resultRepresentation"><option value="both">Perimeter and surface</option><option value="perimeter">Outside perimeter</option><option value="surface">Inside surface</option></select></label><label>Vertical exaggeration <strong id="surfaceExaggerationValue">5×</strong><input id="surfaceExaggeration" type="range" min="1" max="12" step="1" value="5" /></label></div></div>
+              <div class="surface-visual-heading"><div><strong>Surface Map</strong><p id="surfaceStats" class="field-help">Surface results will appear after probing.</p></div><div class="surface-view-options"><label>Display view<select id="resultRepresentation"><option value="both">Perimeter and surface</option><option value="perimeter">Outside perimeter</option><option value="surface">Inside surface</option></select></label><label>Vertical exaggeration <strong id="surfaceExaggerationValue">5×</strong><input id="surfaceExaggeration" type="range" min="1" max="12" step="1" value="5" /></label></div></div>
               <canvas id="surfaceCanvas" class="surface-canvas" aria-label="Isometric view of the measured top surface"></canvas>
               <div class="surface-legend"><span>Low</span><i></i><span>High</span></div>
             </section>
-              <section class="stl-export"><h3>ASCII STL surface</h3><p id="surfaceStlDescription" class="field-help">Open top-surface mesh. XY uses WPOS; the mesh is not a solid.</p><button id="copySurfaceStl" class="secondary" type="button" disabled>Copy ASCII STL</button><button id="downloadSurfaceStl" class="secondary" type="button" disabled>Download STL</button><span id="surfaceStlStatus" class="inline-status" role="status"></span><textarea id="surfaceStl" rows="12" readonly spellcheck="false" aria-label="ASCII STL mesh text"></textarea></section>
+              <section class="stl-export"><h3>Export Results</h3><div class="result-export-controls"><label for="resultExportFormat">Export format<select id="resultExportFormat"><option value="stl">STL mesh</option><option value="dxf">DXF 3DFACE mesh</option><option value="raw">RAW probe data (CSV)</option></select></label><div class="model-export-actions"><button id="copySelectedExport" class="secondary" type="button" disabled>Copy STL</button><button id="downloadSelectedExport" class="secondary" type="button" disabled>Download STL</button></div></div><p id="resultExportDescription" class="field-help">STL mesh from the selected Results view. XY uses WPOS; Z is relative to the probed bed.</p><span id="resultExportStatus" class="inline-status" role="status" aria-live="polite"></span><textarea id="resultExportText" rows="12" readonly spellcheck="false" aria-label="Selected export data"></textarea></section>
           </div>
           <div hidden><button id="saveSetup" class="primary" type="button" disabled>Save setup</button><span id="saveStatus" class="inline-status" role="status"></span></div>
         </div>
@@ -171,5 +155,6 @@
       <footer>Perimeter and surface probing is a first test build. Confirm the entered geometry and watch the machine throughout every automated move.</footer>
       <footer id="copyright-footer">Copyright 2026 bakStaaJ Designs LLC.</footer>
     </main>
+    <script type="module" src="/src/main.js"></script>
   </body>
 </html>

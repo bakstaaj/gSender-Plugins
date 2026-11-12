@@ -1,6 +1,6 @@
-# 3D Part Mapping v0.1.8 — machine-test build
+# 3D Part Mapping v0.1.9 — machine-test build
 
-**Release package:** [Download the v0.1.8 install ZIP](https://github.com/bakstaaj/gSender-Plugins/releases/download/surface-perimeter-mapper-v0.1.8/surface-perimeter-mapper-v0.1.8.zip)
+**Release package:** [Download the v0.1.9 install ZIP](https://github.com/bakstaaj/gSender-Plugins/releases/download/surface-perimeter-mapper-v0.1.9/surface-perimeter-mapper-v0.1.9.zip)
 
 When hard limits are enabled ($21=1), the plugin subtracts the controller-reported homing pull-off ($27) from configured axis travel before calculating machine bounds and the probe-length limit. It then applies the existing 0.5 mm probe-boundary margin.
 
@@ -17,3 +17,6 @@ The first bed probe uses the adjusted Z travel bound, including the configured h
 Recovery behavior is automatic where the controller state makes the next move unambiguous. If a bed touch has no probe report, the plugin waits briefly for a delayed report and requests fresh status; it may return vertically to the recorded bed-probe start and retry once at the slow feed only after confirming the machine is homed and idle, the XY position is unchanged, and the probe input is clear. If a perimeter contact remains active after the first retract, the plugin extends the retract in checked 0.25D steps up to 3D total. Ambiguous failures save the successful contacts and show an error dialog with an always-available Exit Scan control. On the next Start Probe, choose to continue from the saved checkpoint or start a new scan. Continuing automatically raises to safe full-clearance machine Z, returns to the saved bed-probe position, re-probes the bed, then returns at clearance to the saved scan checkpoint before proceeding. For recoverable scan pauses, the dialog provides jog controls; they remain locked until a fresh, homed Idle status arrives. Continue also requires a known-clear probe input and operator acknowledgement. Non-recoverable workflow errors show explanatory text and an always-available Exit Scan button, without jog or Continue controls.
 
 Stay with the machine and be ready to use its physical stop. The plugin's **Stop after current move** button requests a stop after the current command; it is not an emergency stop. Stop the test if any position, direction, probe behavior or clearance is unexpected.
+
+
+DXF export is available alongside STL export. The DXF contains 3DFACE triangles in millimeters, uses the selected Results view, keeps XY in the active WPOS coordinates, and expresses Z relative to the probed bed. The surface-only view exports an open surface; perimeter-only and combined views retain their corresponding solid geometry.

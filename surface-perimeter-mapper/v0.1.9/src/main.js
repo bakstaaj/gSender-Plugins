@@ -106,6 +106,7 @@ function readSettings() {
         probeMode: document.querySelector('input[name="probeMode"]:checked')?.value ?? 'precise',
         scanMode: document.querySelector('input[name="scanMode"]:checked')?.value ?? 'both',
         resultRepresentation: $('resultRepresentation')?.value ?? 'both',
+        resultExportFormat: $('resultExportFormat')?.value ?? 'stl',
         skipProbeSignalTest: $('skipProbeSignalTest').checked,
         rectangleCorner: document.querySelector('input[name="rectangleCorner"]:checked')?.value ?? 'center',
         positionMode: state.positionMode
@@ -135,6 +136,7 @@ function writeSettings(settings = {}) {
         if (mode) mode.checked = true;
     }
     if (['perimeter', 'surface', 'both'].includes(settings.resultRepresentation) && $('resultRepresentation')) $('resultRepresentation').value = settings.resultRepresentation;
+    if (['stl', 'dxf', 'raw'].includes(settings.resultExportFormat) && $('resultExportFormat')) $('resultExportFormat').value = settings.resultExportFormat;
     if (settings.rectangleCorner) {
         const corner = document.querySelector(`input[name="rectangleCorner"][value="${settings.rectangleCorner}"]`);
         if (corner) corner.checked = true;
@@ -1488,7 +1490,7 @@ async function runSimplifiedScan(cfg,limits,{resumeRecord=null}={}){
     const scanMode=document.querySelector('input[name="scanMode"]:checked')?.value??'both';
     state.scanRunning=true;
     if(!resuming){state.perimeterPoints=[];state.rawPerimeterPoints=[];state.compensationApplied=false;state.polygonSurfacePoints=[];state.surfacePreviewBoundary=null;state.surfaceRings=[];state.surfaceCenter=null;state.surfaceComplete=false;state.fullSurfaceAvailable=false;state.polygonMesh=null;state.recesses=[];state.tracingRecess=false;state.scanCheckpoint={phase:'perimeter',stage:'outer-perimeter',cursor:null,lastLocationWpos:null,lastProbe:null};}
-    $('surfaceStl').value='';$('surfaceStlStatus').textContent='';renderPerimeterResult();updateLiveStatus();
+    $('resultExportText').value='';$('resultExportStatus').textContent='';renderPerimeterResult();updateLiveStatus();
     const safeZ=fullClearanceHeight(cfg),bedZ=0,sideZ=bedZ+0.75*cfg.diameter;
     const yMax=limits.y.max-state.wposZeroMachine[1]-Z_LIMIT_MARGIN;
     if(yMax<=0.5)throw Error('The front-bed position leaves no +Y travel for the first edge search.');
@@ -1562,7 +1564,7 @@ async function showScanCompleteDialog(){
     const dialog=$('scanCompleteDialog');
     if(!dialog||dialog.open)return;
     const representation=$('resultRepresentation')?.selectedOptions[0]?.textContent??'selected model';
-    $('scanCompleteMessage').textContent=`The scan completed successfully. ${state.perimeterPoints.length} perimeter contacts and ${state.polygonSurfacePoints?.length??0} surface readings were collected. The Results view and STL export are set to ${representation}.`;
+    $('scanCompleteMessage').textContent=`The scan completed successfully. ${state.perimeterPoints.length} perimeter contacts and ${state.polygonSurfacePoints?.length??0} surface readings were collected. The Results view and selected-format export are set to ${representation}.`;
     dialog.showModal();
     await new Promise(resolve=>{
         const finish=()=>{dialog.close();dialog.removeEventListener('cancel',preventCancel);$('exitScanComplete').removeEventListener('click',finish);resolve();};
@@ -2495,12 +2497,13 @@ async function moveRectangleAlongEdge(start, tangentTarget, side, cfg, limits, l
 
 function renderPerimeterResult() {
     const result = $('perimeterResult');
-    if (!state.perimeterPoints.length && !state.surfaceRings.length) {
+    if (!state.perimeterPoints.length && !state.rawPerimeterPoints?.length && !state.polygonSurfacePoints?.length && !state.surfaceRings.length && !Number.isFinite(state.bedWposZ)) {
         result.hidden = true;
         $('downloadPerimeterCsv').disabled = true;
-        $('copySurfaceStl').disabled = true;
-        $('downloadSurfaceStl').disabled = true;
+        $('copySelectedExport').disabled = true;
+        $('downloadSelectedExport').disabled = true;
         $('downloadPolygonSurfaceCsv').hidden = true;
+        $('resultExportText').value = '';
         return;
     }
     const xs = state.perimeterPoints.map((point) => point.x);
@@ -2509,7 +2512,7 @@ function renderPerimeterResult() {
     result.hidden = false;
     result.querySelector('strong').textContent=rawPolygon?(state.compensationApplied?'Radius-corrected perimeter and surface':'Raw polygon probe-center contacts'):'Measured perimeter and surface';
     result.querySelector('.surface-visual').hidden=false;
-    result.querySelector('.stl-export').hidden=rawPolygon&&!state.polygonMesh;
+    result.querySelector('.stl-export').hidden=false;
     const selectedView=$('resultRepresentation')?.value??'both';
     const capturedSurface=Boolean(state.fullSurfaceAvailable&&state.polygonMesh?.surfaceTriangles?.length);
     const capturedPerimeter=Boolean(state.perimeterPoints.length>=3&&state.polygonSurfacePoints?.some(point=>Number.isFinite(point.z)));
@@ -2518,21 +2521,69 @@ function renderPerimeterResult() {
         if(option)option.disabled=!available;
     }
     if($('resultRepresentation')?.selectedOptions[0]?.disabled)$('resultRepresentation').value=capturedSurface?'both':capturedPerimeter?'perimeter':'both';
-    $('surfaceStlDescription').textContent=!state.surfaceComplete?'Surface scan is in progress.':selectedView==='perimeter'?'Perimeter-only solid: flat top at the first measured surface height, perimeter wall, and bed-level bottom.':selectedView==='surface'?'Open surface mesh with measured boundary heights; vertical perimeter and bed walls are omitted.': 'Closed perimeter and surface model with a bed-level bottom. Edge heights are estimated from nearby surface readings; Z is relative to bed.';
     $('perimeterStats').textContent = state.perimeterPoints.length
         ? `${state.perimeterPoints.length} ${rawPolygon?`${state.compensationApplied?'radius-corrected points':'raw probe-center contacts'} · ${state.polygonSurfacePoints?.length ?? 0} surface samples`:`perimeter points · ${state.surfaceRings.reduce((sum, ring) => sum + ring.points.filter(Boolean).length, 0) + (state.surfaceCenter ? 1 : 0)} interior height points`} · X ${Math.min(...xs).toFixed(3)}…${Math.max(...xs).toFixed(3)} mm · Y ${Math.min(...ys).toFixed(3)}…${Math.max(...ys).toFixed(3)} mm.`
         : 'Preparing surface scan…';
     $('downloadPerimeterCsv').disabled = !state.perimeterPoints.length;
     $('downloadPolygonSurfaceCsv').hidden=!rawPolygon;
     $('downloadPolygonSurfaceCsv').disabled=!state.polygonSurfacePoints?.length;
-    $('copySurfaceStl').disabled = !state.surfaceComplete;
-    $('downloadSurfaceStl').disabled = !state.surfaceComplete;
-    if (state.surfaceComplete) {
-        try { $('surfaceStl').value = surfaceMeshToStl(); }
-        catch (error) { $('surfaceStlStatus').textContent = error.message; }
-    }
+    updateResultExport(selectedView);
     drawSurfaceMesh();
     if (typeof requestAnimationFrame === 'function') requestAnimationFrame(drawSurfaceMesh);
+}
+
+function hasRawProbeData() {
+    return Number.isFinite(state.bedWposZ)
+        || (state.rawPerimeterPoints?.length ?? 0) > 0
+        || (state.perimeterPoints?.length ?? 0) > 0
+        || (state.polygonSurfacePoints?.length ?? 0) > 0
+        || (state.surfaceRings?.some(ring => ring.points?.some(Boolean)) ?? false)
+        || Boolean(state.surfaceCenter)
+        || (state.recesses?.some(recess => (recess.rawContour ?? recess.contour)?.length || recess.floor?.length) ?? false);
+}
+
+function updateResultExport(selectedView = $('resultRepresentation')?.value ?? 'both') {
+    const format = $('resultExportFormat')?.value ?? 'stl';
+    const rawAvailable = hasRawProbeData();
+    const available = format === 'raw' ? rawAvailable : state.surfaceComplete;
+    const copyButton = $('copySelectedExport');
+    const downloadButton = $('downloadSelectedExport');
+    const field = $('resultExportText');
+    const labels = {
+        stl: { copy: 'Copy STL', download: 'Download STL', ext: 'stl' },
+        dxf: { copy: 'Copy DXF', download: 'Download DXF', ext: 'dxf' },
+        raw: { copy: 'Copy RAW CSV', download: 'Download CSV', ext: 'csv' }
+    }[format] ?? { copy: 'Copy STL', download: 'Download STL', ext: 'stl' };
+    copyButton.textContent = labels.copy;
+    downloadButton.textContent = labels.download;
+    copyButton.disabled = !available;
+    downloadButton.disabled = !available;
+
+    const viewDescription = selectedView === 'perimeter'
+        ? 'Perimeter-only solid: flat top at the first measured surface height, perimeter wall, and bed-level bottom.'
+        : selectedView === 'surface'
+            ? 'Open surface mesh with measured boundary heights; vertical perimeter and bed walls are omitted.'
+            : 'Closed perimeter and surface model with a bed-level bottom; edge heights are estimated from nearby readings.';
+    const descriptions = {
+        stl: `STL mesh from the selected Results view. ${viewDescription} XY uses WPOS; Z is relative to the probed bed.`,
+        dxf: `DXF 3DFACE mesh from the selected Results view. ${viewDescription} XY uses WPOS; Z is relative to the probed bed.`,
+        raw: 'RAW CSV includes the bed reference, raw outer-perimeter contacts, captured surface readings, and recess boundaries. It includes partial results while a scan is in progress.'
+    };
+    $('resultExportDescription').textContent = descriptions[format] ?? descriptions.stl;
+    if (!available) {
+        field.value = '';
+        $('resultExportStatus').textContent = format === 'raw' ? 'No probe data has been collected yet.' : 'Complete the scan to generate a mesh export.';
+        return;
+    }
+    try {
+        field.value = format === 'raw' ? rawProbeDataToCsv() : format === 'dxf' ? surfaceMeshToDxf() : surfaceMeshToStl();
+        if (!$('resultExportStatus').textContent) $('resultExportStatus').textContent = '';
+    } catch (error) {
+        field.value = '';
+        $('resultExportStatus').textContent = error.message;
+        copyButton.disabled = true;
+        downloadButton.disabled = true;
+    }
 }
 
 function drawSurfaceMesh() {
@@ -2655,6 +2706,130 @@ function surfaceMeshToStl() {
     for (let i = 0; i < inner.length; i += 1) facet(local(inner[i]), local(inner[(i + 1) % inner.length]), local(state.surfaceCenter));
     lines.push('endsolid surface_perimeter_mapper_mm_z_relative_to_first_probe');
     return `${lines.join('\n')}\n`;
+}
+
+function surfaceMeshToDxf() {
+    if (!state.surfaceComplete) throw new Error('Complete a surface scan before exporting the DXF.');
+    const mesh = selectedResultMesh() ?? state.polygonMesh;
+    if (!Array.isArray(mesh?.triangles) || !mesh.triangles.length) throw new Error('The selected Results view does not have a completed triangle mesh.');
+    const bedZ = Number.isFinite(mesh.bedZ) ? mesh.bedZ : 0;
+    const fmt = (value) => {
+        if (!Number.isFinite(value)) throw new Error('The selected mesh contains an invalid coordinate.');
+        return Number(value.toFixed(6)).toString();
+    };
+    const lines = [
+        '0', 'SECTION', '2', 'HEADER',
+        '9', '$ACADVER', '1', 'AC1015',
+        '9', '$INSUNITS', '70', '4',
+        '9', '$MEASUREMENT', '70', '1',
+        '0', 'ENDSEC',
+        '0', 'SECTION', '2', 'ENTITIES'
+    ];
+    for (const triangle of mesh.triangles) {
+        if (!Array.isArray(triangle) || triangle.length !== 3) throw new Error('The selected mesh contains an invalid face.');
+        const [a, b, c] = triangle;
+        const vertices = [a, b, c, c];
+        lines.push('0', '3DFACE', '8', 'MESH');
+        vertices.forEach((point, index) => {
+            const code = 10 + index;
+            lines.push(String(code), fmt(point.x), String(20 + index), fmt(point.y), String(30 + index), fmt(point.z - bedZ));
+        });
+    }
+    lines.push('0', 'ENDSEC', '0', 'EOF');
+    return lines.join('\n') + '\n';
+}
+
+function rawProbeDataToCsv() {
+    const rows = [[
+        'record_type', 'feature_id', 'parent_feature_id', 'sample_index', 'scan_stage',
+        'x_wpos_mm', 'y_wpos_mm', 'z_wpos_mm', 'contact_z_wpos_mm',
+        'x_mpos_mm', 'y_mpos_mm', 'z_mpos_mm', 'raw_x_wpos_mm', 'raw_y_wpos_mm',
+        'approach_angle_deg', 'point_kind', 'raised_feature'
+    ]];
+    const cell = (value) => {
+        const text = value === null || value === undefined ? '' : String(value);
+        return /[",\r\n]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+    };
+    const numberCell = (value, digits = 6) => Number.isFinite(value) ? Number(value.toFixed(digits)).toString() : '';
+    const addPoint = (recordType, featureId, parentFeatureId, index, point, stage = '') => {
+        const mpos = Array.isArray(point.rawMpos) ? point.rawMpos : [];
+        rows.push([
+            recordType, featureId, parentFeatureId, index, point.scanStage ?? point.stage ?? stage,
+            numberCell(point.x), numberCell(point.y), numberCell(point.z), numberCell(point.contactZ),
+            numberCell(mpos[0]), numberCell(mpos[1]), numberCell(mpos[2]),
+            numberCell(point.rawX), numberCell(point.rawY),
+            numberCell(Number.isFinite(point.approachAngle) ? point.approachAngle : point.angle, 3),
+            point.kind ?? '', point.raised ? 'true' : ''
+        ]);
+    };
+
+    if (Number.isFinite(state.bedWposZ)) {
+        const origin = Array.isArray(state.bedOriginWpos) ? state.bedOriginWpos : [];
+        addPoint('bed_reference', 'bed', '', 1, { x: origin[0], y: origin[1], z: state.bedWposZ }, 'bed-probe');
+    }
+    const rawPerimeter = state.rawPerimeterPoints?.length ? state.rawPerimeterPoints : state.perimeterPoints ?? [];
+    rawPerimeter.forEach((point, index) => addPoint('outer_perimeter_contact', 'outer', '', point.index ?? index + 1, point, 'outer-perimeter'));
+    if (state.compensationApplied && state.rawPerimeterPoints?.length) {
+        (state.perimeterPoints ?? []).forEach((point, index) => addPoint('outer_perimeter_compensated', 'outer', '', point.index ?? index + 1, point, 'radius-compensation'));
+    }
+
+    const surfacePoints = state.polygonSurfacePoints?.length
+        ? state.polygonSurfacePoints
+        : [...(state.surfaceRings ?? []).flatMap(ring => (ring.points ?? []).filter(Boolean)), ...(state.surfaceCenter ? [state.surfaceCenter] : [])];
+    surfacePoints.forEach((point, index) => addPoint('surface_probe', point.featureId ?? '', point.parentFeatureId ?? '', point.scanIndex ?? point.index ?? index + 1, point, 'surface'));
+    if (!state.polygonSurfacePoints?.length) {
+        for (const [featureIndex, recess] of (state.recesses ?? []).entries()) {
+            (recess.floor ?? []).forEach((point, index) => addPoint('recess_floor_probe', `recess-${featureIndex + 1}`, recess.parentIndex ?? '', point.scanIndex ?? index + 1, point, 'recess-floor'));
+        }
+    }
+    for (const [featureIndex, recess] of (state.recesses ?? []).entries()) {
+        const contour = recess.rawContour ?? recess.contour ?? [];
+        contour.forEach((point, index) => addPoint(recess.rawContour ? 'recess_boundary_contact' : 'recess_boundary', `recess-${featureIndex + 1}`, recess.parentIndex ?? '', point.index ?? index + 1, point, 'recess-boundary'));
+    }
+    if (rows.length === 1) throw new Error('No probe data is available to export yet.');
+    return rows.map(row => row.map(cell).join(',')).join('\r\n') + '\r\n';
+}
+
+function selectedExportPayload() {
+    const format = $('resultExportFormat')?.value ?? 'stl';
+    if (format === 'raw') return { format, extension: 'csv', mime: 'text/csv;charset=utf-8', filename: 'raw-probe-data.csv', content: rawProbeDataToCsv(), label: 'RAW CSV' };
+    if (!state.surfaceComplete) throw new Error('Complete the scan before exporting a mesh.');
+    if (format === 'dxf') return { format, extension: 'dxf', mime: 'application/dxf', filename: 'measured-surface.dxf', content: surfaceMeshToDxf(), label: 'DXF' };
+    return { format: 'stl', extension: 'stl', mime: 'model/stl', filename: 'measured-surface.stl', content: surfaceMeshToStl(), label: 'STL' };
+}
+
+async function copySelectedExport() {
+    let payload;
+    try { payload = selectedExportPayload(); }
+    catch (error) { $('resultExportStatus').textContent = error.message; return; }
+    const field = $('resultExportText');
+    field.value = payload.content;
+    try {
+        await navigator.clipboard.writeText(payload.content);
+        $('resultExportStatus').textContent = `${payload.label} copied to clipboard.`;
+    } catch (error) {
+        field.focus();
+        field.select();
+        const copied = document.execCommand('copy');
+        $('resultExportStatus').textContent = copied ? `${payload.label} copied to clipboard.` : `Copy failed: ${error.message}. Select and copy the text above.`;
+    }
+}
+
+function downloadSelectedExport() {
+    try {
+        const payload = selectedExportPayload();
+        const url = URL.createObjectURL(new Blob([payload.content], { type: payload.mime }));
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = payload.filename;
+        document.body.appendChild(link);
+        link.click();
+        link.remove();
+        setTimeout(() => URL.revokeObjectURL(url), 60000);
+        $('resultExportStatus').textContent = `${payload.label} download started.`;
+    } catch (error) {
+        $('resultExportStatus').textContent = error.message;
+    }
 }
 
 function selectedResultMesh(){
@@ -4141,8 +4316,8 @@ async function startPerimeterScan() {
     state.polygonMesh = null;
     state.recesses = [];
     state.tracingRecess = false;
-    $('surfaceStl').value = '';
-    $('surfaceStlStatus').textContent = '';
+    $('resultExportText').value = '';
+    $('resultExportStatus').textContent = '';
     const contactRadiusHistory = [];
     renderPerimeterResult();
     $('scanStatus').textContent = circleScan
@@ -4267,7 +4442,7 @@ async function startPerimeterScan() {
             $('scanStatus').textContent = 'Polygon candidate closed. Planning simulator-only surface samples…';
             logHomingDiagnostic('Polygon candidate closure', { contacts: state.perimeterPoints.length, validated: false });
             await scanPolygonSurfacePrototype(cfg,limits,safeZ,bedWposZ);
-            $('scanStatus').textContent=`Polygon surface scan complete: ${state.perimeterPoints.length} raw perimeter contacts and ${state.polygonSurfacePoints.length} surface samples. Map and open-surface STL are available.`;
+    $('scanStatus').textContent=`Polygon surface scan complete: ${state.perimeterPoints.length} raw perimeter contacts and ${state.polygonSurfacePoints.length} surface samples. Map and STL/DXF exports are available.`;
             return;
         }
         $('scanStatus').textContent = 'Perimeter captured. Starting the interior Z surface scan…';
@@ -4323,21 +4498,6 @@ function downloadPolygonSurfaceCsv() {
     if(!state.polygonSurfacePoints?.length)return;
     const rows=['sample,x_wpos_mm,y_wpos_mm,z_wpos_mm',...state.polygonSurfacePoints.map((p,i)=>`${i+1},${p.x.toFixed(3)},${p.y.toFixed(3)},${p.z.toFixed(3)}`)];
     const url=URL.createObjectURL(new Blob([rows.join('\r\n')],{type:'text/csv'}));const link=document.createElement('a');link.href=url;link.download='polygon-surface.csv';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);
-}
-
-async function copySurfaceStl() {
-    if (!state.surfaceComplete) return;
-    const field = $('surfaceStl');
-    try {
-        field.value = surfaceMeshToStl();
-        await navigator.clipboard.writeText(field.value);
-        $('surfaceStlStatus').textContent = 'ASCII STL copied to clipboard.';
-    } catch (error) {
-        field.focus();
-        field.select();
-        const copied = document.execCommand('copy');
-        $('surfaceStlStatus').textContent = copied ? 'ASCII STL copied to clipboard.' : `Copy failed: ${error.message}. Select and copy the text above.`;
-    }
 }
 
 function loadPolygonResult(saved) {
@@ -4938,6 +5098,7 @@ async function initialize() {
         update();persistSettingsSoon();
     }));
     $('resultRepresentation').addEventListener('change', () => { renderPerimeterResult(); persistSettingsSoon(); });
+    $('resultExportFormat').addEventListener('change', () => { $('resultExportStatus').textContent = ''; renderPerimeterResult(); persistSettingsSoon(); });
     document.querySelectorAll('input[name="rectangleCorner"]').forEach((radio) => radio.addEventListener('change', persistSettingsSoon));
     $('probeOriginButton').addEventListener('click', () => { void startSimplifiedWorkflow(); });
     $('cancelProbeTest').addEventListener('click', cancelProbeSignalCheck);
@@ -5017,8 +5178,8 @@ async function initialize() {
     $('stopPerimeterScan').addEventListener('click', () => { state.stopScan = true; $('scanStatus').textContent = 'Stop requested; the current move will finish. Inspect the probe position.'; });
     $('downloadPerimeterCsv').addEventListener('click', downloadPerimeterCsv);
     $('surfaceExaggeration').addEventListener('input', drawSurfaceMesh);
-    $('copySurfaceStl').addEventListener('click', () => { void copySurfaceStl(); });
-    $('downloadSurfaceStl').addEventListener('click',()=>{try{const url=URL.createObjectURL(new Blob([surfaceMeshToStl()],{type:'model/stl'}));const link=document.createElement('a');link.href=url;link.download='measured-surface.stl';document.body.appendChild(link);link.click();link.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);}catch(error){$('surfaceStlStatus').textContent=error.message;}});
+    $('copySelectedExport').addEventListener('click', () => { void copySelectedExport(); });
+    $('downloadSelectedExport').addEventListener('click', downloadSelectedExport);
     window.addEventListener('resize', drawSurfaceMesh);
     try {
         const saved = await storage.get(STORAGE_KEY, null);

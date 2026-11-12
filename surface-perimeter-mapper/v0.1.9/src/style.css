@@ -171,8 +171,12 @@
 .app-shell .surface-canvas { display: block; width: 100%; height: 420px; color: #f2f5f8; }
 .app-shell .surface-legend { display: flex; justify-content: center; align-items: center; gap: 10px; color: #dce5eb; }
 .app-shell .surface-legend i { width: min(360px,45vw); height: 12px; border-radius: 8px; background: linear-gradient(90deg,#245bdb,#19b9a5,#b8d63c,#f58c32,#d83838); }
-.app-shell .stl-export { display: grid; grid-template-columns: auto auto 1fr; align-items: center; gap: 8px 14px; margin-top: 18px; }
-.app-shell .stl-export h3 { grid-column: 1/-1; margin: 0; }
-.app-shell .stl-export p { grid-column: 1/-1; margin: 0; }
-.app-shell .stl-export textarea { grid-column: 1/-1; width: 100%; min-height: 220px; resize: vertical; padding: 10px; border: 1px solid #465563; border-radius: 7px; color: #dce5eb; background: #090e12; font: 12px/1.45 ui-monospace,monospace; white-space: pre; }
-@media (max-width: 700px) { .app-shell .surface-visual-heading { flex-direction: column; }.app-shell .surface-view-options { min-width:0; width:100%; grid-template-columns:1fr; }.app-shell .surface-canvas { height: 320px; }.app-shell .stl-export { grid-template-columns: 1fr; }.app-shell .stl-export > * { grid-column: 1/-1; } }
+.app-shell .stl-export { display: block; margin-top: 18px; }
+.app-shell .stl-export > h3 { margin: 0 0 10px; }
+.app-shell .result-export-controls { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; margin-bottom: 8px; }
+.app-shell .result-export-controls > label { display: grid; gap: 5px; min-width: min(100%,280px); }
+.app-shell .result-export-controls select { min-height: 42px; padding: 8px 10px; border: 1px solid #465563; border-radius: 7px; color: #eef3f8; background: #1e252c; font: inherit; }
+.app-shell .model-export-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.app-shell .stl-export > p { margin: 4px 0 8px; }
+.app-shell .stl-export textarea { display: block; width: 100%; min-height: 220px; resize: vertical; margin-top: 8px; padding: 10px; border: 1px solid #465563; border-radius: 7px; color: #dce5eb; background: #090e12; font: 12px/1.45 ui-monospace,monospace; white-space: pre; }
+@media (max-width: 700px) { .app-shell .surface-visual-heading { flex-direction: column; }.app-shell .surface-view-options { min-width:0; width:100%; grid-template-columns:1fr; }.app-shell .surface-canvas { height: 320px; }.app-shell .result-export-controls { align-items: stretch; flex-direction: column; }.app-shell .result-export-controls > label { width:100%; } }
