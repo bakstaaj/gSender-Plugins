@@ -1,0 +1,20 @@
+* { box-sizing: border-box; }
+body { margin: 0; background: #10151b; color: #e7edf3; font: 14px/1.5 Inter, "Segoe UI", sans-serif; }
+.shell { max-width: 560px; margin: 0 auto; padding: 24px; }
+header { margin-bottom: 22px; }
+.eyebrow { color: #80bfff; font-size: 10px; font-weight: 700; letter-spacing: .15em; }
+h1 { margin: 4px 0; font-size: 23px; }
+p { margin: 0; color: #aab7c4; }
+.file-picker { display: inline-flex; align-items: center; min-height: 38px; padding: 0 13px; border: 1px solid #40505f; border-radius: 6px; background: #1b2530; cursor: pointer; }
+.file-picker input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.file-picker:focus-within { outline: 2px solid #55aaff; }
+.file-name { min-height: 30px; padding-top: 8px; color: #9eacb9; font-size: 12px; overflow-wrap: anywhere; }
+.angle-picker { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 8px; color: #c5d0da; font-size: 12px; }
+.angle-picker select { min-width: 120px; padding: 8px 10px; border: 1px solid #40505f; border-radius: 6px; background: #1b2530; color: #e7edf3; font: inherit; }
+button { width: 100%; min-height: 48px; margin-top: 10px; border: 0; border-radius: 7px; background: #2879d0; color: white; font: inherit; font-weight: 700; cursor: pointer; }
+button:hover:not(:disabled) { background: #348ce4; }
+button:disabled { opacity: .48; cursor: not-allowed; }
+#status { min-height: 56px; margin: 14px 0; padding: 11px 12px; border: 1px solid #2e3b48; border-radius: 6px; background: #151d25; color: #bdc9d4; font-size: 12px; }
+#status.success { color: #86dbb0; border-color: #285d45; }
+#status.error { color: #ff9b9b; border-color: #744343; }
+small { color: #8795a2; }
