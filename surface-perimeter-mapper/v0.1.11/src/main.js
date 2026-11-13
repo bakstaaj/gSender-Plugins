@@ -1078,9 +1078,10 @@ async function sendJogCommand(line, timeout = 30000) {
 async function requireG54Active() {
     const result = await machine.query('$G', { until: 'ok-or-error', timeout: 10000, maxLines: 40 });
     if (!result.complete || !result.ok || result.error) throw new Error(`Could not read the active work coordinate system: ${result.error ?? result.lines?.join(' ') ?? result.reason}`);
-    const gcLine = (result.lines ?? []).map(String).find((line) => line.includes('[GC:')) ?? '';
-    if (!/\bG54\b/.test(gcLine)) {
-        const active = gcLine.match(/\bG5[4-9]\b/)?.[0] ?? 'unknown';
+    const modalLine = (result.lines ?? []).map(String).find((line) => /\[\s*(?:GC:\s*)?G(?:0|1|2|3)\b/i.test(line)) ?? '';
+    const modalState = modalLine.match(/\[\s*(?:GC:\s*)?([^\]]+)\]/i)?.[1] ?? '';
+    if (!/\bG54\b/i.test(modalState)) {
+        const active = modalState.match(/\bG5[4-9]\b/i)?.[0]?.toUpperCase() ?? 'unknown';
         throw new Error(`Select G54 in gSender before probing the origin. The origin touch-off writes G54; active coordinate system is ${active}.`);
     }
 }
