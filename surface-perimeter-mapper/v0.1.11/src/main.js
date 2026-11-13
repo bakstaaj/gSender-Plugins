@@ -1028,8 +1028,7 @@ async function readProbeLimits() {
                     };
                     const x = axis(1, travels[0]);
                     const y = axis(2, travels[1]);
-                    const zHomePositive = (homingMask & 4) === 0;
-                    const z = { homePositive: zHomePositive, min: zHomePositive ? -travels[2] : 0, max: zHomePositive ? 0 : travels[2] };
+                    const z = axis(4, travels[2]);
                     return { x, y, z, zHomePositive: z.homePositive, minZ: z.min, maxZ: z.max, hardLimitsEnabled: hardLimitsSetting === 1, homingPullOffMm: pullOffClearance };
                 }
                 lastError = `Missing or invalid ${missing.join(', ')} in the controller's $$ response.`;
