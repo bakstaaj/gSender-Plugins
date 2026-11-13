@@ -1145,9 +1145,13 @@ async function probeWposOrigin() {
         if (!state.probePinKnown || state.probePinActive) throw new Error('Probe input must be reported clear before the origin probe starts.');
         await requireG54Active();
         const limits = await readProbeLimits();
-        const zHomeDirection = limits.zHomePositive ? 1 : -1;
-        if (zHomeDirection !== 1) throw new Error('This simulator test currently requires positive-up Z coordinates.');
-        const probeDirection = -zHomeDirection;
+        // The Z homing bit reports which direction the controller seeks the
+        // switch; it does not describe the part-coordinate convention. This
+        // workflow uses positive-up machine Z, so probing toward the bed is -Z
+        // and retracting toward the home end is +Z, including on Makera Z1
+        // machines with $23 bit 2 set.
+        const zUpDirection = 1;
+        const probeDirection = -zUpDirection;
         if (initial.mpos[2] < limits.minZ || initial.mpos[2] > limits.maxZ) {
             throw new Error(`Current machine Z${initial.mpos[2].toFixed(3)} is outside reported Z travel ${limits.minZ.toFixed(3)}..${limits.maxZ.toFixed(3)} mm.`);
         }
@@ -1185,7 +1189,7 @@ async function probeWposOrigin() {
         let originContact = fastContact;
         if (probeMode !== 'fast') {
             setOriginMessage(`First touch detected at machine Z${fastContact.mpos[2].toFixed(3)}. Releasing ${releaseDistance.toFixed(2)} mm for the precise touch…`);
-            const releaseZ = fastContact.mpos[2] + zHomeDirection * releaseDistance;
+            const releaseZ = fastContact.mpos[2] + zUpDirection * releaseDistance;
             if (releaseZ < limits.minZ || releaseZ > limits.maxZ) throw new Error(`The ${releaseDistance.toFixed(2)} mm probe release move would exceed machine Z travel.`);
             const releaseResult = await queryController(`G90 G53 G0 Z${releaseZ.toFixed(3)}`, { until: 'ok-or-error', timeout: 30000, maxLines: 60 });
             if (!releaseResult.complete || !releaseResult.ok || releaseResult.error) throw new Error(`Could not release the probe after its first touch: ${releaseResult.error ?? releaseResult.lines?.join(' ') ?? releaseResult.reason}`);
@@ -1202,11 +1206,11 @@ async function probeWposOrigin() {
         if (stopped.mpos.slice(0, 2).some((value, index) => Math.abs(value - originContact.mpos[index]) > 0.1)) {
             throw new Error('Could not confirm the stopped machine position after the origin touch-off.');
         }
-        const availableRetract = (zHomeDirection > 0 ? limits.maxZ - stopped.mpos[2] : stopped.mpos[2] - limits.minZ) - Z_LIMIT_MARGIN;
+        const availableRetract = (zUpDirection > 0 ? limits.maxZ - stopped.mpos[2] : stopped.mpos[2] - limits.minZ) - Z_LIMIT_MARGIN;
         if (availableRetract < 1) throw new Error('Less than 1 mm of machine Z travel remains toward the Z home end after probing; cannot safely retract. Resolve the position manually.');
         const actualRetract = maxThickness + safeWposZ;
         if (availableRetract + 1e-6 < actualRetract) throw new Error(`The required bed-to-clearance retract is ${actualRetract.toFixed(2)} mm, beyond available Z travel. No work offset was changed.`);
-        const retractTargetZ = stopped.mpos[2] + zHomeDirection * actualRetract;
+        const retractTargetZ = stopped.mpos[2] + zUpDirection * actualRetract;
         const centerMachineY = originContact.mpos[1] + bedToCenter;
         if(centerMachineY < limits.y.min + Z_LIMIT_MARGIN || centerMachineY > limits.y.max - Z_LIMIT_MARGIN) throw new Error('The estimated part center is outside machine Y travel. No work offset was changed.');
         setOriginMessage('Setting G54 Z0 at the estimated part top and XY at the estimated part center…');
@@ -1271,7 +1275,11 @@ async function recoverMissingProbeReport(result, label, timeoutMs, capture) {
     let latestState = '';
     let sawRun = false;
     let idleSince = 0;
-    const recoveryWindowMs = Math.min(6000, Math.max(2000, timeoutMs));
+    // The Makera bridge may return from machine.query before a long G38.2
+    // move has finished. Keep the probe capture active and poll through the
+    // full expected move time so its eventual PRB report is not mistaken for
+    // a failed touch and followed by a premature retry.
+    const recoveryWindowMs = Math.max(2000, timeoutMs);
     const deadline = Date.now() + recoveryWindowMs;
     logHomingDiagnostic(`${label} response did not contain a PRB report; requesting fresh controller status`, {
         responseComplete: result.complete,
@@ -1378,7 +1386,8 @@ async function startSimplifiedWorkflow() {
         await machine.setBusy(true,'Bed and perimeter scan');announced=true;
         let initial=await currentSnapshot();const limits=await readProbeLimits();let cfg=state.latest;
         if(!initial.homed||initial.state!=='Idle'||!initial.mpos?.every(Number.isFinite)||!state.probePinKnown||state.probePinActive)throw Error('Home the machine and confirm a clear probe at idle before starting.');
-        if(!limits.zHomePositive)throw Error('This workflow requires positive-up Z.');
+        // This scan uses positive-up machine Z. $23 controls homing search
+        // direction, so it must not be used as a proxy for the Z-up direction.
         if(resumeRecord){
             const bedStart=resumeRecord.bedStartMpos;
             if(!bedStart?.every(Number.isFinite))throw Error('Saved scan has no valid bed-probe position; start a new scan instead.');
@@ -1448,8 +1457,24 @@ async function startSimplifiedWorkflow() {
         }
         const release=await queryController(`G90 G53 G0 Z${retract.toFixed(3)}`,{until:'ok-or-error',timeout:30000,maxLines:60});
         if(!release.complete||!release.ok||release.error)throw Error('Could not retract to the 0.75D perimeter height.');
-        const ready=await waitForIdle();await refreshScanStatus();
-        if(!ready.wpos?.every(Number.isFinite)||Math.abs(ready.wpos[2]-sideZ)>.15||!state.probePinKnown||state.probePinActive)throw Error('Controller did not confirm a clear probe at the 0.75D perimeter height.');
+        await waitForIdle();
+        // Confirm the post-retract input directly. The last probe report and
+        // gSender's cached status can lag the G54 touch-off/retract sequence.
+        const clearanceStatus=await requestFreshControllerStatus(1500);
+        const snapshot=await currentSnapshot();
+        const ready={...snapshot,mpos:state.machinePosition,wpos:state.workPosition};
+        const clearanceState={
+            controllerState:clearanceStatus.state,
+            wpos:ready.wpos,
+            expectedWposZ:sideZ,
+            probePinKnown:state.probePinKnown,
+            probePinActive:state.probePinActive,
+            status:clearanceStatus.line
+        };
+        logHomingDiagnostic('Bed retract clearance confirmation',clearanceState);
+        if(clearanceStatus.state!=='Idle'||!ready.wpos?.every(Number.isFinite)||Math.abs(ready.wpos[2]-sideZ)>.15||!state.probePinKnown||state.probePinActive){
+            throw Error(`Controller did not confirm an Idle machine, WPOS Z${sideZ.toFixed(3)}, and clear probe after retract (reported WPOS Z${ready.wpos?.[2]?.toFixed(3)??'unavailable'}, probe ${state.probePinKnown?(state.probePinActive?'active':'clear'):'unknown'}).`);
+        }
         bedMaxProbeLengthMm=limits.z.max-Z_LIMIT_MARGIN-contact.mpos[2]-FIXED_VERTICAL_CLEARANCE_MM;
         if(enforceProbeLengthLimit(bedMaxProbeLengthMm,'measured bed-to-Z-limit clearance')){
             update();
@@ -3508,7 +3533,8 @@ async function findBedFromFrontEdge({ cfg, limits, safeZ, frontExtent }) {
     const outerLimitY = -cfg.rectangleHeight / 2;
     let candidateY = Math.max(outerLimitY, frontEdgeY - stepOut);
     const maxAttempts = Math.ceil(Math.max(0, candidateY - outerLimitY) / stepOut - 1e-9) + 1;
-    const zDirection = limits.zHomePositive ? -1 : 1;
+    // Bed search is always downward in this positive-up scan coordinate system.
+    const zDirection = -1;
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
         if (state.stopScan) throw new Error('Scan stopped by user before the bed was found.');
         const targetXY = [0, candidateY, safeZ];
