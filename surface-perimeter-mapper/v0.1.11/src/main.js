@@ -1019,11 +1019,12 @@ async function readProbeLimits() {
                         update();
                         persistSettingsSoon();
                     }
-                    // Match the tested Surface Height Map interpretation of GRBL $23: set
-                    // bits indicate positive machine-coordinate travel toward the home end.
+                    // GRBL $23 is a homing-direction invert mask: clear bits home positive;
+                    // set bits invert that axis to negative. Keep travel bounds aligned with
+                    // the signed machine coordinates reported after homing.
                     const axis = (bit, travel) => {
-                        const direction = (homingMask & bit) ? 1 : -1;
-                        return { homePositive: direction > 0, min: direction < 0 ? -travel : 0, max: direction < 0 ? 0 : travel };
+                        const homePositive = (homingMask & bit) === 0;
+                        return { homePositive, min: homePositive ? 0 : -travel, max: homePositive ? travel : 0 };
                     };
                     const x = axis(1, travels[0]);
                     const y = axis(2, travels[1]);
