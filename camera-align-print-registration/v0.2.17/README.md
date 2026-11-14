@@ -59,6 +59,23 @@ Files containing coordinate-changing features the aligner cannot preserve are re
 - Select G54–G59 in that same panel and use **Set work zero at crosshair** to update the selected persistent X/Y offset. The plugin confirms the write and checks the controller's offset table. A live position check is performed when changing the active system.
 - The G54 crosshair work-zero flow has been confirmed on a live CNC. The non-active WCS branch, full-travel jogging, and print-registration output still need machine-side validation.
 
+## Crosshair and work-zero button settings
+
+Open **Crosshair & work-zero button settings** on the **Camera** tab. Settings are saved in the plugin's gSender storage and apply to every camera preview.
+
+- **Color**, **Shape** (full cross or the original corner/L shape), **Arm length** (pixels from the center to each tip), **Center gap** (pixels left open around the center; 0 for none), and **Show circle**.
+- **Work-zero button**: keep the built-in verified G10 X/Y write, or run a gSender macro instead. The macro list is read from gSender's macros. The plugin checks that gSender is connected and idle and asks for confirmation before running the macro. The macro then runs as written. Tick **Don't ask again before running this macro** in the dialog to skip the confirmation for that macro. **Ask for confirmation before running the macro** in the settings turns it back on. Choosing a different macro always asks again. The connected/idle check still runs every time.
+- Macros can use these variables: `[cam_offset_x]` and `[cam_offset_y]` (saved spindle offset from the crosshair in mm; 0 when not calibrated), `[cam_wcs]` (the selected WCS, e.g. `"G54"`), and `[cam_wcs_p]` (its G10 P index, 1–6). Example: `G21 G10 L20 P[cam_wcs_p] X[cam_offset_x] Y[cam_offset_y]`.
+- **Open picture-in-picture when the camera starts** and **Restart the camera automatically when this view opens again** (on by default). See below.
+
+## Picture-in-picture, camera restart and view layouts
+
+- **Picture-in-picture:** the **Picture-in-picture** / **PiP** buttons show the camera image with the crosshair in a floating window. You can move and resize the window freely, and it stays above gSender. The window shows the image only; use the plugin or gSender for jogging and work zero. Browsers only open it after a click, so it cannot reopen by itself after an automatic camera restart. Its size and position are kept for the current gSender session only.
+- **Camera restart:** gSender unloads the plugin when you leave its tab (for example, switching to Macros). If the camera was running, the plugin restarts it with the same device when the view opens again, also after restarting gSender. Stopping the camera yourself turns this off until you start it again.
+- **Align tab (Carve tools area):** when the area is low and at least as wide as it is high, the camera fills the height on the left, and the controls stack on the right. Each control is 22–48 px high, depending on the available height.
+- **Camera Align button over the visualizer (🎯):** opens gSender's overlay panel with the camera on top and the controls below. By default the image fills the panel, which crops the sides and enlarges the center. **Show whole image** switches back to the uncropped image. While picture-in-picture is open, the panel hides its own image and enlarges the controls.
+- The overlay panel and the Align tab are separate plugin instances. If both are open, both use the camera.
+
 ## Camera access and safety
 
 - Approve Camera and media permissions when gSender prompts. The plugin requests video only, not microphone audio.

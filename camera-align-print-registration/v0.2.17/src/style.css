@@ -72,7 +72,7 @@ button:disabled { opacity: .45; cursor: default; }
 .secondary { background: #53697a; border-color: #53697a; }
 .large { min-height: 48px; padding: 12px 20px; }
 .video-shell { position: relative; display: grid; place-items: center; min-height: 300px; aspect-ratio: 16/8.5; max-height: 560px; overflow: hidden; border: 1px solid #203645; border-radius: 10px; background: radial-gradient(ellipse at 50% 48%, #273d4b 0, #182a36 72%); color: #ecf6fc; }
-.video-shell video { width: 100%; height: 100%; max-height: 560px; object-fit: contain; background: #0b1116; }
+.video-shell video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #0b1116; }
 .camera-placeholder { position: absolute; display: flex; flex-direction: column; align-items: center; gap: 5px; color: #dce9ef; text-align: center; padding: 24px; }
 .camera-placeholder span { max-width: 340px; color: #aebfca; font-size: .86rem; }
 .camera-inline-preview { position: relative; width: min(100%, 760px); min-height: 180px; aspect-ratio: 16/9; margin: 12px 0 18px; overflow: hidden; border: 1px solid #203645; border-radius: 10px; background: #0b1116; color: #ecf6fc; }
@@ -84,10 +84,15 @@ button:disabled { opacity: .45; cursor: default; }
 .camera-inline-preview .image-label { z-index: 2; }
 .camera-icon { font-size: 2.3rem; color: #4cbbd7; line-height: 1; }
 .reticle { position: absolute; inset: 0; pointer-events: none; display: grid; place-items: center; filter: drop-shadow(0 1px 2px #000); }
-.reticle i { position: absolute; width: 54px; height: 54px; border: 1px solid #80edff; border-radius: 50%; }
-.reticle b:before, .reticle b:after { content: ""; position: absolute; background: #80edff; }
-.reticle b:before { width: 1px; height: 90px; }
-.reticle b:after { height: 1px; width: 90px; }
+.pip-overlay-button { position: absolute; right: 8px; bottom: 8px; z-index: 4; min-height: 0; padding: 4px 9px; font-size: .72rem; opacity: .85; }
+.pip-overlay-button:hover, .pip-overlay-button:focus-visible { opacity: 1; }
+.pip-source { position: fixed; left: 0; top: 0; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
+.reticle .reticle-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.crosshair-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); align-items: end; gap: 10px; margin-top: 10px; }
+.crosshair-fields input[type="color"] { height: 40px; padding: 3px; }
+.crosshair-check { flex-direction: row; align-items: center; min-height: 40px; }
+.crosshair-check input { flex: none; width: 18px; height: 18px; margin: 0; }
+.crosshair-check[data-pip-setting], .crosshair-check-wide { grid-column: 1 / -1; min-height: 0; }
 .image-label { position: absolute; bottom: 10px; left: 12px; font-size: .66rem; font-weight: 750; letter-spacing: .12em; color: #d7f7ff; text-shadow: 0 1px 3px #000; }
 .camera-status, .offset-chip, .wcs-chip { white-space: nowrap; border-radius: 99px; padding: 6px 10px; background: #eef2f4; color: #566b78; font-size: .77rem; font-weight: 700; }
 .camera-status.live { background: #e4f5eb; color: #26784c; }
@@ -276,7 +281,7 @@ html.dark .instruction { color: #b7cbd6; }
   .zero-actions .wcs-target::before { content: "WCS"; font-size: .7rem; }
   .zero-actions select { min-height: 32px; width: 100%; padding: 4px 6px; font-size: .76rem; }
   .zero-actions .large { grid-column: 4; grid-row: 1; justify-self: end; width: 100%; max-width: 150px; min-width: 125px; min-height: 32px; padding: 4px 7px; font-size: 0; white-space: nowrap; }
-  .zero-actions .large::after { content: "Set X/Y zero"; font-size: .76rem; }
+  .zero-actions .large::after { content: attr(data-short); font-size: .76rem; }
   #jogPanel.align-toolbar-collapsed .zero-controls { grid-template-columns: auto; gap: 0; padding: 0; }
   #jogPanel.align-toolbar-collapsed .zero-camera-toggle,
   #jogPanel.align-toolbar-collapsed .zero-actions .wcs-target,
@@ -316,7 +321,7 @@ html.dark .instruction { color: #b7cbd6; }
   .wcs-label-compact { display: inline; }
   .align-toolbar-row > .wcs-target select { flex: 1; width: auto; min-width: 0; height: 34px; min-height: 34px; padding: 4px 8px; font-size: .78rem; }
   .align-toolbar-row > #setZero { display: inline-flex; grid-column: 4; grid-row: 1; align-items: center; justify-content: center; justify-self: end; width: 140px; max-width: 140px; min-width: 140px; height: 34px; min-height: 34px; padding: 4px 8px; font-size: 0; white-space: nowrap; }
-  .align-toolbar-row > #setZero::after { content: "Set X/Y zero"; font-size: .75rem; }
+  .align-toolbar-row > #setZero::after { content: attr(data-short); font-size: .75rem; }
   .align-toolbar-toggle svg { display: block; width: 14px; height: 14px; }
   .align-toolbar-toggle svg path { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
   #jogPanel.align-toolbar-collapsed .zero-actions.align-toolbar-row { grid-template-columns: 22px; gap: 0; }
@@ -350,3 +355,101 @@ html.dark .instruction { color: #b7cbd6; }
   .align-toolbar-row > .wcs-target select { height: 32px; min-height: 32px; }
   .align-toolbar-row > #setZero { width: 125px; max-width: 125px; min-width: 125px; height: 32px; min-height: 32px; }
 }
+
+/* Low and wide Align tab (e.g. the Carve tools area): camera at full height on
+   the left, controls in a column on the right instead of on top of the image. */
+.pip-toolbar-button { display: none; }
+@media (max-height: 520px) and (min-aspect-ratio: 1/1) {
+  .jog-workspace { display: grid; grid-template-columns: auto minmax(140px, 1fr); grid-template-rows: 100%; gap: 8px; }
+  .jog-camera-preview { position: relative; inset: auto; grid-column: 1; grid-row: 1; width: auto; height: 100%; min-height: 0; max-width: calc(100vw - 170px); aspect-ratio: var(--cam-aspect, 4 / 3); }
+  .jog-camera-preview .pip-overlay-button { display: none; }
+  .zero-controls,
+  #jogPanel.align-toolbar-collapsed .zero-controls { position: static; grid-column: 2; grid-row: 1; width: 100%; height: 100%; min-width: 0; overflow-x: hidden; overflow-y: auto; }
+  .zero-actions.align-toolbar-row,
+  #jogPanel.align-toolbar-collapsed .zero-actions.align-toolbar-row { display: flex !important; flex-direction: column; align-items: stretch; gap: 4px; width: 100%; height: 100%; min-height: 104px; padding: 0; border: 0; background: transparent; box-shadow: none; backdrop-filter: none; }
+  /* The four controls split the column height evenly: 22 px each in a very
+     low tools area, at most 48 px when there is plenty of room. */
+  .align-toolbar-row > *:not([hidden]):not(.align-toolbar-toggle) { flex: 1 1 0; min-height: 22px !important; max-height: 48px !important; height: auto !important; }
+  .align-toolbar-row > .wcs-target select { height: 100% !important; min-height: 0 !important; }
+  .align-toolbar-row > .align-toolbar-toggle { display: none !important; }
+  .align-toolbar-row > .zero-camera-toggle,
+  .align-toolbar-row > .pip-toolbar-button:not([hidden]),
+  .align-toolbar-row > #setZero,
+  #jogPanel.align-toolbar-collapsed .align-toolbar-row > .zero-camera-toggle,
+  #jogPanel.align-toolbar-collapsed .align-toolbar-row > #setZero { display: inline-flex !important; align-items: center; justify-content: center; width: 100%; max-width: none; min-width: 0; height: 30px; min-height: 30px; padding: 3px 8px; font-size: .75rem; white-space: nowrap; }
+  .align-toolbar-row > #setZero { font-size: 0; }
+  .align-toolbar-row > #setZero::after { content: attr(data-short); font-size: .75rem; }
+  .align-toolbar-row > .wcs-target,
+  #jogPanel.align-toolbar-collapsed .align-toolbar-row > .wcs-target { display: flex !important; width: 100%; }
+  .align-toolbar-row > .wcs-target select { padding-top: 0; padding-bottom: 0; }
+}
+
+/* Visualizer overlay panel (narrow and tall, about 300 px wide): only the
+   camera with crosshair on top and the work-zero controls below. "fill"
+   crops the sides so the center around the crosshair is enlarged. */
+.fit-toolbar-button { display: none; }
+
+@media (max-width: 420px) and (min-height: 360px) {
+  html, body { width: 100%; height: 100%; min-height: 0; overflow: hidden; }
+  main { position: relative; display: flex; flex-direction: column; width: 100%; height: 100vh; max-width: none; min-height: 0; padding: 4px; overflow: hidden; }
+  .page-header, .tool-tabs, footer,
+  #cameraPanel, #calibrationPanel, #registrationPanel,
+  #jogPanel > .section-heading, #jogPanel > .compact-instruction, .jog-control-column, .jog-status,
+  .zero-controls > .section-heading, .zero-controls > .compact-instruction, .zero-controls > .compact-hint { display: none !important; }
+  #jogPanel { position: relative; display: block !important; flex: 1 1 auto; min-height: 0; margin: 0; padding: 0; border: 0; overflow: hidden; background: transparent; box-shadow: none; }
+  .jog-workspace { position: absolute; inset: 0; display: flex !important; flex-direction: column; gap: 6px; min-height: 0; overflow: hidden; }
+  .jog-control-zero-row { display: contents; }
+  .jog-camera-preview { position: relative !important; inset: auto !important; flex: 1 1 auto; width: 100% !important; max-width: none !important; height: auto !important; min-height: 0 !important; max-height: none !important; aspect-ratio: auto !important; margin: 0; border-radius: 6px; }
+  .jog-camera-preview .pip-overlay-button { display: none; }
+  .zero-controls,
+  #jogPanel.align-toolbar-collapsed .zero-controls { position: static !important; flex: none; width: 100% !important; max-width: none; margin: 0; padding: 0; border: 0; background: transparent; }
+  .zero-actions.align-toolbar-row,
+  #jogPanel.align-toolbar-collapsed .zero-actions.align-toolbar-row { display: grid !important; grid-template-columns: 1fr 1fr; grid-template-areas: "cam pip" "wcs wcs" "fit zero"; gap: 6px; width: 100%; margin: 0; padding: 0; border: 0; background: transparent; box-shadow: none; backdrop-filter: none; }
+  .align-toolbar-row > .align-toolbar-toggle { display: none !important; }
+  .align-toolbar-row > .zero-camera-toggle,
+  .align-toolbar-row > .pip-toolbar-button:not([hidden]),
+  .align-toolbar-row > .fit-toolbar-button,
+  .align-toolbar-row > #setZero,
+  #jogPanel.align-toolbar-collapsed .align-toolbar-row > .zero-camera-toggle,
+  #jogPanel.align-toolbar-collapsed .align-toolbar-row > #setZero { display: inline-flex !important; align-items: center; justify-content: center; width: 100% !important; max-width: none !important; min-width: 0 !important; height: 34px !important; min-height: 34px !important; padding: 4px 6px; font-size: .74rem; white-space: nowrap; overflow: hidden; }
+  .align-toolbar-row > .zero-camera-toggle { grid-area: cam; }
+  .align-toolbar-row > .pip-toolbar-button { grid-area: pip; }
+  .align-toolbar-row > .fit-toolbar-button { grid-area: fit; }
+  .align-toolbar-row > #setZero { grid-area: zero; font-size: 0 !important; }
+  .align-toolbar-row > #setZero::after { content: attr(data-short); font-size: .74rem; }
+  .align-toolbar-row > .wcs-target,
+  #jogPanel.align-toolbar-collapsed .align-toolbar-row > .wcs-target { grid-area: wcs; display: flex !important; flex-direction: row; align-items: center; gap: 6px; width: 100%; max-width: none; margin: 0; font-size: .74rem; white-space: nowrap; }
+  .align-toolbar-row .wcs-label-full { display: none; }
+  .align-toolbar-row .wcs-label-compact { display: inline; }
+  .align-toolbar-row > .wcs-target::before { content: none; }
+  .align-toolbar-row > .wcs-target select { flex: 1; min-width: 0; height: 34px; min-height: 34px; padding: 2px 8px; }
+  #notice[hidden] { display: none !important; }
+  #notice:not([hidden]) { position: absolute; left: 8px; right: 8px; bottom: 46px; z-index: 30; max-height: 90px; margin: 0; overflow: auto; font-size: .72rem; box-shadow: 0 4px 18px #0008; }
+}
+@media (max-width: 420px) and (min-height: 360px) {
+  .jog-camera-preview .camera-inline-placeholder button { display: none; }
+}
+@media (max-width: 420px) and (min-height: 360px) {
+  .jog-camera-preview.fill video { object-fit: cover; }
+}
+/* Overlay panel while picture-in-picture is open: the camera image is in the
+   floating window, so the panel drops its own image and the controls take
+   over the space, growing up to 80 px per row. */
+@media (max-width: 420px) and (min-height: 360px) {
+  .pip-active .jog-camera-preview { display: none !important; }
+  .pip-active .zero-controls,
+  .pip-active #jogPanel.align-toolbar-collapsed .zero-controls { flex: 1 1 auto; min-height: 0; }
+  .pip-active .zero-actions.align-toolbar-row,
+  .pip-active #jogPanel.align-toolbar-collapsed .zero-actions.align-toolbar-row { height: 100%; grid-template-rows: repeat(3, minmax(34px, 80px)); align-content: start; gap: 10px; }
+  .pip-active .align-toolbar-row > .zero-camera-toggle,
+  .pip-active .align-toolbar-row > .pip-toolbar-button:not([hidden]),
+  .pip-active .align-toolbar-row > .fit-toolbar-button,
+  .pip-active .align-toolbar-row > #setZero,
+  .pip-active .align-toolbar-row > .wcs-target select { height: 100% !important; min-height: 34px !important; font-size: 1rem; white-space: normal; }
+  .pip-active .align-toolbar-row > #setZero { font-size: 0 !important; }
+  .pip-active .align-toolbar-row > #setZero::after { font-size: 1rem; }
+  .pip-active .align-toolbar-row > .wcs-target { height: 100%; font-size: 1rem; }
+  .pip-active .align-toolbar-row > .fit-toolbar-button { display: none !important; }
+  .pip-active .zero-actions.align-toolbar-row { grid-template-areas: "cam pip" "wcs wcs" "zero zero"; }
+}
+.confirm-skip { margin: 12px 0 0; font-weight: 600; font-size: .86rem; }

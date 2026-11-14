@@ -9,7 +9,8 @@
     "entry": "ui/index.html",
     "contributions": [
       { "slot": "tools-page", "route": "camera-align-print-registration", "label": "Camera Align & Print Registration" },
-      { "slot": "tools-tab", "label": "Align" }
+      { "slot": "tools-tab", "label": "Align" },
+      { "slot": "visualizer-overlay", "label": "Camera Align", "icon": "🎯" }
     ]
   },
   "capabilities": {
