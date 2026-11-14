@@ -84,10 +84,10 @@ button:disabled { opacity: .45; cursor: default; }
 .camera-inline-preview .image-label { z-index: 2; }
 .camera-icon { font-size: 2.3rem; color: #4cbbd7; line-height: 1; }
 .reticle { position: absolute; inset: 0; pointer-events: none; display: grid; place-items: center; filter: drop-shadow(0 1px 2px #000); }
-.reticle i { position: absolute; width: 54px; height: 54px; border: 1px solid #80edff; border-radius: 50%; }
-.reticle b:before, .reticle b:after { content: ""; position: absolute; background: #80edff; }
-.reticle b:before { width: 1px; height: 90px; }
-.reticle b:after { height: 1px; width: 90px; }
+.reticle svg { overflow: visible; }
+.crosshair-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); align-items: end; gap: 10px; margin-top: 10px; }
+.crosshair-fields input[type="color"] { height: 40px; padding: 3px; }
+.crosshair-check { flex-direction: row; align-items: center; min-height: 40px; }
 .image-label { position: absolute; bottom: 10px; left: 12px; font-size: .66rem; font-weight: 750; letter-spacing: .12em; color: #d7f7ff; text-shadow: 0 1px 3px #000; }
 .camera-status, .offset-chip, .wcs-chip { white-space: nowrap; border-radius: 99px; padding: 6px 10px; background: #eef2f4; color: #566b78; font-size: .77rem; font-weight: 700; }
 .camera-status.live { background: #e4f5eb; color: #26784c; }

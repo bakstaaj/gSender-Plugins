@@ -29,7 +29,7 @@ document.querySelector('#app').innerHTML = `
       <div class="video-shell" id="videoShell">
         <video id="cameraVideo" autoplay muted playsinline></video>
         <div class="camera-placeholder" id="cameraPlaceholder"><div class="camera-icon">◎</div><strong>Camera preview</strong><span>Choose a USB camera and allow access to start the live view.</span></div>
-        <div class="reticle" aria-hidden="true"><i></i><b></b></div>
+        <div class="reticle" aria-hidden="true"></div>
         <div class="image-label">CROSSHAIR CENTER</div>
       </div>
       <div class="camera-setup">
@@ -38,6 +38,20 @@ document.querySelector('#app').innerHTML = `
           <button id="startCamera" class="primary">Start camera</button>
           <button id="stopCamera" class="secondary" disabled>Stop camera</button>
         </div>
+        <details id="crosshairSettings" class="camera-help crosshair-settings"><summary>Crosshair &amp; work-zero button settings</summary>
+          <div class="crosshair-fields">
+            <label>Color<input id="crosshairColor" type="color"></label>
+            <label>Shape<select id="crosshairShape"><option value="cross">Full cross</option><option value="corner">Corner (L)</option></select></label>
+            <label>Arm length (px)<input id="crosshairLength" type="number" min="5" max="2000" step="1"></label>
+            <label>Center gap (px)<input id="crosshairGap" type="number" min="0" max="500" step="1"></label>
+            <label class="crosshair-check"><input id="crosshairCircle" type="checkbox"><span>Show circle</span></label>
+          </div>
+          <div class="crosshair-fields">
+            <label>Work-zero button<select id="zeroActionMode"><option value="builtin">Write G10 X/Y offset (built-in)</option><option value="macro">Run a gSender macro</option></select></label>
+            <label id="zeroMacroField">Macro<select id="zeroMacro"><option value="">Choose a macro</option></select></label>
+          </div>
+          <p class="hint" id="zeroMacroHint">The macro runs as written with the crosshair over the target. It can use [cam_offset_x] and [cam_offset_y] (saved spindle offset from the crosshair, mm), [cam_wcs] (selected WCS, e.g. "G54") and [cam_wcs_p] (G10 P index 1–6).</p>
+        </details>
         <details id="cameraHelp" class="camera-help"><summary>Camera permission help</summary><p>This plugin declares <strong>Camera</strong> for its iframe and <strong>media</strong> for gSender's Electron permission gate. Approve both if they appear during install. The plugin requests video only, not microphone audio. If access is still denied, expand <strong>Camera access diagnostics</strong> below the status message.</p></details>
         <p class="hint">Place the crosshair over the desired work zero. Jog from the Jog &amp; Work Zero tab. Camera images are never recorded.</p>
       </div>
@@ -69,7 +83,7 @@ document.querySelector('#app').innerHTML = `
     </div>
     <button id="clearCalibration" class="text-button">Clear saved offset</button>
     </div>
-    <div class="camera-inline-preview calibration-camera-preview" aria-label="Live camera preview during calibration"><video autoplay muted playsinline data-camera-mini-video hidden></video><div class="camera-inline-placeholder" data-camera-mini-placeholder><strong>Camera preview is off</strong><span>Start the camera on the Camera tab to view the crosshair here.</span><button class="secondary" type="button" data-open-camera-tab>Open Camera tab</button></div><div class="reticle" aria-hidden="true"><i></i><b></b></div><div class="image-label">CROSSHAIR CENTER</div></div>
+    <div class="camera-inline-preview calibration-camera-preview" aria-label="Live camera preview during calibration"><video autoplay muted playsinline data-camera-mini-video hidden></video><div class="camera-inline-placeholder" data-camera-mini-placeholder><strong>Camera preview is off</strong><span>Start the camera on the Camera tab to view the crosshair here.</span><button class="secondary" type="button" data-open-camera-tab>Open Camera tab</button></div><div class="reticle" aria-hidden="true"></div><div class="image-label">CROSSHAIR CENTER</div></div>
     </div>
   </section>
 
@@ -77,7 +91,7 @@ document.querySelector('#app').innerHTML = `
     <div class="section-heading"><div><div class="step">03 · POSITION</div><h2>Set X/Y work zero</h2></div></div>
     <p class="instruction compact-instruction">Raise Z to safe clearance and confirm clear travel before jogging.</p>
     <div class="jog-workspace">
-      <div class="camera-inline-preview jog-camera-preview" aria-label="Live camera preview while jogging"><video autoplay muted playsinline data-camera-mini-video hidden></video><div class="camera-inline-placeholder" data-camera-mini-placeholder><strong>Camera preview is off</strong><span>Start the camera on the Camera tab to keep the crosshair visible.</span><button class="secondary" type="button" data-open-camera-tab>Open Camera tab</button></div><div class="reticle" aria-hidden="true"><i></i><b></b></div><div class="image-label">CROSSHAIR CENTER</div></div>
+      <div class="camera-inline-preview jog-camera-preview" aria-label="Live camera preview while jogging"><video autoplay muted playsinline data-camera-mini-video hidden></video><div class="camera-inline-placeholder" data-camera-mini-placeholder><strong>Camera preview is off</strong><span>Start the camera on the Camera tab to keep the crosshair visible.</span><button class="secondary" type="button" data-open-camera-tab>Open Camera tab</button></div><div class="reticle" aria-hidden="true"></div><div class="image-label">CROSSHAIR CENTER</div></div>
       <div class="jog-control-zero-row">
         <div class="jog-control-column">
           <label class="safety-check"><input id="safeToJog" type="checkbox"><span>Safe Z and clear XY travel confirmed.</span></label>
@@ -94,7 +108,7 @@ document.querySelector('#app').innerHTML = `
           <div class="section-heading"><div><div class="step">04 · WORK ZERO</div><h3>Set work zero</h3></div><div class="zero-toolbar"><div class="wcs-chip" id="wcsSummary">WCS not checked</div></div></div>
           <p class="instruction compact-instruction">Center the crosshair on the origin, then choose its work coordinate system.</p>
           <div class="zero-actions align-toolbar-row" id="zeroActions"><button id="toggleAlignToolbar" class="secondary align-toolbar-toggle" type="button" aria-expanded="true" aria-label="Hide alignment controls" title="Hide alignment controls" aria-controls="zeroCameraToggle wcsSelect setZero"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m5 15 7-7 7 7" /></svg></button><button id="zeroCameraToggle" class="secondary zero-camera-toggle" type="button">Start camera</button><label class="wcs-target"><span class="wcs-label-full">Coordinate system</span><span class="wcs-label-compact">WCS</span><select id="wcsSelect"><option value="G54">G54</option><option value="G55">G55</option><option value="G56">G56</option><option value="G57">G57</option><option value="G58">G58</option><option value="G59">G59</option></select></label><button id="setZero" class="primary large" disabled>Set G54 work zero at crosshair</button></div>
-          <p class="hint compact-hint">Writes persistent X/Y offset only. Does not change Z zero, move the machine, or start a job.</p>
+          <p class="hint compact-hint" id="zeroHint">Writes persistent X/Y offset only. Does not change Z zero, move the machine, or start a job.</p>
         </div>
       </div>
     </div>
@@ -128,14 +142,14 @@ document.querySelector('#app').innerHTML = `
         <div class="registration-actions"><button id="alignFile" class="primary large" disabled>Align and download G-code</button><button id="clearRegistration" class="text-button" disabled>Clear registration</button></div>
         <p class="hint compact-hint">Requires a saved camera offset, live camera, and idle CNC. This does not move the machine or start a job. Review the downloaded G-code in gSender before running it.</p>
       </div>
-      <div class="camera-inline-preview registration-camera-preview" aria-label="Live camera preview while aligning printed marks"><video autoplay muted playsinline data-camera-mini-video hidden></video><div class="camera-inline-placeholder" data-camera-mini-placeholder><strong>Camera preview is off</strong><span>Start the camera on the Camera tab to center each printed mark.</span><button class="secondary" type="button" data-open-camera-tab>Open Camera tab</button></div><div class="reticle" aria-hidden="true"><i></i><b></b></div><div class="image-label">CROSSHAIR CENTER</div></div>
+      <div class="camera-inline-preview registration-camera-preview" aria-label="Live camera preview while aligning printed marks"><video autoplay muted playsinline data-camera-mini-video hidden></video><div class="camera-inline-placeholder" data-camera-mini-placeholder><strong>Camera preview is off</strong><span>Start the camera on the Camera tab to center each printed mark.</span><button class="secondary" type="button" data-open-camera-tab>Open Camera tab</button></div><div class="reticle" aria-hidden="true"></div><div class="image-label">CROSSHAIR CENTER</div></div>
     </div>
   </section>
 
   <div id="notice" class="notice" role="status" aria-live="polite" hidden>Start the camera, calibrate the offset, center the crosshair, then set X/Y zero.</div>
   <details id="cameraDiagnostics" class="camera-help diagnostics" hidden><summary>Camera access diagnostics</summary><pre id="cameraDiagnosticsText"></pre></details>
 
-  <dialog id="confirmDialog"><div class="dialog-icon">!</div><h2>Update work coordinate offset?</h2><p id="confirmText"></p><div class="button-row"><button id="cancelConfirm" class="secondary">Cancel</button><button id="acceptConfirm" class="primary">Write offset</button></div></dialog>
+  <dialog id="confirmDialog"><div class="dialog-icon">!</div><h2 id="confirmTitle">Update work coordinate offset?</h2><p id="confirmText"></p><div class="button-row"><button id="cancelConfirm" class="secondary">Cancel</button><button id="acceptConfirm" class="primary">Write offset</button></div></dialog>
   <footer>Camera view and motion are controlled locally by gSender. Review the machine position before every move.</footer>
 `;
 
@@ -167,7 +181,84 @@ const state = {
   alignToolbarCollapsed: false,
   noticeTimer: null,
   cameraDrag: null,
+  crosshair: null,
+  zeroAction: { mode: 'builtin', macroId: '', macroName: '' },
+  macros: [],
 };
+
+const CROSSHAIR_DEFAULTS = { color: '#80edff', shape: 'cross', length: 45, gap: 0, circle: true };
+const clampInt = (value, min, max, fallback) => {
+  const number = Math.round(Number(value));
+  return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+};
+
+function normalizeCrosshair(saved = {}) {
+  const c = { ...CROSSHAIR_DEFAULTS, ...(saved && typeof saved === 'object' ? saved : {}) };
+  const length = clampInt(c.length, 5, 2000, CROSSHAIR_DEFAULTS.length);
+  return {
+    color: /^#[0-9a-f]{6}$/i.test(String(c.color)) ? String(c.color) : CROSSHAIR_DEFAULTS.color,
+    shape: c.shape === 'corner' ? 'corner' : 'cross',
+    length,
+    gap: clampInt(c.gap, 0, length, 0),
+    circle: c.circle !== false,
+  };
+}
+
+// Draws every reticle as an SVG centered on its preview. Arms run from the
+// center gap out to the arm length; "corner" keeps the original L shape.
+function applyCrosshair() {
+  const c = state.crosshair ?? normalizeCrosshair();
+  const arms = c.shape === 'corner' ? [[1, 0], [0, 1]] : [[1, 0], [-1, 0], [0, 1], [0, -1]];
+  const lines = arms
+    .map(([dx, dy]) => `<line x1="${dx * c.gap}" y1="${dy * c.gap}" x2="${dx * c.length}" y2="${dy * c.length}"/>`)
+    .join('');
+  const circle = c.circle ? '<circle r="27" fill="none"/>' : '';
+  const half = Math.max(c.length, 28) + 1;
+  const svg = `<svg width="${half * 2}" height="${half * 2}" viewBox="${-half} ${-half} ${half * 2} ${half * 2}" stroke="${c.color}" stroke-width="1" shape-rendering="crispEdges">${lines}${circle}</svg>`;
+  document.querySelectorAll('.reticle').forEach((reticle) => { reticle.innerHTML = svg; });
+  $('crosshairColor').value = c.color;
+  $('crosshairShape').value = c.shape;
+  $('crosshairLength').value = c.length;
+  $('crosshairGap').value = c.gap;
+  $('crosshairCircle').checked = c.circle;
+}
+
+async function saveCrosshairFromInputs() {
+  state.crosshair = normalizeCrosshair({
+    color: $('crosshairColor').value,
+    shape: $('crosshairShape').value,
+    length: $('crosshairLength').value,
+    gap: $('crosshairGap').value,
+    circle: $('crosshairCircle').checked,
+  });
+  applyCrosshair();
+  await storage.set('crosshair', state.crosshair);
+}
+
+async function loadMacros() {
+  // gSender's own UI reads macros from this same-origin endpoint without a token.
+  const response = await fetch('/api/macros');
+  if (!response.ok) throw new Error(`gSender returned HTTP ${response.status} for the macro list.`);
+  const data = await response.json();
+  state.macros = (data?.records ?? [])
+    .filter((macro) => macro && typeof macro.id === 'string')
+    .map((macro) => ({ id: macro.id, name: String(macro.name ?? macro.id) }));
+  renderMacroOptions();
+}
+
+function renderMacroOptions() {
+  const select = $('zeroMacro');
+  const { macroId, macroName } = state.zeroAction;
+  select.replaceChildren(new Option(state.macros.length ? 'Choose a macro' : 'No macros found', ''));
+  state.macros.forEach((macro) => select.add(new Option(macro.name, macro.id)));
+  if (macroId && !state.macros.some((macro) => macro.id === macroId)) {
+    select.add(new Option(`${macroName || macroId} (not found)`, macroId));
+  }
+  select.value = macroId;
+}
+
+const selectedMacroName = () => state.macros.find((macro) => macro.id === state.zeroAction.macroId)?.name
+  ?? state.zeroAction.macroName ?? 'macro';
 
 const setNotice = (message, kind = '') => {
   $('notice').textContent = message;
@@ -296,7 +387,11 @@ function render() {
   $('recordCamera').disabled = state.busy || !state.spindlePoint || !state.stream;
   $('recordSpindle').disabled = state.busy;
   $('clearCalibration').disabled = state.busy || !state.offset;
-  $('setZero').disabled = state.busy || !state.offset || !state.stream || !state.connected || !state.machineIdle || !state.positionAvailable;
+  const macroMode = state.zeroAction.mode === 'macro';
+  $('zeroActionMode').value = state.zeroAction.mode;
+  $('zeroMacroField').hidden = !macroMode;
+  $('zeroMacroHint').hidden = !macroMode;
+  $('setZero').disabled = state.busy || (macroMode ? !state.zeroAction.macroId : !state.offset) || !state.stream || !state.connected || !state.machineIdle || !state.positionAvailable;
   $('startCamera').disabled = state.busy || Boolean(state.stream);
   $('stopCamera').disabled = state.busy || !state.stream;
   $('cameraStatus').textContent = state.stream ? 'Live camera active' : 'Camera stopped';
@@ -324,7 +419,12 @@ function render() {
     : state.spindlePoint ? 'Center the crosshair on the same mark, then record.' : 'Record the spindle point first.';
   $('wcsSummary').textContent = state.activeWcs ? `Active ${state.activeWcs}` : 'WCS not checked';
   if (state.selectedWcs) $('wcsSelect').value = state.selectedWcs;
-  $('setZero').textContent = `Set ${state.selectedWcs ?? 'G54'} work zero at crosshair`;
+  $('setZero').textContent = macroMode
+    ? `Run macro "${selectedMacroName()}" at crosshair`
+    : `Set ${state.selectedWcs ?? 'G54'} work zero at crosshair`;
+  $('zeroHint').textContent = macroMode
+    ? 'Runs the selected gSender macro as written. It may move the machine or change offsets.'
+    : 'Writes persistent X/Y offset only. Does not change Z zero, move the machine, or start a job.';
   $('zeroCameraToggle').textContent = state.stream ? 'Stop camera' : 'Start camera';
   $('zeroCameraToggle').disabled = state.busy;
   $('toggleAlignToolbar').innerHTML = state.alignToolbarCollapsed
@@ -595,8 +695,10 @@ async function startCamera() {
   render();
 }
 
-function confirmOffset(message) {
+function confirmOffset(message, { title = 'Update work coordinate offset?', accept = 'Write offset' } = {}) {
   const dialog = $('confirmDialog');
+  $('confirmTitle').textContent = title;
+  $('acceptConfirm').textContent = accept;
   $('confirmText').textContent = message;
   dialog.showModal();
   return new Promise((resolve) => {
@@ -787,7 +889,52 @@ async function setWorkZero() {
   }
 }
 
+async function runZeroMacro() {
+  const { macroId } = state.zeroAction;
+  if (!macroId) throw new Error('Choose a macro under Crosshair & work-zero button settings on the Camera tab.');
+  if (!state.stream) throw new Error('Start the camera and center the crosshair on the target point.');
+  const { xy } = await assertIdle();
+  const selectedWcs = $('wcsSelect').value;
+  const name = selectedMacroName();
+  const offsetNote = state.offset
+    ? `[cam_offset_x] = ${state.offset.x.toFixed(4)}, [cam_offset_y] = ${state.offset.y.toFixed(4)} mm.`
+    : 'No camera offset is saved, so [cam_offset_x] and [cam_offset_y] are 0.';
+  const confirmed = await confirmOffset(
+    `Run gSender macro "${name}" with ${selectedWcs} selected? Current machine position is X${xy.x.toFixed(3)} Y${xy.y.toFixed(3)} mm. ${offsetNote} The macro runs as written and may move the machine or change offsets.`,
+    { title: 'Run work-zero macro?', accept: 'Run macro' },
+  );
+  if (!confirmed) {
+    setNotice('Canceled. The macro was not run.');
+    return;
+  }
+  await assertIdle();
+  const result = await machine.command('macro:run', macroId, {
+    cam_offset_x: state.offset?.x ?? 0,
+    cam_offset_y: state.offset?.y ?? 0,
+    cam_wcs: selectedWcs,
+    cam_wcs_p: Number(selectedWcs.slice(1)) - 53,
+  });
+  if (result && result.ok === false) throw new Error(result.error || `gSender did not accept macro "${name}".`);
+  setNotice(`Macro "${name}" sent to gSender.`, 'success');
+}
+
 async function initialize() {
+  state.crosshair = normalizeCrosshair();
+  applyCrosshair();
+  try {
+    state.crosshair = normalizeCrosshair(await storage.get('crosshair'));
+    applyCrosshair();
+    const savedAction = await storage.get('zeroAction');
+    if (typeof savedAction?.macroId === 'string') {
+      state.zeroAction = { mode: savedAction.mode === 'macro' ? 'macro' : 'builtin', macroId: savedAction.macroId, macroName: String(savedAction.macroName ?? '') };
+    }
+  } catch (error) {
+    setNotice(`Could not load saved crosshair settings: ${error.message}`);
+  }
+  renderMacroOptions();
+  await loadMacros().catch((error) => {
+    if (state.zeroAction.mode === 'macro') setNotice(`Could not load gSender macros: ${error.message}`, 'error');
+  });
   try {
     const saved = await storage.get('cameraOffset');
     if (saved && Number.isFinite(Number(saved.x)) && Number.isFinite(Number(saved.y))) {
@@ -917,8 +1064,31 @@ document.querySelectorAll('[data-axis]').forEach((button) => {
   };
 });
 $('setZero').onclick = async () => {
-  try { await setWorkZero(); }
-  catch (error) { setNotice(error.message, 'error'); }
+  try {
+    if (state.zeroAction.mode === 'macro') await runZeroMacro();
+    else await setWorkZero();
+  } catch (error) { setNotice(error.message, 'error'); }
+};
+['crosshairColor', 'crosshairShape', 'crosshairLength', 'crosshairGap', 'crosshairCircle'].forEach((id) => {
+  $(id).onchange = () => saveCrosshairFromInputs().catch((error) => setNotice(`Could not save crosshair settings: ${error.message}`, 'error'));
+});
+$('crosshairColor').oninput = () => saveCrosshairFromInputs().catch(() => {});
+const saveZeroAction = () => {
+  render();
+  storage.set('zeroAction', state.zeroAction).catch((error) => setNotice(`Could not save work-zero button setting: ${error.message}`, 'error'));
+};
+$('zeroActionMode').onchange = () => {
+  state.zeroAction = { ...state.zeroAction, mode: $('zeroActionMode').value === 'macro' ? 'macro' : 'builtin' };
+  if (state.zeroAction.mode === 'macro') loadMacros().catch((error) => setNotice(`Could not load gSender macros: ${error.message}`, 'error'));
+  saveZeroAction();
+};
+$('zeroMacro').onchange = () => {
+  const macroId = $('zeroMacro').value;
+  state.zeroAction = { ...state.zeroAction, macroId, macroName: state.macros.find((macro) => macro.id === macroId)?.name ?? '' };
+  saveZeroAction();
+};
+$('crosshairSettings').ontoggle = () => {
+  if ($('crosshairSettings').open) loadMacros().catch(() => {});
 };
 
 $('registrationFile').onchange = async () => {
