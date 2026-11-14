@@ -72,7 +72,7 @@ button:disabled { opacity: .45; cursor: default; }
 .secondary { background: #53697a; border-color: #53697a; }
 .large { min-height: 48px; padding: 12px 20px; }
 .video-shell { position: relative; display: grid; place-items: center; min-height: 300px; aspect-ratio: 16/8.5; max-height: 560px; overflow: hidden; border: 1px solid #203645; border-radius: 10px; background: radial-gradient(ellipse at 50% 48%, #273d4b 0, #182a36 72%); color: #ecf6fc; }
-.video-shell video { width: 100%; height: 100%; max-height: 560px; object-fit: contain; background: #0b1116; }
+.video-shell video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; background: #0b1116; }
 .camera-placeholder { position: absolute; display: flex; flex-direction: column; align-items: center; gap: 5px; color: #dce9ef; text-align: center; padding: 24px; }
 .camera-placeholder span { max-width: 340px; color: #aebfca; font-size: .86rem; }
 .camera-inline-preview { position: relative; width: min(100%, 760px); min-height: 180px; aspect-ratio: 16/9; margin: 12px 0 18px; overflow: hidden; border: 1px solid #203645; border-radius: 10px; background: #0b1116; color: #ecf6fc; }
@@ -84,10 +84,10 @@ button:disabled { opacity: .45; cursor: default; }
 .camera-inline-preview .image-label { z-index: 2; }
 .camera-icon { font-size: 2.3rem; color: #4cbbd7; line-height: 1; }
 .reticle { position: absolute; inset: 0; pointer-events: none; display: grid; place-items: center; filter: drop-shadow(0 1px 2px #000); }
-.reticle i { position: absolute; width: 54px; height: 54px; border: 1px solid #80edff; border-radius: 50%; }
-.reticle b:before, .reticle b:after { content: ""; position: absolute; background: #80edff; }
-.reticle b:before { width: 1px; height: 90px; }
-.reticle b:after { height: 1px; width: 90px; }
+.reticle .reticle-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
+.crosshair-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); align-items: end; gap: 10px; margin-top: 10px; }
+.crosshair-fields input[type="color"] { height: 40px; padding: 3px; }
+.crosshair-check { flex-direction: row; align-items: center; min-height: 40px; }
 .image-label { position: absolute; bottom: 10px; left: 12px; font-size: .66rem; font-weight: 750; letter-spacing: .12em; color: #d7f7ff; text-shadow: 0 1px 3px #000; }
 .camera-status, .offset-chip, .wcs-chip { white-space: nowrap; border-radius: 99px; padding: 6px 10px; background: #eef2f4; color: #566b78; font-size: .77rem; font-weight: 700; }
 .camera-status.live { background: #e4f5eb; color: #26784c; }

@@ -59,6 +59,14 @@ Files containing coordinate-changing features the aligner cannot preserve are re
 - Select G54–G59 in that same panel and use **Set work zero at crosshair** to update the selected persistent X/Y offset. The plugin confirms the write and checks the controller's offset table. A live position check is performed when changing the active system.
 - The G54 crosshair work-zero flow has been confirmed on a live CNC. The non-active WCS branch, full-travel jogging, and print-registration output still need machine-side validation.
 
+## Crosshair and work-zero button settings
+
+Open **Crosshair & work-zero button settings** on the **Camera** tab. Settings are saved in the plugin's gSender storage and apply to every camera preview.
+
+- **Color**, **Shape** (full cross or the original corner/L shape), **Arm length** (pixels from the center to each tip), **Center gap** (pixels left open around the center; 0 for none), and **Show circle**.
+- **Work-zero button**: keep the built-in verified G10 X/Y write, or run a gSender macro instead. The macro list is read from gSender's macros. The plugin checks that gSender is connected and idle and asks for confirmation before running the macro. The macro then runs as written.
+- Macros can use these variables: `[cam_offset_x]` and `[cam_offset_y]` (saved spindle offset from the crosshair in mm; 0 when not calibrated), `[cam_wcs]` (the selected WCS, e.g. `"G54"`), and `[cam_wcs_p]` (its G10 P index, 1–6). Example: `G21 G10 L20 P[cam_wcs_p] X[cam_offset_x] Y[cam_offset_y]`.
+
 ## Camera access and safety
 
 - Approve Camera and media permissions when gSender prompts. The plugin requests video only, not microphone audio.
