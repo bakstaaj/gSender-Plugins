@@ -213,10 +213,9 @@ function applyCrosshair() {
     .map(([dx, dy]) => `<line x1="${dx * c.gap}" y1="${dy * c.gap}" x2="${dx * c.length}" y2="${dy * c.length}"/>`)
     .join('');
   const circle = c.circle ? '<circle r="27" fill="none"/>' : '';
-  const half = Math.max(c.length, 28) + 1;
-  // Absolutely positioned on the preview center, so a crosshair larger than
-  // the preview cannot grow the grid track and shift off center.
-  const svg = `<svg style="margin: ${-half}px 0 0 ${-half}px" width="${half * 2}" height="${half * 2}" viewBox="${-half} ${-half} ${half * 2} ${half * 2}" stroke="${c.color}" stroke-width="1" shape-rendering="crispEdges">${lines}${circle}</svg>`;
+  // The outer SVG covers the whole preview; the nested SVG puts the origin at
+  // 50%/50%, so centering never depends on CSS layout or the crosshair size.
+  const svg = `<svg class="reticle-svg" width="100%" height="100%" stroke="${c.color}" stroke-width="1" shape-rendering="crispEdges"><svg x="50%" y="50%" overflow="visible">${lines}${circle}</svg></svg>`;
   document.querySelectorAll('.reticle').forEach((reticle) => { reticle.innerHTML = svg; });
   $('crosshairColor').value = c.color;
   $('crosshairShape').value = c.shape;
