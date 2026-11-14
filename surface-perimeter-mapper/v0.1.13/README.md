@@ -1,6 +1,6 @@
 # 3D Part Mapping v0.1.13 — post-command position confirmation
 
-**Latest published release:** [Download the v0.1.12 install ZIP](https://github.com/bakstaaj/gSender-Plugins/releases/download/surface-perimeter-mapper-v0.1.12/surface-perimeter-mapper-v0.1.12.zip). This v0.1.13 snapshot is a versioned rollback point and has not been published as a GitHub release.
+**Latest release package:** [Download the v0.1.13 install ZIP](https://github.com/bakstaaj/gSender-Plugins/releases/download/surface-perimeter-mapper-v0.1.13/surface-perimeter-mapper-v0.1.13.zip).
 
 This change requires an explicit fresh controller status report after each commanded motion before position checks accept arrival, stop position, release position, or recovery-jog position. It avoids treating a cached report from before a move as confirmation of the move's result. The status watchdog continues its existing polling/recovery behavior; this change does not establish machine-specific controller timing or prove physical-machine behavior.
 
