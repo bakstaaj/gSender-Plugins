@@ -84,7 +84,7 @@ button:disabled { opacity: .45; cursor: default; }
 .camera-inline-preview .image-label { z-index: 2; }
 .camera-icon { font-size: 2.3rem; color: #4cbbd7; line-height: 1; }
 .reticle { position: absolute; inset: 0; pointer-events: none; display: grid; place-items: center; filter: drop-shadow(0 1px 2px #000); }
-.reticle svg { overflow: visible; }
+.reticle svg { position: absolute; left: 50%; top: 50%; overflow: visible; }
 .crosshair-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); align-items: end; gap: 10px; margin-top: 10px; }
 .crosshair-fields input[type="color"] { height: 40px; padding: 3px; }
 .crosshair-check { flex-direction: row; align-items: center; min-height: 40px; }
