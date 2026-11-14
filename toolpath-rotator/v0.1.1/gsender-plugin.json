@@ -1,0 +1,19 @@
+{
+  "id": "com.bakstaaj.toolpath-rotator",
+  "name": "Toolpath Rotator",
+  "version": "0.1.1",
+  "description": "Rotate a G-code toolpath clockwise by 90 degrees and rebase its lower-left XY corner to work zero.",
+  "engine": "1.7.0-Edge-2",
+  "permissions": ["visualizer:load"],
+  "ui": {
+    "entry": "ui/index.html",
+    "contributions": [
+      { "slot": "tools-page", "route": "toolpath-rotator", "label": "Toolpath Rotator" },
+      { "slot": "visualizer-overlay", "label": "Rotate Toolpath", "icon": "↻" }
+    ]
+  },
+  "capabilities": {
+    "requestTypes": ["gcode:load:to:visualizer"],
+    "allowedFunctions": ["gcode"]
+  }
+}
