@@ -18,7 +18,7 @@
     "react/jsx-dev-runtime": "./vendor/react-jsx-dev-runtime.js"
   }
 }</script>
-    <script type="module" crossorigin src="./assets/index-DTCtniPC.js"></script>
+    <script type="module" crossorigin src="./assets/index-xB4bhKuQ.js"></script>
     <link rel="stylesheet" crossorigin href="./assets/index-CyZBE7w5.css">
   </head>
   <body>
@@ -99,11 +99,11 @@
             <label><input type="radio" name="probeMode" value="fast" /> Fast (one touch per point)</label>
           </fieldset>
           <div class="field-grid two-columns probe-feed-settings">
-            <label>Fast probe feed (mm/min)<input id="fastFeed" type="number" min="1" step="10" value="100" /></label>
-            <label>Slow probe feed (mm/min)<input id="slowFeed" type="number" min="1" step="1" value="20" /></label>
+            <label>Fast probe feed (mm/min)<input id="fastFeed" type="number" min="1" max="300" step="10" value="100" /></label>
+            <label>Slow probe feed (mm/min)<input id="slowFeed" type="number" min="1" max="300" step="1" value="20" /></label>
           </div>
           <label class="probe-test-skip-toggle"><input id="skipProbeSignalTest" type="checkbox" /> <span><strong>Skip manual probe test</strong><small>For controlled live testing. The controller must still report a known, clear probe input; skipping does not verify probe activation or release.</small></span></label>
-          <p id="probeFeedStatus" class="field-help" role="status" aria-live="polite">Probe feeds are valid.</p>
+          <p id="probeFeedStatus" class="field-help" role="status" aria-live="polite">Maximum probe speed is 300 mm/min for both feeds.</p>
           <fieldset class="scan-mode-picker">
             <legend>Scan coverage</legend>
             <label><input type="radio" name="scanMode" value="perimeter" /> Outside perimeter only</label>

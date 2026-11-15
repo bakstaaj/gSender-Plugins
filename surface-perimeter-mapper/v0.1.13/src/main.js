@@ -13,6 +13,7 @@ import './style.css';
 
 const $ = (id) => document.getElementById(id);
 const FIXED_VERTICAL_CLEARANCE_MM = 1;
+const MAX_PROBE_FEED_MM_MIN = 300;
 const inputIds = ['tipDiameter', 'usableLength', 'approachClearance', 'minThickness', 'maxThickness', 'partRadius', 'partWidth', 'partHeight', 'polygonSides', 'rectangleWidth', 'rectangleHeight', 'sampleSpacing', 'fastFeed', 'slowFeed', 'polygonDirection', 'polygonClearance', 'polygonReleaseLimit'];
 const STORAGE_KEY = 'surface-perimeter-mapper.setup.v2';
 const LEGACY_STORAGE_KEY = 'surface-perimeter-mapper.setup.v1';
@@ -39,6 +40,7 @@ let probeLengthLimitReadPending = false;
 let probeLengthLimitRetryAt = 0;
 let bedMaxProbeLengthMm = null;
 let probeLengthLimitMessage = '';
+let probeFeedLimitMessage = '';
 let lastHomeDecisionKey = '';
 let lastControllerStateKey = '';
 let lastProbeContinueSnapshot = '';
@@ -124,7 +126,15 @@ function writeSettings(settings = {}) {
         settings={...settings,partShape:'polygon',...(settings.partShape==='circle'&&positive(diameter)?{partWidth:diameter,partHeight:diameter}:{})};
     }
     for (const id of inputIds) {
-        if (settings[id] !== undefined) $(id).value = settings[id];
+        if (settings[id] !== undefined) {
+            const value = Number(settings[id]);
+            if ((id === 'fastFeed' || id === 'slowFeed') && Number.isFinite(value) && value > MAX_PROBE_FEED_MM_MIN) {
+                $(id).value = String(MAX_PROBE_FEED_MM_MIN);
+                probeFeedLimitMessage = `Saved ${id === 'fastFeed' ? 'Fast' : 'Slow'} probe feed exceeded the ${MAX_PROBE_FEED_MM_MIN} mm/min maximum and was limited to ${MAX_PROBE_FEED_MM_MIN} mm/min.`;
+            } else {
+                $(id).value = settings[id];
+            }
+        }
     }
     if (settings.jogStep !== undefined) $('jogStep').value = settings.jogStep;
     if (settings.partShape) $('partShape').value = settings.partShape;
@@ -1153,8 +1163,9 @@ async function probeWposOrigin() {
     }
     const configuredFastFeed = number('fastFeed');
     const configuredSlowFeed = number('slowFeed');
-    if (!positive(configuredFastFeed) || !positive(configuredSlowFeed) || configuredSlowFeed > configuredFastFeed) {
-        setOriginMessage('Enter positive probe feeds, with Slow feed no greater than Fast feed.');
+    if (!positive(configuredFastFeed) || !positive(configuredSlowFeed) || configuredFastFeed > MAX_PROBE_FEED_MM_MIN
+        || configuredSlowFeed > MAX_PROBE_FEED_MM_MIN || configuredSlowFeed > configuredFastFeed) {
+        setOriginMessage(`Enter positive probe feeds no greater than ${MAX_PROBE_FEED_MM_MIN} mm/min, with Slow feed no greater than Fast feed.`);
         return;
     }
     state.rectangleOriginMachine = null;
@@ -4764,16 +4775,19 @@ function legacyUpdate() {
             ? 'Straight-edge scans continue until a complete miss, then change probing direction. The search box must include clearance for each miss and corner transfer.'
             : partShape === 'polygon' ? 'Simulator-only: follow one connected outer boundary with guarded probe moves; no shape or side count is required.' : 'This outline is shown for planning, but automated perimeter motion is not enabled for this shape yet.';
     const spacing = number('sampleSpacing');
-    const probeFeedsValid = positive(fastFeed) && positive(slowFeed) && slowFeed <= fastFeed;
-    $('fastFeed').setCustomValidity(positive(fastFeed) ? '' : 'Enter a positive feed rate.');
-    $('slowFeed').setCustomValidity(!positive(slowFeed) ? 'Enter a positive feed rate.' : slowFeed > fastFeed ? 'Slow feed must not exceed fast feed.' : '');
+    const probeFeedsValid = positive(fastFeed) && positive(slowFeed) && fastFeed <= MAX_PROBE_FEED_MM_MIN
+        && slowFeed <= MAX_PROBE_FEED_MM_MIN && slowFeed <= fastFeed;
+    $('fastFeed').setCustomValidity(!positive(fastFeed) ? 'Enter a positive feed rate.' : fastFeed > MAX_PROBE_FEED_MM_MIN ? `Maximum probe speed is ${MAX_PROBE_FEED_MM_MIN} mm/min.` : '');
+    $('slowFeed').setCustomValidity(!positive(slowFeed) ? 'Enter a positive feed rate.' : slowFeed > MAX_PROBE_FEED_MM_MIN ? `Maximum probe speed is ${MAX_PROBE_FEED_MM_MIN} mm/min.` : slowFeed > fastFeed ? 'Slow feed must not exceed fast feed.' : '');
     const feedStatus = $('probeFeedStatus');
-    feedStatus.textContent = probeFeedsValid
+    feedStatus.textContent = probeFeedLimitMessage || (probeFeedsValid
         ? 'Probe feeds are valid.'
         : !positive(fastFeed) || !positive(slowFeed)
             ? 'Enter a positive value for both probe feeds.'
-            : `Slow feed (${slowFeed} mm/min) must not exceed Fast feed (${fastFeed} mm/min). Lower Slow or raise Fast.`;
-    feedStatus.dataset.state = probeFeedsValid ? 'ready' : 'error';
+            : fastFeed > MAX_PROBE_FEED_MM_MIN || slowFeed > MAX_PROBE_FEED_MM_MIN
+                ? `300 mm/min is the maximum probe speed.`
+                : `Slow feed (${slowFeed} mm/min) must not exceed Fast feed (${fastFeed} mm/min). Lower Slow or raise Fast.`);
+    feedStatus.dataset.state = probeFeedsValid && !probeFeedLimitMessage ? 'ready' : 'error';
     const probeInputsValid = positive(diameter) && positive(usableLength) && Number.isFinite(verticalClearance) && verticalClearance >= 0 && Number.isFinite(clearance) && clearance >= 0.5;
     const partInputsValid = positive(minThickness) && positive(maxThickness) && maxThickness >= minThickness;
     const areaInputsValid = (circleShape ? positive(partRadius) : positive(partWidth)) && (!shapeUsesTwoDimensions || positive(partHeight))
@@ -4908,13 +4922,14 @@ function update(){
     const probeMode=document.querySelector('input[name="probeMode"]:checked')?.value??'precise';
     const scanMode=document.querySelector('input[name="scanMode"]:checked')?.value??'both';
     $('startPerimeterScan').textContent=scanMode==='perimeter'?'Scan outside perimeter':scanMode==='surface'?'Scan inside surface':'Scan perimeter and surface';
-    const probeFeedsValid=positive(fastFeed)&&positive(slowFeed)&&slowFeed<=fastFeed;
+    const probeFeedsValid=positive(fastFeed)&&positive(slowFeed)&&fastFeed<=MAX_PROBE_FEED_MM_MIN&&slowFeed<=MAX_PROBE_FEED_MM_MIN&&slowFeed<=fastFeed;
     const inputsValid=positive(diameter)&&positive(usableLength)&&positive(verticalClearance)&&usableLength>verticalClearance&&positive(spacing)&&probeFeedsValid;
     const selectedHeight=0.75*diameter;
     $('polygonClearance').value=(diameter*.5).toFixed(3);$('polygonReleaseLimit').value=(diameter*1.5).toFixed(3);
     $('polygonControls').hidden=true;$('shapeDimensions').hidden=true;$('polygonNotice').hidden=true;
     $('shapeSupportMessage').textContent='Simulator-only: the probe follows one connected outer boundary within machine travel.';
-    $('probeFeedStatus').textContent=probeFeedsValid?'Probe feeds are valid.':'Enter positive feed rates; Slow must not exceed Fast.';
+    $('probeFeedStatus').textContent=probeFeedLimitMessage||(probeFeedsValid?'Probe feeds are valid.':fastFeed>MAX_PROBE_FEED_MM_MIN||slowFeed>MAX_PROBE_FEED_MM_MIN?'300 mm/min is the maximum probe speed.':'Enter positive feed rates; Slow must not exceed Fast.');
+    $('probeFeedStatus').dataset.state=probeFeedsValid&&!probeFeedLimitMessage?'ready':'error';
     const mode=probeMode==='fast'?'fast':probeMode==='ultra'?'ultra precise':'precise';
     $('planSummary').textContent=inputsValid?`${mode} · ${fmt(spacing)} spacing · maximum ${fmt(usableLength)} per downward Z probe · bed is WPOS Z0.`:'Enter valid probe dimensions, spacing, and feeds. Clearance C must be positive and less than L.';
     state.latest={diameter,radius,usableLength,verticalClearance,fastFeed,slowFeed,spacing,probeMode,partShape:'polygon',selectedHeight,maxThickness:usableLength,minThickness:NaN,probeFeedsValid,inputsValid,scanValid:inputsValid,setupReady:inputsValid};
@@ -5095,7 +5110,19 @@ async function initialize() {
     diagnosticLogReady = true;
     renderHomingDiagnostics();
     logHomingDiagnostic('Plugin diagnostics initialized', { version: '0.1.6', pageVisibility: document.visibilityState });
-    for (const id of inputIds.filter(id => id !== 'usableLength')) $(id).addEventListener('input', () => { $('saveStatus').textContent = ''; update(); persistSettingsSoon(); });
+    for (const id of inputIds.filter(id => !['usableLength', 'fastFeed', 'slowFeed'].includes(id))) $(id).addEventListener('input', () => { $('saveStatus').textContent = ''; update(); persistSettingsSoon(); });
+    for (const id of ['fastFeed', 'slowFeed']) $(id).addEventListener('input', () => {
+        const feed = Number($(id).value);
+        if (Number.isFinite(feed) && feed > MAX_PROBE_FEED_MM_MIN) {
+            $(id).value = String(MAX_PROBE_FEED_MM_MIN);
+            probeFeedLimitMessage = `${MAX_PROBE_FEED_MM_MIN} mm/min is the maximum probe speed. ${id === 'fastFeed' ? 'Fast' : 'Slow'} probe feed was limited to ${MAX_PROBE_FEED_MM_MIN} mm/min.`;
+        } else {
+            probeFeedLimitMessage = '';
+        }
+        $('saveStatus').textContent = '';
+        update();
+        persistSettingsSoon();
+    });
     $('usableLength').addEventListener('input', () => {
         const limit = maximumProbeLengthMm();
         const clamped = Number.isFinite(limit) && enforceProbeLengthLimit(limit, 'available machine Z travel');
