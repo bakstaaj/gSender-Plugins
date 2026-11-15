@@ -1,11 +1,11 @@
 # Camera Align & Print Registration
-**Latest release package:** [Download camera-align-print-registration-v0.2.17.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/camera-align-print-registration-v0.2.17/camera-align-print-registration-v0.2.17.zip)
+**Latest release package:** [Download camera-align-print-registration-v0.2.18.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/camera-align-print-registration-v0.2.18/camera-align-print-registration-v0.2.18.zip)
 
-**Version 0.2.17 · gSender 1.7.0-Edge-2 · Plugin SDK 0.2.2**
+**Version 0.2.18 · gSender 1.7.0-Edge-2 · Plugin SDK 0.2.2**
 
 Use a live USB camera and a calibrated camera-to-spindle offset to establish work zero or align a G-code toolpath to printed artwork. The interface is organized into **Camera**, **Calibration**, **Jog & work zero**, and **Print alignment** tabs. A compact **Align** tab in the Carve window shows the live crosshair, WCS selector, and X/Y zero action; it uses Carve's existing jog controls and does not duplicate them. A live crosshair preview also appears on the Calibration, Jog & work zero, and Print alignment tabs after the camera starts. The camera panel and jog panel can pop out together into a floating window; drag its grip to position them beside another gSender view, or dock them back. Camera images and selected G-code files stay on the computer; the plugin does not upload or record them.
 
-Version 0.2.17 layers the Align toolbar over the full camera view; collapsing it leaves only the open chevron over the expanded preview. Version 0.2.16 aligns the toolbar using explicit controls in a single row, keeps the WCS label beside its selector, and removes unused grid space. Version 0.2.15 places a centered SVG collapse control at the far left and caps the X/Y zero button width. Version 0.2.14 makes the collapsed toolbar a compact chevron and moves status feedback into temporary overlays instead of a permanent panel below the camera. Version 0.2.13 lays out the Carve **Align** tab with a single-row toolbar above a full-width camera view. The toolbar can collapse to give the preview more space. Version 0.2.12 added the Carve tab without duplicating the host jog controls. Version 0.2.11 fixes the measured camera-to-spindle offset sign so reference-mark calibration matches manual entry. It retains the jog-completion wait from v0.2.10, which prevents a normal one-step move from being mistaken for a failed jog.
+Version 0.2.18 adds configurable crosshair appearance, optional macro work-zero actions with confirmation controls, picture-in-picture camera preview, automatic camera restart, and a visualizer overlay. It includes the standard bakStaaJ Designs copyright footer. Version 0.2.17 layers the Align toolbar over the full camera view; collapsing it leaves only the open chevron over the expanded preview. Version 0.2.16 aligns the toolbar using explicit controls in a single row, keeps the WCS label beside its selector, and removes unused grid space. Version 0.2.15 places a centered SVG collapse control at the far left and caps the X/Y zero button width. Version 0.2.14 makes the collapsed toolbar a compact chevron and moves status feedback into temporary overlays instead of a permanent panel below the camera. Version 0.2.13 lays out the Carve **Align** tab with a single-row toolbar above a full-width camera view. The toolbar can collapse to give the preview more space. Version 0.2.12 added the Carve tab without duplicating the host jog controls. Version 0.2.11 fixes the measured camera-to-spindle offset sign so reference-mark calibration matches manual entry. It retains the jog-completion wait from v0.2.10, which prevents a normal one-step move from being mistaken for a failed jog.
 
 ## Screenshots
 
@@ -58,6 +58,23 @@ Files containing coordinate-changing features the aligner cannot preserve are re
 - Jog buttons enable when gSender is connected and the safe-travel checkbox is checked. Before every move, the plugin checks that gSender and the controller are idle and that a machine position is available; an unmet check blocks the move and reports why.
 - Select G54–G59 in that same panel and use **Set work zero at crosshair** to update the selected persistent X/Y offset. The plugin confirms the write and checks the controller's offset table. A live position check is performed when changing the active system.
 - The G54 crosshair work-zero flow has been confirmed on a live CNC. The non-active WCS branch, full-travel jogging, and print-registration output still need machine-side validation.
+
+## Crosshair and work-zero button settings
+
+Open **Crosshair & work-zero button settings** on the **Camera** tab. Settings are saved in the plugin's gSender storage and apply to every camera preview.
+
+- **Color**, **Shape** (full cross or the original corner/L shape), **Arm length** (pixels from the center to each tip), **Center gap** (pixels left open around the center; 0 for none), and **Show circle**.
+- **Work-zero button**: keep the built-in verified G10 X/Y write, or run a gSender macro instead. The macro list is read from gSender's macros. The plugin checks that gSender is connected and idle and asks for confirmation before running the macro. The macro then runs as written. Tick **Don't ask again before running this macro** in the dialog to skip the confirmation for that macro. **Ask for confirmation before running the macro** in the settings turns it back on. Choosing a different macro always asks again. The connected/idle check still runs every time.
+- Macros can use these variables: `[cam_offset_x]` and `[cam_offset_y]` (saved spindle offset from the crosshair in mm; 0 when not calibrated), `[cam_wcs]` (the selected WCS, e.g. `"G54"`), and `[cam_wcs_p]` (its G10 P index, 1–6). Example: `G21 G10 L20 P[cam_wcs_p] X[cam_offset_x] Y[cam_offset_y]`.
+- **Open picture-in-picture when the camera starts** and **Restart the camera automatically when this view opens again** (on by default). See below.
+
+## Picture-in-picture, camera restart and view layouts
+
+- **Picture-in-picture:** the **Picture-in-picture** / **PiP** buttons show the camera image with the crosshair in a floating window. You can move and resize the window freely, and it stays above gSender. The window shows the image only; use the plugin or gSender for jogging and work zero. Browsers only open it after a click, so it cannot reopen by itself after an automatic camera restart. Its size and position are kept for the current gSender session only.
+- **Camera restart:** gSender unloads the plugin when you leave its tab (for example, switching to Macros). If the camera was running, the plugin restarts it with the same device when the view opens again, also after restarting gSender. Stopping the camera yourself turns this off until you start it again.
+- **Align tab (Carve tools area):** when the area is low and at least as wide as it is high, the camera fills the height on the left, and the controls stack on the right. Each control is 22–48 px high, depending on the available height.
+- **Camera Align button over the visualizer (🎯):** opens gSender's overlay panel with the camera on top and the controls below. By default the image fills the panel, which crops the sides and enlarges the center. **Show whole image** switches back to the uncropped image. While picture-in-picture is open, the panel hides its own image and enlarges the controls.
+- The overlay panel and the Align tab are separate plugin instances. If both are open, both use the camera.
 
 ## Camera access and safety
 
