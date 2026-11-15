@@ -4,6 +4,7 @@ import './style.css';
 const $ = (id) => document.getElementById(id);
 const STORAGE_KEY = 'machineProfiles';
 const STATUS_PARSER_ID = 'cnc-machine-diagnostics-status';
+const CONFIG_FORMAT = 'com.bakstaaj.cnc-machine-diagnostics.profiles';
 
 const DEFAULT_CONTROLS = [
   { id: 'spindle', name: 'Spindle', enabled: true, type: 'range-toggle', min: 0, max: 14000, initial: 10000, unit: 'RPM', on: 'M3S{value}', off: 'M5', command: '' },
@@ -379,6 +380,17 @@ function render() {
     '<button id="duplicateProfile" class="quiet-button" type="button">Duplicate</button>' +
     '<button id="deleteProfile" class="quiet-button danger-button" type="button">Delete</button>' +
     '<button id="saveProfile" class="primary-button" type="button">Save profile</button></div></div>' +
+    '<div class="profile-transfer"><button id="exportProfiles" class="quiet-button" type="button">Export all profiles</button>' +
+    '<button id="importProfiles" class="quiet-button" type="button">Import profiles</button>' +
+    '<input id="importProfilesFile" type="file" accept=".json,application/json" hidden>' +
+    '<small>Transfer the complete profile set between computers as a JSON file.</small></div>' +
+    '<section id="exportFallback" class="export-fallback" hidden><h3>Save profiles manually</h3>' +
+    '<p id="exportFallbackReason" class="notice error" role="status"></p>' +
+    '<p>Click <strong>Copy JSON</strong>, paste the text into Notepad or another text editor, and save it with a <code>.json</code> extension.</p>' +
+    '<label class="field"><span>Profile export JSON</span><textarea id="exportJson" readonly spellcheck="false"></textarea></label>' +
+    '<div class="profile-buttons"><button id="copyExportJson" class="primary-button" type="button">Copy JSON</button>' +
+    '<button id="closeExportFallback" class="quiet-button" type="button">Close</button></div>' +
+    '<p id="exportCopyNotice" class="field-help" role="status" aria-live="polite"></p></section>' +
     '<p id="configNotice" class="notice success" role="status" aria-live="polite"></p></section>' +
     '<section class="section"><div class="section-head"><div><h2>Diagnostic controls</h2><p>Enable only controls supported by this machine. Use {value} in an on command to insert the range value.</p></div><button id="addControl" class="quiet-button" type="button">Add control</button></div><div id="controlEditor" class="editor-list"></div></section>' +
     '<section class="section"><div class="section-head"><div><h2>Sensors and switches</h2><p>Use a GRBL Pn: token (X, Y, Z, P) or a Makera bridge field such as Z1:E[5]. Prefix a mapping with ! to invert it.</p></div><button id="addSensor" class="quiet-button" type="button">Add sensor</button></div><div id="sensorEditor" class="editor-list"></div></section></main>' +
@@ -707,9 +719,12 @@ function captureProfileEditor() {
   }
 }
 
-function validateStore() {
+function validateStore(store = state.profileStore) {
   const names = new Set();
-  for (const profile of state.profileStore.profiles) {
+  if (!store || !Array.isArray(store.profiles) || !store.profiles.length) {
+    throw new Error('The configuration must contain at least one machine profile.');
+  }
+  for (const profile of store.profiles) {
     const name = String(profile.name || '').trim();
     if (!name) throw new Error('Every machine profile needs a name.');
     const normalizedName = name.toLowerCase();
@@ -737,6 +752,98 @@ function validateStore() {
   }
 }
 
+function showExportFallback(contents, reason) {
+  $('exportFallback').hidden = false;
+  $('exportFallbackReason').textContent = reason;
+  $('exportJson').value = contents;
+  $('exportJson').focus();
+  $('exportJson').select();
+  $('exportFallback').scrollIntoView({ behavior: 'smooth', block: 'center' });
+  setConfigNotice('No profile file was saved. Copy the JSON shown below and save it as a .json file.', 'error');
+}
+
+async function exportProfiles() {
+  captureProfileEditor();
+  validateStore();
+  const payload = {
+    format: CONFIG_FORMAT,
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    activeProfileId: state.profileStore.activeProfileId,
+    profiles: state.profileStore.profiles,
+  };
+  const contents = JSON.stringify(payload, null, 2) + '\n';
+  const filename = 'cnc-machine-diagnostics-profiles-' + new Date().toISOString().slice(0, 10) + '.json';
+
+  // Try the browser Save As picker. gSender may allow choosing a path but
+  // deny writing from its plugin iframe; surface the JSON if that happens.
+  if (typeof window.showSaveFilePicker === 'function') {
+    try {
+      const handle = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{ description: 'JSON configuration', accept: { 'application/json': ['.json'] } }],
+      });
+      const writable = await handle.createWritable();
+      await writable.write(contents);
+      await writable.close();
+      setConfigNotice('Configuration saved to ' + filename + '.', 'success');
+    } catch (error) {
+      if (error.name === 'AbortError') {
+        setConfigNotice('Export canceled.', 'info');
+        return;
+      }
+      const detail = error.message || String(error);
+      showExportFallback(contents,
+        'gSender opened the Save As dialog but blocked writing the file (' + detail + '). ' +
+        'If you selected a destination, it may contain an empty file; replace it with the JSON below.');
+    }
+    return;
+  }
+
+  showExportFallback(contents,
+    'This browser does not provide a Save As dialog. Copy the JSON below and save it as a .json file.');
+}
+
+async function importProfiles(file) {
+  try {
+    const parsed = JSON.parse(await file.text());
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('The selected file is not a profile configuration object.');
+    }
+    if (parsed.format && parsed.format !== CONFIG_FORMAT) {
+      throw new Error('This JSON file belongs to a different configuration format.');
+    }
+    if (parsed.format === CONFIG_FORMAT && parsed.version !== 1) {
+      throw new Error('This configuration file version is not supported.');
+    }
+    if (!Array.isArray(parsed.profiles) || !parsed.profiles.length ||
+        parsed.profiles.some((profile) => !profile || typeof profile !== 'object' ||
+          typeof profile.id !== 'string' || typeof profile.name !== 'string' ||
+          !Array.isArray(profile.controls) || !Array.isArray(profile.sensors))) {
+      throw new Error('The file must contain profiles with names, IDs, controls, and sensors.');
+    }
+    captureProfileEditor();
+    if (!window.confirm('Import ' + parsed.profiles.length + ' profile(s) and replace the profiles on this computer?')) return;
+
+    const imported = normalizeStore({
+      activeProfileId: parsed.activeProfileId,
+      profiles: parsed.profiles,
+    });
+    validateStore(imported);
+    await storage.set(STORAGE_KEY, imported);
+    state.profileStore = imported;
+    state.dirty = false;
+    state.storageError = '';
+    renderProfileSelect();
+    renderConfiguration();
+    renderDiagnostics();
+    syncStatusPolling();
+    setConfigNotice('Imported and saved ' + imported.profiles.length + ' machine profile(s).', 'success');
+  } catch (error) {
+    setConfigNotice('Could not import profiles: ' + (error.message || error), 'error');
+  }
+}
+
 function setConfigNotice(message, kind) {
   const node = $('configNotice');
   node.textContent = message;
@@ -744,6 +851,31 @@ function setConfigNotice(message, kind) {
 }
 
 function bindConfigurationEvents() {
+  $('copyExportJson').addEventListener('click', async () => {
+    const textarea = $('exportJson');
+    try {
+      await navigator.clipboard.writeText(textarea.value);
+      $('exportCopyNotice').textContent = 'Copied. Paste into a text editor and save as a .json file.';
+    } catch {
+      textarea.focus();
+      textarea.select();
+      $('exportCopyNotice').textContent = 'Clipboard access was blocked. The JSON is selected; press Ctrl+C, then paste it into a text editor and save as a .json file.';
+    }
+  });
+  $('closeExportFallback').addEventListener('click', () => { $('exportFallback').hidden = true; });
+  $('exportProfiles').addEventListener('click', async () => {
+    try {
+      await exportProfiles();
+    } catch (error) {
+      setConfigNotice('Could not export profiles: ' + (error.message || error), 'error');
+    }
+  });
+  $('importProfiles').addEventListener('click', () => $('importProfilesFile').click());
+  $('importProfilesFile').addEventListener('change', async (event) => {
+    const [file] = event.target.files || [];
+    event.target.value = '';
+    if (file) await importProfiles(file);
+  });
   $('profileSelect').addEventListener('change', () => {
     captureProfileEditor();
     state.profileStore.activeProfileId = $('profileSelect').value;

@@ -12061,9 +12061,9 @@ var require_client = __commonJS({
   }
 });
 
-// C:/msys64/tmp/cnc-machine-diagnostics-alarm-build/vendor/.entries/react-dom-client.js
-var import_client = __toESM(require_client());
-var import_client2 = __toESM(require_client());
+// ui/vendor/.entries/react-dom-client.js
+var import_client = __toESM(require_client(), 1);
+var import_client2 = __toESM(require_client(), 1);
 var export_createRoot = import_client.createRoot;
 var export_default = import_client2.default;
 var export_hydrateRoot = import_client.hydrateRoot;

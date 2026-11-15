@@ -1,5 +1,5 @@
 # CNC Machine Diagnostics for gSender
-**Latest release package:** [Download cnc-machine-diagnostics-v0.3.3.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/cnc-machine-diagnostics-v0.3.3/cnc-machine-diagnostics-v0.3.3.zip)
+**Latest release package:** [Download cnc-machine-diagnostics-v0.3.7.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/cnc-machine-diagnostics-v0.3.7/cnc-machine-diagnostics-v0.3.7.zip)
 
 A configurable diagnostics tool for CNC machines using gSender. Create and save machine profiles to show supported controls and sensors, assign each control its G-code commands, and map controller status fields to sensor indicators.
 
@@ -12,6 +12,8 @@ A configurable diagnostics tool for CNC machines using gSender. Create and save 
 - Both controller modes query status every 700 ms while connected and on the Diagnostics page, including when the controller is in Alarm. Makera Z1 mode also reads Z1 extended status fields; Standard GRBL mode reads the `Pn:` pin field.
 - GRBL sensor cards distinguish a controller that has never reported `Pn:` from one with no triggered inputs. After `Pn:` support has been observed, a report that omits `Pn:` clears the triggered-pin indicators, matching GRBL's status-report behavior.
 - Persistent profiles stored by gSender.
+- Export the full machine profile set to JSON and import it on another computer. Imports are validated and replace the current profile set.
+- Export uses the browser Save As picker when permitted. If gSender blocks writes from the plugin sandbox, the JSON is shown in the plugin with a copy button for manual saving.
 - A preconfigured **Makera Z1** profile as a working example of machine-specific controls and sensor mappings.
 
 Commands are sent through gSender’s active controller connection. A successful send means gSender accepted the command; it does not confirm that an accessory physically changed state.
@@ -45,7 +47,7 @@ Other Z1 profile controls use commands confirmed for that machine, including `M3
 
 ## Install
 
-1. In gSender, open Plugin Manager and install `cnc-machine-diagnostics-v0.3.3.zip`.
+1. In gSender, open Plugin Manager and install `cnc-machine-diagnostics-v0.3.7.zip`.
 2. Connect gSender to a controller and open **Tools → CNC Machine Diagnostics**.
 3. Select the appropriate machine profile and controller status mode. Adjust and save its commands and sensor mappings as needed.
 4. For the included Z1 profile, install and configure the CNC Machine TCP Bridge separately, connect gSender to `127.0.0.1:2323`, and select **Makera Z1** in the plugin.
@@ -62,7 +64,7 @@ npm run build
 .\package-plugin.ps1
 ```
 
-The build creates `cnc-machine-diagnostics-v0.3.3.zip` in this folder.
+The build creates `cnc-machine-diagnostics-v0.3.7.zip` in this folder.
 
 ## Compatibility
 

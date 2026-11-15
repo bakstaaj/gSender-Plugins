@@ -5,9 +5,9 @@ import {
   __toESM
 } from "./chunk-TRTQSARU.js";
 
-// C:/msys64/tmp/cnc-machine-diagnostics-alarm-build/vendor/.entries/react.js
-var import_react = __toESM(require_react());
-var import_react2 = __toESM(require_react());
+// ui/vendor/.entries/react.js
+var import_react = __toESM(require_react(), 1);
+var import_react2 = __toESM(require_react(), 1);
 var export_Activity = import_react.Activity;
 var export_Children = import_react.Children;
 var export_Component = import_react.Component;

@@ -45,9 +45,9 @@ var require_jsx_runtime = __commonJS({
   }
 });
 
-// C:/msys64/tmp/cnc-machine-diagnostics-alarm-build/vendor/.entries/react-jsx-runtime.js
-var import_jsx_runtime = __toESM(require_jsx_runtime());
-var import_jsx_runtime2 = __toESM(require_jsx_runtime());
+// ui/vendor/.entries/react-jsx-runtime.js
+var import_jsx_runtime = __toESM(require_jsx_runtime(), 1);
+var import_jsx_runtime2 = __toESM(require_jsx_runtime(), 1);
 var export_Fragment = import_jsx_runtime.Fragment;
 var export_default = import_jsx_runtime2.default;
 var export_jsx = import_jsx_runtime.jsx;

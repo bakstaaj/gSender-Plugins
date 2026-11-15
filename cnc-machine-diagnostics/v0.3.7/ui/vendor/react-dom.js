@@ -6,9 +6,9 @@ import {
   __toESM
 } from "./chunk-TRTQSARU.js";
 
-// C:/msys64/tmp/cnc-machine-diagnostics-alarm-build/vendor/.entries/react-dom.js
-var import_react_dom = __toESM(require_react_dom());
-var import_react_dom2 = __toESM(require_react_dom());
+// ui/vendor/.entries/react-dom.js
+var import_react_dom = __toESM(require_react_dom(), 1);
+var import_react_dom2 = __toESM(require_react_dom(), 1);
 var export___DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE = import_react_dom.__DOM_INTERNALS_DO_NOT_USE_OR_WARN_USERS_THEY_CANNOT_UPGRADE;
 var export_createPortal = import_react_dom.createPortal;
 var export_default = import_react_dom2.default;

@@ -1,7 +1,7 @@
 {
   "id": "com.bakstaaj.makera-z1-diagnostics",
   "name": "CNC Machine Diagnostics",
-  "version": "0.3.3",
+  "version": "0.3.7",
   "description": "Configurable CNC machine diagnostics with G-code controls, saved machine profiles, and live sensor indicators.",
   "engine": "1.7.0-Edge-2",
   "ui": {
