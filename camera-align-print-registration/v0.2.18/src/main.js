@@ -153,7 +153,7 @@ document.querySelector('#app').innerHTML = `
   <details id="cameraDiagnostics" class="camera-help diagnostics" hidden><summary>Camera access diagnostics</summary><pre id="cameraDiagnosticsText"></pre></details>
 
   <dialog id="confirmDialog"><div class="dialog-icon">!</div><h2 id="confirmTitle">Update work coordinate offset?</h2><p id="confirmText"></p><label class="crosshair-check confirm-skip" id="confirmSkipField" hidden><input id="confirmSkip" type="checkbox"><span id="confirmSkipText"></span></label><div class="button-row"><button id="cancelConfirm" class="secondary">Cancel</button><button id="acceptConfirm" class="primary">Write offset</button></div></dialog>
-  <footer>Camera view and motion are controlled locally by gSender. Review the machine position before every move.</footer>
+  <footer>Camera view and motion are controlled locally by gSender. Review the machine position before every move.<div id="copyright-footer" aria-label="Copyright">Copyright 2026 bakStaaJ Designs LLC.</div></footer>
 `;
 
 const jogPanelDock = document.createComment('Jog controls dock position');

@@ -183,6 +183,7 @@ dialog h2 { margin: 12px 0; }
 dialog p { color: var(--muted); }
 .button-row { display: flex; justify-content: flex-end; gap: 9px; margin-top: 20px; }
 footer { text-align: center; color: var(--muted); font-size: .76rem; padding: 10px 0 4px; }
+#copyright-footer { display: block; position: static; padding-top: 3px; color: var(--muted); font-size: .68rem; }
 [hidden] { display: none !important; }
 html.dark { color: #e2edf3; background: #13232f; --panel: #1b2d3b; --line: #3a5262; --muted: #a9becb; --input: #162733; --soft: #213d4c; }
 html.dark .camera-placeholder span { color: #afc2cd; }
