@@ -74,7 +74,120 @@ function applyPictureSettings() {
   for (const el of [$('image'), $('video'), $('bridgeFrame')]) el.style.transform = transform;
 }
 function resetPictureSettings() { state.zoom = 1; state.flipped = false; state.rotation = 0; applyPictureSettings(); }
-function showPreview(kind) { $('placeholder').hidden = true; $('frameBadge').hidden = false; $('image').hidden = kind !== 'image'; $('video').hidden = kind !== 'video'; $('bridgeFrame').hidden = kind !== 'bridge'; }
+function showPreview(kind) { $('placeholder').hidden = true; $('frameBadge').hidden = false; $('image').hidden = kind !== 'image'; $('video').hidden = kind !== 'video'; $('bridgeFrame').hidden = kind !== 'bridge'; updatePipButton(); }
+function pipSupported() {
+  return Boolean(document.pictureInPictureEnabled && HTMLVideoElement.prototype.requestPictureInPicture);
+}
+const pip = { active: false, video: null, canvasVideo: null, canvas: null, stream: null, timer: null, mode: null };
+function updatePipButton() {
+  const button = $('pipToggle');
+  if (!button) return;
+  const bridge = state.sourceType === 'bridge';
+  const hasPreview = !$('video').hidden || !$('image').hidden;
+  button.disabled = !state.running || !pipSupported() || bridge || !hasPreview;
+  button.classList.toggle('active', pip.active);
+  button.setAttribute('aria-pressed', String(pip.active));
+  button.setAttribute('aria-label', pip.active ? 'Close picture-in-picture camera window' : 'Open picture-in-picture camera window');
+  button.title = !pipSupported()
+    ? 'Picture-in-picture is not available in this gSender build.'
+    : bridge
+      ? 'Picture-in-picture is not available for the cross-origin local bridge viewer.'
+      : state.sourceType === 'video' || state.sourceType === 'usb'
+        ? 'Open the live video in a floating, resizable picture-in-picture window.'
+        : 'Open the image feed in picture-in-picture. Remote image feeds need same-origin or CORS access.';
+}
+function drawPipImage() {
+  const source = $('image');
+  const width = source.naturalWidth, height = source.naturalHeight;
+  if (!pip.canvas || !width || !height) return;
+  const quarterTurn = state.rotation % 180 !== 0;
+  const outputWidth = quarterTurn ? height : width;
+  const outputHeight = quarterTurn ? width : height;
+  if (pip.canvas.width !== outputWidth || pip.canvas.height !== outputHeight) {
+    pip.canvas.width = outputWidth;
+    pip.canvas.height = outputHeight;
+  }
+  const context = pip.canvas.getContext('2d');
+  context.save();
+  context.translate(outputWidth / 2, outputHeight / 2);
+  context.rotate(state.rotation * Math.PI / 180);
+  context.scale(state.zoom * (state.flipped ? -1 : 1), state.zoom);
+  context.drawImage(source, -width / 2, -height / 2, width, height);
+  context.restore();
+}
+function clearPipState() {
+  if (pip.timer) clearInterval(pip.timer);
+  pip.timer = null;
+  if (pip.stream) pip.stream.getTracks().forEach((track) => track.stop());
+  pip.stream = null;
+  if (pip.canvasVideo) { pip.canvasVideo.pause(); pip.canvasVideo.srcObject = null; }
+  pip.video = null;
+  pip.mode = null;
+  pip.active = false;
+  updatePipButton();
+}
+function stopPip() {
+  if (pip.video && document.pictureInPictureElement === pip.video) {
+    document.exitPictureInPicture().catch(() => {});
+  }
+  clearPipState();
+}
+function onPipLeave() { clearPipState(); }
+function getCanvasPipVideo() {
+  if (!pip.canvasVideo) {
+    pip.canvas = document.createElement('canvas');
+    pip.canvasVideo = document.createElement('video');
+    pip.canvasVideo.muted = true;
+    pip.canvasVideo.playsInline = true;
+    pip.canvasVideo.className = 'pip-source';
+    document.body.appendChild(pip.canvasVideo);
+    pip.canvasVideo.addEventListener('leavepictureinpicture', onPipLeave);
+  }
+  return pip.canvasVideo;
+}
+async function startPip() {
+  if (!pipSupported()) throw new Error('Picture-in-picture is not available in this gSender build.');
+  if (!state.running) throw new Error('Connect a camera before opening picture-in-picture.');
+  if (state.sourceType === 'bridge') throw new Error('The local bridge viewer is in a cross-origin frame, so gSender cannot place its video in picture-in-picture.');
+  const sourceVideo = $('video');
+  if (!sourceVideo.hidden) {
+    if (!sourceVideo.videoWidth || !sourceVideo.videoHeight) throw new Error('Wait for the camera to show live video frames, then try picture-in-picture again.');
+    pip.video = sourceVideo;
+    pip.mode = 'video';
+    sourceVideo.addEventListener('leavepictureinpicture', onPipLeave, { once: true });
+  } else {
+    const sourceImage = $('image');
+    if (!sourceImage.naturalWidth || !sourceImage.naturalHeight) throw new Error('Wait for the camera to show a live image, then try picture-in-picture again.');
+    const video = getCanvasPipVideo();
+    pip.video = video;
+    pip.mode = 'image';
+    drawPipImage();
+    pip.timer = window.setInterval(drawPipImage, 100);
+    try {
+      pip.stream = pip.canvas.captureStream(15);
+    } catch (error) {
+      clearPipState();
+      throw new Error('This image feed cannot be captured for picture-in-picture. Remote JPEG feeds need same-origin or CORS access.');
+    }
+    video.srcObject = pip.stream;
+    await video.play();
+  }
+  await pip.video.requestPictureInPicture();
+  pip.active = true;
+  updatePipButton();
+}
+async function togglePip() {
+  if (pip.active) {
+    stopPip();
+    return;
+  }
+  try {
+    await startPip();
+  } catch (error) {
+    stopPip();
+    setMessage(error.message || String(error), 'error');
+  }
+}
 async function openUsbCamera(settings) {
   const deviceId = settings.deviceId ? { deviceId: { exact: settings.deviceId } } : {};
   const profiles = [
@@ -101,6 +214,7 @@ function explainCameraError(error) {
 }
 function stopTimers() { if (state.snapshotTimer) clearInterval(state.snapshotTimer); if (state.healthTimer) clearInterval(state.healthTimer); if (state.frameTimer) clearTimeout(state.frameTimer); state.snapshotTimer = state.healthTimer = state.frameTimer = null; }
 function clearPreview() {
+  stopPip();
   stopTimers();
   if (state.socket) { state.socket.onclose = null; try { state.socket.close(); } catch { /* Already closed. */ } }
   state.socket = null;
@@ -110,7 +224,7 @@ function clearPreview() {
   $('image').hidden = true; $('video').hidden = true; $('bridgeFrame').hidden = true; $('placeholder').hidden = false; $('frameBadge').hidden = true;
   if (state.objectUrl) URL.revokeObjectURL(state.objectUrl);
   state.objectUrl = null; state.running = false; state.connectedAt = 0; state.lastFrameAt = 0; state.frameTimes = [];
-  $('connect').disabled = false; $('disconnect').disabled = true; $('quickConnect').hidden = false; $('quickDisconnect').hidden = true; setStatus('Not connected'); setHealth('Camera off');
+  $('connect').disabled = false; $('disconnect').disabled = true; $('quickConnect').hidden = false; $('quickDisconnect').hidden = true; setStatus('Not connected'); setHealth('Camera off'); updatePipButton();
 }
 function recordFrame() {
   const now = Date.now(); state.lastFrameAt = now; state.frameTimes.push(now); state.frameTimes = state.frameTimes.filter((t) => now - t < 5000);
@@ -171,7 +285,7 @@ async function connectCamera(profile = 'primary', persist = true) {
       else if (s.sourceType === 'snapshot') { const frame = () => { const u = new URL(url); u.searchParams.set('_camera_frame', String(Date.now())); $('image').src = u.toString(); }; frame(); state.snapshotTimer = setInterval(frame, Number(s.refreshMs) || 500); showPreview('image'); }
       else { $('video').src = url; showPreview('video'); await $('video').play().catch(() => {}); if ($('video').error) throw new Error('This Chromium build could not play the supplied video URL or codec.'); }
     }
-    state.running = true; state.connectedAt = Date.now(); $('disconnect').disabled = false; $('quickConnect').hidden = true; $('quickDisconnect').hidden = false; resetPictureSettings(); startHealth();
+    state.running = true; state.connectedAt = Date.now(); $('disconnect').disabled = false; $('quickConnect').hidden = true; $('quickDisconnect').hidden = false; resetPictureSettings(); startHealth(); updatePipButton();
     if (s.sourceType === 'bridge') { setStatus('Opening local viewer', 'connecting'); setMessage('Local bridge viewer opened. Confirm the live image and status inside the preview.', 'success'); setHealth('Bridge viewer open · check video', 'live'); }
     else if (s.sourceType === 'mjpeg') { setStatus('Connected', 'connecting'); setHealth('Connected · frame timing unavailable', 'live'); setMessage('Camera connected. MJPEG frame timing is not exposed by this browser.'); }
     else { setStatus('Live', 'live'); setMessage('Camera connected. The view does not send commands to the CNC.', 'success'); setHealth(['websocket', 'snapshot', 'bridge'].includes(s.sourceType) ? 'Connected · stream status shown by bridge' : 'Waiting for video frames'); }
@@ -259,5 +373,6 @@ $('zoomIn').addEventListener('click', () => { state.zoom = Math.min(3, +(state.z
 $('flipImage').addEventListener('click', () => { state.flipped = !state.flipped; applyPictureSettings(); });
 $('rotateImage').addEventListener('click', () => { state.rotation = (state.rotation + 90) % 360; applyPictureSettings(); });
 $('togglePreviewToolbar').addEventListener('click', () => { state.toolbarCollapsed = !state.toolbarCollapsed; updateToolbar(); });
+$('pipToggle').addEventListener('click', togglePip);
 window.addEventListener('beforeunload', clearPreview);
-updateForm('primary'); updateForm('second'); applyPictureSettings(); updateToolbar(); loadSettings().catch((error) => setMessage(`Could not load saved camera settings: ${error.message}`, 'error'));
+updateForm('primary'); updateForm('second'); applyPictureSettings(); updateToolbar(); updatePipButton(); loadSettings().catch((error) => setMessage(`Could not load saved camera settings: ${error.message}`, 'error'));

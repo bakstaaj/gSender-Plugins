@@ -94,3 +94,7 @@
   .picture-controls .mini-button{flex:0 1 38px;min-width:30px}
   .view-panel>.preview{flex:1;width:100%;height:auto;min-height:0;border:0;border-radius:0;background:#071017}
 }
+
+.pip-source{position:fixed;left:0;top:0;width:1px;height:1px;opacity:0;pointer-events:none}
+
+#copyright-footer{display:block;position:static;padding-top:3px;color:#90a8b4;font-size:11px}
