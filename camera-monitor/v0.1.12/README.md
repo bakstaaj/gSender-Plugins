@@ -1,7 +1,7 @@
 # CNC Camera Monitor
-**Latest release package:** [Download camera-monitor-v0.1.11.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/camera-monitor-v0.1.11/camera-monitor-v0.1.11.zip)
+**Latest release package:** [Download camera-monitor-v0.1.12.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/camera-monitor-v0.1.12/camera-monitor-v0.1.12.zip)
 
-**Prototype 0.1.11 · gSender 1.7.0-Edge-2 · Plugin SDK 0.2.2**
+**Version 0.1.12 · gSender 1.7.0-Edge-2 · Plugin SDK 0.2.2**
 
 A view-only camera plugin for monitoring USB and compatible network camera feeds while gSender runs a CNC job. In Carve, its controls overlay the live preview and collapse to a small chevron so the camera can use the full tab area. The preview has no center crosshair; use Camera Align & Print Registration for alignment. It does not access machine controls, send G-code, or change job state.
 
@@ -23,6 +23,10 @@ The Makera Z1 preset fills the editable IP camera settings and shows the connect
 ## View the camera over Carve
 
 Configure the camera from the Tools page. A successful connection saves the selected camera settings automatically. In Carve, the **Camera** tab in the lower-right panel reconnects using those saved settings and shows a compact live view with connect/disconnect, feed health, camera switching, zoom, fit, flip, and rotate controls. The feed is view-only and does not start, pause, stop, or change the CNC job.
+
+## Picture-in-picture
+
+Use **PiP** in the live-view toolbar to open the current camera in a floating, resizable window above gSender. USB and browser-video sources use native video picture-in-picture. WebSocket JPEG, MJPEG, and snapshot feeds are composited through a canvas so zoom, flip, and rotation carry into the PiP window; remote image feeds must allow same-origin or CORS access. The local bridge viewer is isolated in a cross-origin iframe and cannot be opened in PiP. Switching cameras, disconnecting, or closing the PiP window stops the PiP view.
 
 ## ONVIF and RTSP using the local bridge
 
