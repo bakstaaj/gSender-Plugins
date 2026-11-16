@@ -190,6 +190,11 @@ const state = {
   overlayFill: true,
 };
 
+// Keep controller queries one-at-a-time. The two-second UI refresh can otherwise
+// overlap a work-zero transaction and cause a reply to be attributed to the
+// wrong query by the host bridge.
+let controllerQueryQueue = Promise.resolve();
+
 const CROSSHAIR_DEFAULTS = { color: '#80edff', shape: 'cross', length: 45, gap: 0, circle: true, pipAuto: false, cameraAutoStart: true };
 const clampInt = (value, min, max, fallback) => {
   const number = Math.round(Number(value));
@@ -332,7 +337,9 @@ function controllerIsMoving(snapshot) {
 }
 
 async function query(command, timeout = 7000) {
-  const result = await machine.query(command, { until: 'ok-or-error', timeout, maxLines: 100 });
+  const request = controllerQueryQueue.then(() => machine.query(command, { until: 'ok-or-error', timeout, maxLines: 100 }));
+  controllerQueryQueue = request.then(() => undefined, () => undefined);
+  const result = await request;
   if (!result?.complete || !result.ok || result.error) {
     throw new Error(result?.error || `Controller did not complete ${command}. ${result?.reason || ''}`);
   }
@@ -550,6 +557,7 @@ function clearRegistration() {
 }
 
 async function refreshMachine() {
+  if (state.busy) return;
   let snapshot;
   try {
     snapshot = await redux.getState();
@@ -998,6 +1006,7 @@ async function setWorkZero() {
 
   state.busy = true;
   render();
+  setNotice(`Writing ${selectedWcs} X/Y offset and verifying the controller readback…`);
   let metricApplied = false;
   try {
     const currentModal = await readModal();
