@@ -2,6 +2,10 @@
 
 Source repository for gSender plugins maintained by Bakstaaj. Plugin version folders hold each current source snapshot and matching install ZIP.
 
+## Companion software
+
+- [gSender Machine Simulator](machine-simulator/v0.1.0/README.md) — standalone Windows GRBL / grblHAL TCP simulator with reusable stock library, installer, and start/stop/launch controls. [Download the v0.1.0 installer package](https://github.com/bakstaaj/gSender-Plugins/releases/download/machine-simulator-v0.1.0/gSender-Machine-Simulator-v0.1.0.zip).
+
 ## Plugins
 
 - [CAMLab](CAMLab/v0.1.23/README.md) — version 0.1.23; four-side top → front → back → bottom machining, stock-aware roughing, retained top tabs, and continuous spiral perimeter passes. [Download the CAMLab v0.1.23 release ZIP](https://github.com/bakstaaj/gSender-Plugins/releases/download/camlab-v0.1.23/camlab-v0.1.23.zip).
