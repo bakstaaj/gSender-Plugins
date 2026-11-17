@@ -45,6 +45,8 @@ G38.2–G38.5 probing uses the active stock mesh and probe tip size to find cont
 
 In **Machine Configs**, enable **Tool setter** on the machine profile and enter the setter contact surface coordinates in global machine coordinates (MPos). Save the profile to apply it. G38.2–G38.5 probe moves can then contact either the active stock or this configured tool setter. The setter uses the probe tip diameter configured for active stock.
 
+Use the physical setter surface's machine coordinates, not the WPos value written by `G10`. In the GRBLHAL profile, `G10 L20` without a `P` word updates the active work coordinate system.
+
 ## Restart, update, and uninstall
 
 Use the **Restart server** button in the configuration page after changing simulator code or environment settings. gSender will disconnect briefly and must reconnect. To update, stop the service, extract the new release, and run its installer again. Existing data under `%LOCALAPPDATA%\gSender Machine Simulator\Data` is kept.
