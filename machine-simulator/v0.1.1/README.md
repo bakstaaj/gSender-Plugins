@@ -29,6 +29,8 @@ The configuration page is at [http://127.0.0.1:4176/machine](http://127.0.0.1:41
 
 Machine profiles store firmware identity and EEPROM settings. Stock is stored separately and can be reused with any profile.
 
+Homing assigns machine coordinate zero at each simulated limit switch and finishes the pull-off at `-$27` on each axis.
+
 ## Create and reuse stock
 
 1. Open **Stock Library** and enter a descriptive name.

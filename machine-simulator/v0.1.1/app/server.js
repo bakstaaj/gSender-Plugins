@@ -182,10 +182,51 @@ function handleMachineGcode(socket,command,isJog){
   const pause=mCodes.some(code=>near(code,0)||near(code,1)),end=mCodes.some(code=>near(code,2)||near(code,30)),callback=probeCallback||((pause||end)?()=>{if(pause){socket.simProgramMode=near(mCodes.find(code=>near(code,0)||near(code,1)),0)?'M0':'M1';socket.simPaused=true;socket.simState='Hold:0';}if(end){socket.simProgramMode=near(mCodes.find(code=>near(code,2)||near(code,30)),2)?'M2':'M30';socket.simQueue=[];socket.simPendingLines=[];socket.simPlannedPos=[...socket.simPos];}return false;}:null);
   if(enqueueMachineMotion(socket,target,duration,probe?'Run':isJog?'Jog':'Run',callback,path)){if(arc)recordMachineDiagnostic({kind:'arc-queued',command,firmware:config.firmware,plannedStart:from,target,center:[path.cU,path.cV],radius:path.radius,queueDepth:socket.simQueue.length});controllerReply(socket,'ok');}
 }
-function startHoming(socket,settings){cancelMachineMotion(socket);const enabled=Number(settings.$22)||0,dir=Number(settings.$23)||0,travel=[settings.$130,settings.$131,settings.$132].map(Number),seek=Number(settings.$25)||0,locate=Number(settings.$24)||0,pull=Math.max(0,Number(settings.$27)||0),debounce=Math.max(0,Number(settings.$26)||0),forceOrigin=Boolean(enabled&8);socket.simState='Home';socket.simLimitPins=[false,false,false];const groups=[[2],[0,1]];let group=0;
+function startHoming(socket,settings){
+  cancelMachineMotion(socket);
+  const enabled=Number(settings.$22)||0,dir=Number(settings.$23)||0,
+    travel=[settings.$130,settings.$131,settings.$132].map(Number),
+    seek=Number(settings.$25)||0,locate=Number(settings.$24)||0,
+    pull=Math.max(0,Number(settings.$27)||0),debounce=Math.max(0,Number(settings.$26)||0);
+  socket.simState='Home';socket.simLimitPins=[false,false,false];
+  const groups=[[2],[0,1]];let group=0;
   const finish=()=>{socket.simLimitPins=[false,false,false];socket.simState='Idle';socket.simPlannedPos=[...socket.simPos];controllerReply(socket,'ok');machineStatus(socket);};
-  const runGroup=()=>{if(group>=groups.length){finish();return;}const axes=groups[group++],targets=[...socket.simPos],rates=[0,0,0];for(const i of axes){const negative=Boolean(dir&(1<<i));targets[i]=negative?-Math.abs(travel[i]):Math.abs(travel[i]);rates[i]=seek;}const duration=motionDuration(socket.simPos,targets,0,rates);if(duration===null){controllerReply(socket,'error:2');finish();return;}enqueueMachineMotion(socket,targets,duration,'Home',()=>{for(const i of axes){socket.simPos[i]=(dir&(1<<i))?-Math.abs(travel[i]):0;socket.simLimitPins[i]=true;}socket.simPlannedPos=[...socket.simPos];machineStatus(socket);setTimeout(()=>{const locateTarget=[...socket.simPos],locateRates=[0,0,0];for(const i of axes){locateTarget[i]+=(dir&(1<<i))?1:-1;locateRates[i]=locate;}const locateDuration=motionDuration(socket.simPos,locateTarget,0,locateRates);if(locateDuration===null){finish();return;}enqueueMachineMotion(socket,locateTarget,locateDuration,'Home',()=>{for(const i of axes){socket.simPos[i]=(dir&(1<<i))?-Math.abs(travel[i]):0;socket.simLimitPins[i]=true;}const pullTarget=[...socket.simPos],pullRates=[0,0,0];for(const i of axes){pullTarget[i]+=(dir&(1<<i))?pull:-pull;pullRates[i]=seek;socket.simLimitPins[i]=false;}const pullDuration=motionDuration(socket.simPos,pullTarget,0,pullRates);if(pullDuration===null){finish();return;}enqueueMachineMotion(socket,pullTarget,pullDuration,'Home',()=>{for(const i of axes)socket.simPos[i]=forceOrigin?0:((dir&(1<<i))?-(Math.abs(travel[i])-pull):-pull);socket.simPlannedPos=[...socket.simPos];runGroup();return true;});return true;});},debounce);return true;});};
-  if(!groups.length){controllerReply(socket,'error:5');return;}runGroup();}
+  const runGroup=()=>{
+    if(group>=groups.length){finish();return;}
+    const axes=groups[group++],searchTarget=[...socket.simPos],searchRates=[0,0,0];
+    for(const i of axes){searchTarget[i]=(dir&(1<<i))?-Math.abs(travel[i]):Math.abs(travel[i]);searchRates[i]=seek;}
+    const searchDuration=motionDuration(socket.simPos,searchTarget,0,searchRates);
+    if(searchDuration===null){controllerReply(socket,'error:2');finish();return;}
+    enqueueMachineMotion(socket,searchTarget,searchDuration,'Home',()=>{
+      // The limit switch is machine zero. Locate away, return to the switch,
+      // then pull off in the negative machine-coordinate direction.
+      for(const i of axes){socket.simPos[i]=0;socket.simLimitPins[i]=true;}
+      socket.simPlannedPos=[...socket.simPos];machineStatus(socket);
+      setTimeout(()=>{
+        const locateTarget=[...socket.simPos],locateRates=[0,0,0];
+        for(const i of axes){locateTarget[i]=(dir&(1<<i))?1:-1;locateRates[i]=locate;}
+        const locateDuration=motionDuration(socket.simPos,locateTarget,0,locateRates);
+        if(locateDuration===null){finish();return;}
+        enqueueMachineMotion(socket,locateTarget,locateDuration,'Home',()=>{
+          for(const i of axes)socket.simPos[i]=0;
+          socket.simPlannedPos=[...socket.simPos];
+          const pullTarget=[...socket.simPos],pullRates=[0,0,0];
+          for(const i of axes){pullTarget[i]=-pull;pullRates[i]=seek;socket.simLimitPins[i]=false;}
+          const pullDuration=motionDuration(socket.simPos,pullTarget,0,pullRates);
+          if(pullDuration===null){finish();return;}
+          enqueueMachineMotion(socket,pullTarget,pullDuration,'Home',()=>{
+            for(const i of axes)socket.simPos[i]=-pull;
+            socket.simPlannedPos=[...socket.simPos];runGroup();return true;
+          });
+          return true;
+        });
+      },debounce);
+      return true;
+    });
+  };
+  if(!groups.length){controllerReply(socket,'error:5');return;}
+  runGroup();
+}
 tcpServer.listen(tcpPort,'127.0.0.1',()=>console.log(`GRBL machine simulator TCP: 127.0.0.1:${tcpPort}`));
 function unpackPlugin(buffer,originalname){
     const zip=new AdmZip(buffer), entries=zip.getEntries().map(entry=>({entry,name:entry.entryName.replaceAll('\\','/')}));

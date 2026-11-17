@@ -11,5 +11,6 @@ Adds profile-specific tool setter simulation to the gSender GRBL / grblHAL machi
 - STL, STEP, and STP stock import; manual cube and cylinder stock; G38 probing against stock geometry.
 - Keeps port 2323 for the Makera TCP bridge and 4173 for the other simulator.
 - Adds an optional tool setter switch and global X/Y/Z contact-surface coordinates to each machine profile. Probe cycles can contact the setter as well as the active stock.
+- Homing now sets each triggered switch to machine coordinate zero, then pulls off to `-$27` on each axis.
 
 See [README.md](README.md) for installation and operating instructions.
