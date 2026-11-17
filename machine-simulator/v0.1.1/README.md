@@ -43,9 +43,9 @@ G38.2–G38.5 probing uses the active stock mesh and probe tip size to find cont
 
 ## Simulate a tool setter
 
-In **Machine Configs**, enable **Tool setter** on the machine profile and enter the setter contact surface coordinates in global machine coordinates (MPos). Save the profile to apply it. G38.2–G38.5 probe moves can then contact either the active stock or this configured tool setter. The setter uses the probe tip diameter configured for active stock.
+In **Machine Configs**, enable **Tool setter** on the machine profile, enter its X/Y machine coordinates, and enter its nonnegative height above the bed. The simulator calculates setter MPos Z as `-$132 + height above bed`; for example, `$132=100` and a height of `1.291` gives setter MPos Z `-98.709`. Save the profile to apply it. G38.2–G38.5 probe moves can then contact either the active stock or this configured tool setter. The setter uses the probe tip diameter configured for active stock.
 
-Use the physical setter surface's machine coordinates, not the WPos value written by `G10`. In the GRBLHAL profile, `G10 L20` without a `P` word updates the active work coordinate system.
+The bed is at MPos Z `-$132`, and the homing switch is at MPos Z 0. Use the physical setter height above the bed, not the WPos value written by `G10`. In the GRBLHAL profile, `G10 L20` without a `P` word updates the active work coordinate system.
 
 ## Restart, update, and uninstall
 
