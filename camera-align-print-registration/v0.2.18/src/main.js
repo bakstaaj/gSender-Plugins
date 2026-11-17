@@ -23,7 +23,7 @@ document.querySelector('#app').innerHTML = `
     <div class="section-heading camera-section-heading">
       <button id="cameraDragHandle" class="camera-drag-handle" type="button" aria-label="Move camera window" title="Drag to move the floating camera window" hidden>⠿</button>
       <div class="camera-heading"><div class="step">01 · CAMERA VIEW</div><h2>Live USB camera</h2></div>
-      <div class="camera-toolbar"><div class="camera-status" id="cameraStatus">Camera stopped</div><button class="secondary camera-window-toggle" type="button" data-pip-toggle>Picture-in-picture</button><button id="toggleCameraWindow" class="secondary camera-window-toggle" type="button">Pop out</button></div>
+      <div class="camera-toolbar"><div class="camera-status" id="cameraStatus">Camera stopped</div><button class="secondary camera-window-toggle" type="button" data-pip-toggle>Picture-in-picture</button><div class="pip-zoom-group" data-pip-zoom-group hidden><button class="secondary" type="button" data-pip-zoom="-1" aria-label="Zoom picture-in-picture out" title="Zoom picture-in-picture out">−</button><span data-pip-zoom-level>PiP 1×</span><button class="secondary" type="button" data-pip-zoom="1" aria-label="Zoom picture-in-picture in" title="Zoom picture-in-picture in">+</button></div><button id="toggleCameraWindow" class="secondary camera-window-toggle" type="button">Pop out</button></div>
     </div>
     <div class="camera-workspace">
       <div class="video-shell" id="videoShell">
@@ -46,6 +46,7 @@ document.querySelector('#app').innerHTML = `
             <label>Center gap (px)<input id="crosshairGap" type="number" min="0" max="500" step="1"></label>
             <label class="crosshair-check"><input id="crosshairCircle" type="checkbox"><span>Show circle</span></label>
             <label class="crosshair-check" data-pip-setting><input id="pipAuto" type="checkbox"><span>Open picture-in-picture when the camera starts</span></label>
+            <label class="camera-resolution-field">Camera resolution<select id="cameraResolution"><option value="max">Maximum the camera supports</option><option value="1080">1080p (1920 × 1080)</option><option value="720">720p (1280 × 720)</option><option value="480">480p (640 × 480)</option></select></label>
             <label class="crosshair-check crosshair-check-wide"><input id="cameraAutoStart" type="checkbox"><span>Restart the camera automatically when this view opens again</span></label>
           </div>
           <div class="crosshair-fields">
@@ -110,7 +111,7 @@ document.querySelector('#app').innerHTML = `
         <div class="zero-controls">
           <div class="section-heading"><div><div class="step">04 · WORK ZERO</div><h3>Set work zero</h3></div><div class="zero-toolbar"><div class="wcs-chip" id="wcsSummary">WCS not checked</div></div></div>
           <p class="instruction compact-instruction">Center the crosshair on the origin, then choose its work coordinate system.</p>
-          <div class="zero-actions align-toolbar-row" id="zeroActions"><button id="toggleAlignToolbar" class="secondary align-toolbar-toggle" type="button" aria-expanded="true" aria-label="Hide alignment controls" title="Hide alignment controls" aria-controls="zeroCameraToggle wcsSelect setZero"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m5 15 7-7 7 7" /></svg></button><button id="zeroCameraToggle" class="secondary zero-camera-toggle" type="button">Start camera</button><label class="wcs-target"><span class="wcs-label-full">Coordinate system</span><span class="wcs-label-compact">WCS</span><select id="wcsSelect"><option value="G54">G54</option><option value="G55">G55</option><option value="G56">G56</option><option value="G57">G57</option><option value="G58">G58</option><option value="G59">G59</option></select></label><button class="secondary pip-toolbar-button" type="button" data-pip-toggle>Picture-in-picture</button><button id="overlayFitToggle" class="secondary fit-toolbar-button" type="button">Show whole image</button><button id="setZero" class="primary large" disabled>Set G54 work zero at crosshair</button></div>
+          <div class="zero-actions align-toolbar-row" id="zeroActions"><button id="toggleAlignToolbar" class="secondary align-toolbar-toggle" type="button" aria-expanded="true" aria-label="Hide alignment controls" title="Hide alignment controls" aria-controls="zeroCameraToggle wcsSelect setZero"><svg aria-hidden="true" viewBox="0 0 24 24"><path d="m5 15 7-7 7 7" /></svg></button><button id="zeroCameraToggle" class="secondary zero-camera-toggle" type="button">Start camera</button><label class="wcs-target"><span class="wcs-label-full">Coordinate system</span><span class="wcs-label-compact">WCS</span><select id="wcsSelect"><option value="G54">G54</option><option value="G55">G55</option><option value="G56">G56</option><option value="G57">G57</option><option value="G58">G58</option><option value="G59">G59</option></select></label><button class="secondary pip-toolbar-button" type="button" data-pip-toggle>Picture-in-picture</button><div class="pip-zoom-group" data-pip-zoom-group hidden><button class="secondary" type="button" data-pip-zoom="-1" aria-label="Zoom picture-in-picture out" title="Zoom picture-in-picture out">−</button><span data-pip-zoom-level>PiP 1×</span><button class="secondary" type="button" data-pip-zoom="1" aria-label="Zoom picture-in-picture in" title="Zoom picture-in-picture in">+</button></div><button id="overlayFitToggle" class="secondary fit-toolbar-button" type="button">Show whole image</button><button id="setZero" class="primary large" disabled>Set G54 work zero at crosshair</button></div>
           <p class="hint compact-hint" id="zeroHint">Writes persistent X/Y offset only. Does not change Z zero, move the machine, or start a job.</p>
         </div>
       </div>
@@ -188,6 +189,7 @@ const state = {
   zeroAction: { mode: 'builtin', macroId: '', macroName: '', confirm: true },
   macros: [],
   overlayFill: true,
+  pipZoom: 1,
 };
 
 // Keep controller queries one-at-a-time. The two-second UI refresh can otherwise
@@ -195,7 +197,13 @@ const state = {
 // wrong query by the host bridge.
 let controllerQueryQueue = Promise.resolve();
 
-const CROSSHAIR_DEFAULTS = { color: '#80edff', shape: 'cross', length: 45, gap: 0, circle: true, pipAuto: false, cameraAutoStart: true };
+const CAMERA_RESOLUTIONS = {
+  max: { width: 3840, height: 2160 },
+  1080: { width: 1920, height: 1080 },
+  720: { width: 1280, height: 720 },
+  480: { width: 640, height: 480 },
+};
+const CROSSHAIR_DEFAULTS = { color: '#80edff', shape: 'cross', length: 45, gap: 0, circle: true, pipAuto: false, cameraAutoStart: true, cameraResolution: '1080' };
 const clampInt = (value, min, max, fallback) => {
   const number = Math.round(Number(value));
   return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
@@ -212,6 +220,7 @@ function normalizeCrosshair(saved = {}) {
     circle: c.circle !== false,
     pipAuto: c.pipAuto === true,
     cameraAutoStart: c.cameraAutoStart !== false,
+    cameraResolution: ['max', '1080', '720', '480'].includes(c.cameraResolution) ? c.cameraResolution : '1080',
   };
 }
 
@@ -236,6 +245,7 @@ function applyCrosshair() {
   $('crosshairCircle').checked = c.circle;
   $('pipAuto').checked = c.pipAuto;
   $('cameraAutoStart').checked = c.cameraAutoStart;
+  $('cameraResolution').value = c.cameraResolution;
 }
 
 async function saveCrosshairFromInputs() {
@@ -247,6 +257,7 @@ async function saveCrosshairFromInputs() {
     circle: $('crosshairCircle').checked,
     pipAuto: $('pipAuto').checked,
     cameraAutoStart: $('cameraAutoStart').checked,
+    cameraResolution: $('cameraResolution').value,
   });
   applyCrosshair();
   await storage.set('crosshair', state.crosshair);
@@ -415,7 +426,9 @@ function render() {
   $('setZero').disabled = state.busy || (macroMode ? !state.zeroAction.macroId : !state.offset) || !state.stream || !state.connected || !state.machineIdle || !state.positionAvailable;
   $('startCamera').disabled = state.busy || Boolean(state.stream);
   $('stopCamera').disabled = state.busy || !state.stream;
-  $('cameraStatus').textContent = state.stream ? 'Live camera active' : 'Camera stopped';
+  const { videoWidth, videoHeight } = $('cameraVideo');
+  $('cameraStatus').textContent = !state.stream ? 'Camera stopped'
+    : videoWidth && videoHeight ? `Live camera · ${videoWidth} × ${videoHeight}` : 'Live camera active';
   $('cameraStatus').classList.toggle('live', Boolean(state.stream));
   $('videoShell').classList.toggle('active', Boolean(state.stream));
   $('cameraPlaceholder').hidden = Boolean(state.stream);
@@ -429,6 +442,11 @@ function render() {
   $('overlayFitToggle').textContent = state.overlayFill ? 'Show whole image' : 'Zoom to fill';
   $('overlayFitToggle').setAttribute('aria-pressed', String(state.overlayFill));
   document.querySelectorAll('[data-pip-setting]').forEach((setting) => { setting.hidden = !pipSupported(); });
+  // PiP zoom controls only while the PiP window is open.
+  document.querySelectorAll('[data-pip-zoom-group]').forEach((group) => { group.hidden = !pip.active; });
+  document.querySelectorAll('[data-pip-zoom-level]').forEach((label) => { label.textContent = `PiP ${state.pipZoom}×`; });
+  document.querySelectorAll('[data-pip-zoom="-1"]').forEach((button) => { button.disabled = state.pipZoom <= PIP_ZOOM_LEVELS[0]; });
+  document.querySelectorAll('[data-pip-zoom="1"]').forEach((button) => { button.disabled = state.pipZoom >= PIP_ZOOM_LEVELS.at(-1); });
   document.querySelectorAll('[data-pip-toggle]').forEach((button) => {
     button.hidden = !pipSupported();
     button.disabled = !state.stream && !pip.active;
@@ -646,25 +664,40 @@ async function readCameraDiagnostics(error) {
 // gSender gives plugins no floating or resizable panel, so the camera image is
 // composited with the crosshair on a canvas and shown in the browser's own
 // picture-in-picture window, which floats above gSender and can be resized.
-const pip = { canvas: null, video: null, timer: null, active: false };
+const pip = { canvas: null, video: null, window: null, timer: null, active: false };
 const pipSupported = () => Boolean(document.pictureInPictureEnabled && HTMLVideoElement.prototype.requestPictureInPicture);
 
 function drawPipFrame() {
   const source = $('cameraVideo');
   const { canvas } = pip;
-  const width = source.videoWidth;
-  const height = source.videoHeight;
-  if (!canvas || !width || !height) return;
+  const videoWidth = source.videoWidth;
+  const videoHeight = source.videoHeight;
+  if (!canvas || !videoWidth || !videoHeight) return;
+  // While the PiP window is open, render at its on-screen pixel size, so the
+  // crosshair stays as thin as in the plugin when the window is enlarged.
+  // Before that (and if the size is unknown), use the camera resolution.
+  const dpr = window.devicePixelRatio || 1;
+  let width = videoWidth;
+  let height = videoHeight;
+  let scale = Math.max(1, videoWidth / 640);
+  if (pip.window?.width > 0) {
+    width = Math.min(3840, Math.round(pip.window.width * dpr));
+    height = Math.round(width * videoHeight / videoWidth);
+    scale = width / pip.window.width;
+  }
   if (canvas.width !== width || canvas.height !== height) {
     canvas.width = width;
     canvas.height = height;
   }
   const g = canvas.getContext('2d');
-  g.drawImage(source, 0, 0, width, height);
-  // Crosshair sizes are set in preview pixels; scale them so they look the
-  // same as in a 640 px wide preview.
+  // PiP zoom: draw a centered crop of the camera image, so the point under
+  // the crosshair stays the image center at every zoom level.
+  const zoom = state.pipZoom || 1;
+  const cropWidth = videoWidth / zoom;
+  const cropHeight = videoHeight / zoom;
+  g.drawImage(source, (videoWidth - cropWidth) / 2, (videoHeight - cropHeight) / 2, cropWidth, cropHeight, 0, 0, width, height);
+  // Crosshair sizes are set in preview pixels (CSS px).
   const c = state.crosshair ?? normalizeCrosshair();
-  const scale = Math.max(1, width / 640);
   const cx = width / 2;
   const cy = height / 2;
   g.save();
@@ -685,10 +718,37 @@ function drawPipFrame() {
   g.restore();
 }
 
+// PiP zoom levels. The window can only show the browser's own media buttons,
+// so "next/previous track" step the zoom. (The "slide" actions would add a
+// second, near-identical pair of buttons.) Zoom only changes the picture and
+// never sends anything to the machine.
+const PIP_ZOOM_LEVELS = [1, 1.5, 2, 3, 4];
+const PIP_ZOOM_ACTIONS = { nexttrack: 1, previoustrack: -1 };
+
+function stepPipZoom(direction) {
+  const index = PIP_ZOOM_LEVELS.indexOf(state.pipZoom);
+  const next = PIP_ZOOM_LEVELS[Math.max(0, Math.min(PIP_ZOOM_LEVELS.length - 1, (index < 0 ? 0 : index) + direction))];
+  if (next === state.pipZoom) return;
+  state.pipZoom = next;
+  drawPipFrame();
+  render();
+  storage.set('pipZoom', next).catch(() => {});
+}
+
+function setPipMediaActions(enabled) {
+  if (!navigator.mediaSession?.setActionHandler) return;
+  for (const [action, direction] of Object.entries(PIP_ZOOM_ACTIONS)) {
+    // Unsupported actions throw; that only means the button is not offered.
+    try { navigator.mediaSession.setActionHandler(action, enabled ? () => stepPipZoom(direction) : null); } catch { /* not offered */ }
+  }
+}
+
 function stopPip() {
   window.clearInterval(pip.timer);
   pip.timer = null;
   pip.active = false;
+  pip.window = null;
+  setPipMediaActions(false);
   if (document.pictureInPictureElement === pip.video) document.exitPictureInPicture().catch(() => {});
   pip.video?.srcObject?.getTracks().forEach((track) => track.stop());
   if (pip.video) pip.video.srcObject = null;
@@ -712,7 +772,11 @@ async function startPip() {
   pip.timer = window.setInterval(drawPipFrame, 33);
   pip.video.srcObject = pip.canvas.captureStream(30);
   await pip.video.play();
-  await pip.video.requestPictureInPicture();
+  setPipMediaActions(true);
+  pip.window = await pip.video.requestPictureInPicture();
+  // The next frame picks up the new size (see drawPipFrame).
+  pip.window?.addEventListener?.('resize', drawPipFrame);
+  drawPipFrame();
   pip.active = true;
   render();
 }
@@ -794,7 +858,14 @@ async function startCamera({ auto = false } = {}) {
   }
   stopCamera();
   const deviceId = $('cameraDevice').value;
-  const video = deviceId ? { deviceId: { exact: deviceId } } : true;
+  // Without a size, Chromium usually opens cameras at 640 × 480. "ideal"
+  // asks for the chosen size; the camera falls back to the closest it has.
+  const size = CAMERA_RESOLUTIONS[state.crosshair?.cameraResolution] ?? CAMERA_RESOLUTIONS['1080'];
+  const video = {
+    ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+    width: { ideal: size.width },
+    height: { ideal: size.height },
+  };
   let stream;
   try {
     stream = await navigator.mediaDevices.getUserMedia({ video, audio: false });
@@ -1118,6 +1189,8 @@ async function initialize() {
     state.crosshair = normalizeCrosshair(await storage.get('crosshair'));
     applyCrosshair();
     state.overlayFill = (await storage.get('overlayFill')) !== false;
+    const savedZoom = Number(await storage.get('pipZoom'));
+    if (PIP_ZOOM_LEVELS.includes(savedZoom)) state.pipZoom = savedZoom;
     const savedAction = await storage.get('zeroAction');
     if (typeof savedAction?.macroId === 'string') {
       state.zeroAction = { mode: savedAction.mode === 'macro' ? 'macro' : 'builtin', macroId: savedAction.macroId, macroName: String(savedAction.macroName ?? ''), confirm: savedAction.confirm !== false };
@@ -1198,6 +1271,9 @@ $('overlayFitToggle').onclick = () => {
   render();
   storage.set('overlayFill', state.overlayFill).catch(() => {});
 };
+document.querySelectorAll('[data-pip-zoom]').forEach((button) => {
+  button.onclick = () => stepPipZoom(Number(button.dataset.pipZoom));
+});
 document.querySelectorAll('[data-pip-toggle]').forEach((button) => {
   button.onclick = () => togglePip().catch((error) => setNotice(`Could not open picture-in-picture: ${error.message}`, 'error'));
 });
@@ -1275,6 +1351,19 @@ $('setZero').onclick = async () => {
 ['crosshairColor', 'crosshairShape', 'crosshairLength', 'crosshairGap', 'crosshairCircle', 'pipAuto', 'cameraAutoStart'].forEach((id) => {
   $(id).onchange = () => saveCrosshairFromInputs().catch((error) => setNotice(`Could not save crosshair settings: ${error.message}`, 'error'));
 });
+$('cameraResolution').onchange = async () => {
+  try {
+    await saveCrosshairFromInputs();
+    if (state.stream) {
+      await startCamera();
+      const { videoWidth, videoHeight } = $('cameraVideo');
+      setNotice(`Camera restarted at ${videoWidth} × ${videoHeight}.`);
+    }
+  } catch (error) {
+    setNotice(`Could not apply the camera resolution: ${error.message}`, 'error');
+  }
+};
+$('cameraVideo').addEventListener('resize', () => render());
 $('crosshairColor').oninput = () => saveCrosshairFromInputs().catch(() => {});
 const saveZeroAction = () => {
   render();
