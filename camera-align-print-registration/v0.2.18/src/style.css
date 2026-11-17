@@ -454,3 +454,21 @@ html.dark .instruction { color: #b7cbd6; }
   .pip-active .zero-actions.align-toolbar-row { grid-template-areas: "cam pip" "wcs wcs" "zero zero"; }
 }
 .confirm-skip { margin: 12px 0 0; font-weight: 600; font-size: .86rem; }
+.camera-resolution-field { grid-column: 1 / -1; }
+
+/* PiP zoom controls (shown while picture-in-picture is open). */
+.pip-zoom-group { display: flex; align-items: center; gap: 4px; }
+.pip-zoom-group[hidden] { display: none !important; }
+.pip-zoom-group button { min-width: 34px; padding: 4px 8px; font-weight: 800; }
+.pip-zoom-group span { min-width: 54px; text-align: center; font-size: .78rem; font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
+@media (max-height: 520px) and (min-aspect-ratio: 1/1) {
+  .align-toolbar-row > .pip-zoom-group button { flex: 1; height: 100%; min-height: 0; padding: 0 6px; }
+}
+@media (max-width: 420px) and (min-height: 360px) {
+  .align-toolbar-row > .pip-zoom-group { grid-area: zoom; }
+  .align-toolbar-row > .pip-zoom-group button { flex: 1; height: 34px; }
+  .pip-active .zero-actions.align-toolbar-row { grid-template-areas: "cam pip" "wcs wcs" "zoom zoom" "zero zero"; grid-template-rows: repeat(4, minmax(34px, 80px)); }
+  .pip-active .align-toolbar-row > .pip-zoom-group { height: 100%; }
+  .pip-active .align-toolbar-row > .pip-zoom-group button { height: 100%; font-size: 1.2rem; }
+  .pip-active .align-toolbar-row > .pip-zoom-group span { font-size: 1rem; }
+}
