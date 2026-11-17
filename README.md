@@ -4,7 +4,7 @@ Source repository for gSender plugins maintained by Bakstaaj. Plugin version fol
 
 ## Companion software
 
-- [gSender Machine Simulator](machine-simulator/v0.1.0/README.md) — standalone Windows GRBL / grblHAL TCP simulator with reusable stock library, installer, and start/stop/launch controls. [Download the v0.1.0 installer package](https://github.com/bakstaaj/gSender-Plugins/releases/download/machine-simulator-v0.1.0/gSender-Machine-Simulator-v0.1.0.zip).
+- [gSender Machine Simulator](machine-simulator/v0.1.1/README.md) — standalone Windows GRBL / grblHAL TCP simulator with reusable stock library, per-profile tool setter simulation, installer, and start/stop/launch controls. [Download the v0.1.1 installer package](https://github.com/bakstaaj/gSender-Plugins/releases/download/machine-simulator-v0.1.1/gSender-Machine-Simulator-v0.1.1.zip).
 
 ## Plugins
 
