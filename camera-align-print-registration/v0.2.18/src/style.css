@@ -372,17 +372,26 @@ html.dark .instruction { color: #b7cbd6; }
      low tools area, at most 48 px when there is plenty of room. */
   .align-toolbar-row > *:not([hidden]):not(.align-toolbar-toggle) { flex: 1 1 0; min-height: 22px !important; max-height: 48px !important; height: auto !important; }
   .align-toolbar-row > .wcs-target select { height: 100% !important; min-height: 0 !important; }
-  .align-toolbar-row > .align-toolbar-toggle { display: none !important; }
+  .align-toolbar-row > .align-toolbar-toggle { display: inline-flex !important; flex: none; align-self: flex-start; width: 27px; height: 27px; min-width: 27px; min-height: 27px; }
   .align-toolbar-row > .zero-camera-toggle,
   .align-toolbar-row > .pip-toolbar-button:not([hidden]),
   .align-toolbar-row > #setZero,
   #jogPanel.align-toolbar-collapsed .align-toolbar-row > .zero-camera-toggle,
   #jogPanel.align-toolbar-collapsed .align-toolbar-row > #setZero { display: inline-flex !important; align-items: center; justify-content: center; width: 100%; max-width: none; min-width: 0; height: 30px; min-height: 30px; padding: 3px 8px; font-size: .75rem; white-space: nowrap; }
+  .align-toolbar-row > #setZero { order: 1; }
+  .align-toolbar-row > .pip-toolbar-button { order: 2; }
+  .align-toolbar-row > .zero-camera-toggle { order: 3; }
+  .align-toolbar-row > .wcs-target { order: 4; }
   .align-toolbar-row > #setZero { font-size: 0; }
   .align-toolbar-row > #setZero::after { content: attr(data-short); font-size: .75rem; }
   .align-toolbar-row > .wcs-target,
   #jogPanel.align-toolbar-collapsed .align-toolbar-row > .wcs-target { display: flex !important; width: 100%; }
   .align-toolbar-row > .wcs-target select { padding-top: 0; padding-bottom: 0; }
+  #jogPanel.align-toolbar-collapsed .jog-workspace { grid-template-columns: minmax(0, 1fr); }
+  #jogPanel.align-toolbar-collapsed .zero-controls { position: absolute; top: 6px; right: 6px; z-index: 4; grid-column: auto; grid-row: auto; width: auto; height: auto; max-width: none; padding: 0; border: 0; background: transparent; box-shadow: none; overflow: visible; }
+  #jogPanel.align-toolbar-collapsed .zero-actions.align-toolbar-row { display: flex !important; flex-direction: column; align-items: flex-end; gap: 0; width: auto; height: auto; min-height: 0; padding: 0; }
+  #jogPanel.align-toolbar-collapsed .align-toolbar-row > .align-toolbar-toggle { display: inline-flex !important; align-self: flex-end; width: 22px; height: 22px; min-width: 22px; min-height: 22px; }
+  #jogPanel.align-toolbar-collapsed .align-toolbar-row > :not(.align-toolbar-toggle) { display: none !important; }
 }
 
 /* Visualizer overlay panel (narrow and tall, about 300 px wide): only the
