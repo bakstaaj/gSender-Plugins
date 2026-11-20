@@ -14,12 +14,12 @@ The WPOS-first workflow homes (or accepts gSender's existing homed state), provi
 
 ## What it does
 
-Version 0.2.1 persists each successful probe point immediately and offers resume or start-new after an interrupted calibration. It verifies the settings and re-probed WPOS origin before allowing a resume, then saves the completed map before attempting the parking move.
+Version 0.2.1 persists each successful probe point immediately and offers resume or start-new after an interrupted calibration. It verifies the settings and re-probed WPOS origin before allowing a resume. A completed calibration now leaves the machine at the final probe location without an automatic park move.
 
 - Detects existing gSender homing state or runs the homing cycle. Bounded XYZ jog controls position the probe; Probe WPOS origin performs a two-touch Z probe and sets G54 WPOS X0 Y0 Z0. Select front-left, front-right, rear-left, rear-right, or center as the work origin. The measured map is always stored and scanned front-left to back-right.
 - Supports three probe types: **Conductive** prompts once to confirm the clip is attached; **Puck** pauses at each point for the probe puck and corrects readings for its thickness; **Switch** probes like Conductive without the clip prompt.
 - Saves the measured map and calibration settings in gSender plugin storage so the map is available after restarting gSender.
-- Saves each successful probe point as it is collected. If calibration is interrupted or gSender restarts, probe the same WPOS origin and choose to resume at the first unmeasured point or start a new calibration. The completed map is saved before the optional parking move, so a parking failure does not discard the measurements.
+- Saves each successful probe point as it is collected. If calibration is interrupted or gSender restarts, probe the same WPOS origin and choose to resume at the first unmeasured point or start a new calibration.
 - Shows the sampled surface as a color-coded ISO grid, with minimum, maximum, range, and a vertical exaggeration control. The `(0,0)` marker follows the WPOS origin selected for calibration; X and Y labels sit at the right and left corners.
 - Prepares a true-scale STL surface mesh in millimetres and stores the generated text in gSender plugin storage for copying into a local `.stl` file; vertical exaggeration affects the preview only.
 - Preprocesses compatible G-code using bilinear interpolation, writes a new `-heightmapped` file, and loads that copy into gSender's visualizer.
@@ -77,8 +77,7 @@ The package includes the README screenshots so the relative image links work whe
 | Width Y | 110 mm | Map width along machine Y, measured from the captured origin. |
 | X samples | 15 | Number of evenly spaced probe locations along X, including both edges. |
 | Y samples | 11 | Number of evenly spaced probe locations along Y, including both edges. |
-| Full Retract Height | 10 mm | Positive clearance above the probed WPOS Z0 surface, used before XY travel between points and when parking at WPOS X0 Y0 or a custom machine XY position. Increase it for warped parts; it must fit within the available machine Z travel and clear the highest feature. |
-| Park location | WPOS X0 Y0 | After the final probe, choose WPOS X0 Y0 at Full Retract Height, machine X0 Y0 after moving to machine Z0, or a custom machine X/Y position at Full Retract Height. Custom machine coordinates are checked against `$130`/`$131` travel before calibration starts. |
+| Full Retract Height | 10 mm | Positive clearance above the probed WPOS Z0 surface, used before XY travel between points. Increase it for warped parts; it must fit within the available machine Z travel and clear the highest feature. |
 | Fast probe travel | Automatic | Read from `$132` and calculated at every touch from the current Z position to the safe machine Z limit, leaving a 0.1 mm margin. |
 | Fast feed | 100 mm/min | Feed for the first touch. |
 | Slow feed | 20 mm/min | Feed for the repeat touch. |
@@ -109,7 +108,7 @@ The puck-thickness value applies only to Puck probing; it is ignored for Conduct
 
 Before calibration, the plugin checks that the controller is idle, the machine remains at the verified WPOS touch-off, Full Retract Height is inside Z travel, and the entire XY grid is within signed machine travel. It first moves to Full Retract Height, then to the physical front-left grid point.
 
-At each grid point the plugin checks remaining machine Z travel using `$23` and `$132` before probing. It limits each probe move to the available safe travel, leaving a 0.1 mm margin at the machine Z limit. Each point gets a fast touch, fixed 3 mm short retract, and slower touch. It then moves to Full Retract Height before the next XY move. If a probe contact is above the configured retract height, calibration stops rather than moving Z down to reach it. On success it moves to the selected park location: WPOS X0/Y0 or custom machine X/Y at Full Retract Height, or machine X0/Y0 after raising to machine Z0. It then saves the completed map and refreshes the viewer. An incomplete or stopped run is discarded; the previously saved map remains available.
+At each grid point the plugin checks remaining machine Z travel using `$23` and `$132` before probing. It limits each probe move to the available safe travel, leaving a 0.1 mm margin at the machine Z limit. Each point gets a fast touch, fixed 3 mm short retract, and slower touch. It then moves to Full Retract Height before the next XY move. If a probe contact is above the configured retract height, calibration stops rather than moving Z down to reach it. After the last point it saves the completed map and leaves the machine at that location; no automatic park move is issued. An incomplete or stopped run is discarded; the previously saved map remains available.
 
 Keep the spindle off and remain at the machine during all automatic motion. If a probe is missed or the controller enters Alarm, resolve the controller state before trying again. Use **Stop after current move** to stop the calibration at a safe point; do not reach into the work area while the controller is moving.
 
@@ -153,10 +152,10 @@ The plugin saves a new map only after every point has a valid measurement and th
 The current preprocessor deliberately supports a narrow format:
 
 - The file must explicitly select metric units with `G21` and absolute positioning with `G90`.
-- Use linear `G0`/`G1` moves, an active **G54** work coordinate system, and ordinary X/Y/Z axes.
+- Use `G0`/`G1` moves and supported XY-plane `G2`/`G3` arcs, an active **G54** work coordinate system, and ordinary X/Y/Z axes.
 - The first positioning move must be a `G0` that specifies both X and Y. That move establishes the file start and is treated as setup travel; later supported XY path moves receive height correction.
 - The whole XY toolpath must fit within the machine travel limits after alignment. Points inside the probed rectangle use measured heights; outside strips extend the nearest measured edge row or column, and corner regions extrapolate along 45-degree diagonals.
-- The plugin rejects arcs (`G2`/`G3`), incremental positioning (`G91`), coordinate-system changes and transforms in the file, canned cycles, macros/subprogram blocks, line numbers/checksums, rotary or additional axes, and spindle/tool `M`/`S`/`T` words on the same line as an XY move. Export plain metric, absolute, linear G-code if the file uses one of these features.
+- The plugin accepts XY-plane (`G17`) arcs (`G2`/`G3`) with incremental `I/J` center offsets or `R` radii and linearizes them into compensated segments. It rejects incremental positioning (`G91`), absolute arc-center mode (`G90.1`), non-XY arcs, coordinate-system changes and transforms in the file, canned cycles, macros/subprogram blocks, line numbers/checksums, rotary or additional axes, and spindle/tool `M`/`S`/`T` words on the same line as an XY move.
 
 ### Apply steps
 
@@ -188,7 +187,7 @@ The map and file are aligned by their XY coordinates: the smallest X/Y in the fi
 | Toolpath extends beyond machine XY travel after alignment | Adjust the file's placement/origin or machine travel configuration so its aligned bounds fit the reported X/Y limits. Unprobed areas inside those limits use edge-row/column extension and diagonal corner extrapolation. |
 | Active coordinate system is not G54 | Select G54 in gSender and retry. This version aligns only G54. |
 | Missing G54 or G92 in `$#` response | Confirm the controller returns `[G54:X,Y,Z,...]` and `[G92:X,Y,Z,...]` records and that gSender receives those records after querying `$#`. |
-| File rejected as unsupported | Export metric (`G21`), absolute (`G90`) linear G-code with a first `G0 X… Y…` positioning move. Remove unsupported arcs, transformations, macros, canned cycles, rotary axes, line numbers, or checksums. |
+| File rejected as unsupported | Use metric (`G21`), absolute (`G90`) G-code with a first `G0 X… Y…` positioning move. Remove unsupported transformations, macros, canned cycles, rotary axes, line numbers, or checksums. XY-plane arcs with `I/J` or `R` are accepted and linearized for compensation. |
 | File loaded but gSender did not switch to Carve | Open Carve manually. Automatic navigation requires a host-side plugin bridge that may not be present in every Edge build. |
 | STL text is too large to prepare | gSender's current plugin storage bridge limits each stored value to 256 KiB. Reduce the X/Y sample counts and recalibrate to generate a smaller STL. |
 | Clipboard copy does not work | The plugin selects the STL text as a fallback. Press Ctrl+C, paste into a plain-text editor, then save using the displayed `.stl` filename. Set **Save as type** to **All files (*.*)** to prevent a `.txt` extension being added. |

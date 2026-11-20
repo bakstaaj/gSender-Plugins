@@ -12,9 +12,6 @@ export const DEFAULTS = Object.freeze({
     puckThickness: 1.53,
     surfaceType: 'conductive',
     probeMode: 'precise',
-    parkMode: 'wpos-origin',
-    parkX: 0,
-    parkY: 0,
 });
 
 export function makeGrid({ originX, originY, lengthX, lengthY, pointsX, pointsY, directionX = 1, directionY = 1 }) {
@@ -350,6 +347,50 @@ export function makeStlExportRecord(map, date = new Date()) {
 
 const fmt = (n) => Number(n.toFixed(4)).toString();
 
+function arcGeometry(startX, startY, endX, endY, clockwise, i, j, r) {
+    const hasIJ = Number.isFinite(i) || Number.isFinite(j);
+    if (hasIJ && Number.isFinite(r)) throw new Error('Specify either I/J or R for an arc, not both.');
+    let cx, cy;
+    if (hasIJ) {
+        cx = startX + (i ?? 0);
+        cy = startY + (j ?? 0);
+    } else if (Number.isFinite(r)) {
+        const chordX = endX - startX, chordY = endY - startY;
+        const chord = Math.hypot(chordX, chordY), radius = Math.abs(r);
+        if (chord < 1e-8 || radius < chord / 2 - 1e-6) throw new Error('The R arc radius cannot reach the specified endpoint.');
+        const half = chord / 2;
+        const height = Math.sqrt(Math.max(0, radius * radius - half * half));
+        const midX = (startX + endX) / 2, midY = (startY + endY) / 2;
+        const perpX = -chordY / chord, perpY = chordX / chord;
+        const candidates = [
+            [midX + perpX * height, midY + perpY * height],
+            [midX - perpX * height, midY - perpY * height],
+        ];
+        const sweepFor = ([x, y]) => {
+            const a0 = Math.atan2(startY - y, startX - x), a1 = Math.atan2(endY - y, endX - x);
+            let sweep = a1 - a0;
+            if (clockwise) { while (sweep >= 0) sweep -= Math.PI * 2; }
+            else { while (sweep <= 0) sweep += Math.PI * 2; }
+            return sweep;
+        };
+        const wantMajor = r < 0;
+        [cx, cy] = candidates.find((candidate) => (Math.abs(sweepFor(candidate)) > Math.PI + 1e-7) === wantMajor) ?? candidates[0];
+    } else {
+        throw new Error('Arc moves require I/J center offsets or an R radius.');
+    }
+    const radius = Math.hypot(startX - cx, startY - cy);
+    const endRadius = Math.hypot(endX - cx, endY - cy);
+    if (radius < 1e-8 || Math.abs(radius - endRadius) > Math.max(0.02, radius * 0.001)) {
+        throw new Error('Arc start and end do not match the supplied center/radius.');
+    }
+    const startAngle = Math.atan2(startY - cy, startX - cx);
+    const samePoint = Math.hypot(endX - startX, endY - startY) < 1e-8;
+    let sweep = samePoint ? (clockwise ? -Math.PI * 2 : Math.PI * 2) : Math.atan2(endY - cy, endX - cx) - startAngle;
+    if (clockwise) { while (sweep >= 0) sweep -= Math.PI * 2; }
+    else { while (sweep <= 0) sweep += Math.PI * 2; }
+    return { cx, cy, radius, startAngle, sweep };
+}
+
 /** Insert a safe machine-coordinate return before the program-end M-code. */
 export function appendMachineOriginReturn(source) {
     const lines = String(source).replace(/\s*$/, '').split(/\r?\n/);
@@ -374,8 +415,8 @@ export function appendMachineOriginReturn(source) {
 }
 
 /**
- * Deliberately bounded G-code preprocessor: metric, absolute, linear G0/G1 only.
- * It splits XY moves to at most half a grid cell and interpolates surface delta.
+ * Bounded G-code preprocessor: metric absolute moves in the XY plane. Arc moves
+ * are linearized to at most half a grid cell before surface compensation.
  */
 export function compensateGcode(source, map, workOffset = { x: 0, y: 0 }, activeWcs = 'G54', initialWorkPosition = { x: 0, y: 0 }) {
     if (typeof source !== 'string' || !source.trim()) throw new Error('The selected file is empty.');
@@ -383,7 +424,7 @@ export function compensateGcode(source, map, workOffset = { x: 0, y: 0 }, active
     const words = /([A-Za-z])\s*(-?(?:\d+(?:\.\d*)?|\.\d+))/g;
     const unsupported = /(?:^|\s)G\s*(?:20|28|30|38\.[0-9]+|5[3]|5[4-9]\.\d+|8[0-9]|9[1]|9[2](?:\.\d+)?|10|50|51|52|54\.1|68|69|93)(?:\s|$)/i;
     const rows = [];
-    let x = initialWorkPosition?.x ?? null, y = initialWorkPosition?.y ?? null, z = null, motion = null, feed = null, units = null, absolute = null;
+    let x = initialWorkPosition?.x ?? null, y = initialWorkPosition?.y ?? null, z = null, motion = null, feed = null, units = null, absolute = null, plane = 'G17';
     const dx = map.probeCellX ?? (map.lengthX / (map.pointsX - 1));
     const dy = map.probeCellY ?? (map.lengthY / (map.pointsY - 1));
     const maxSegment = Math.max(0.1, Math.min(dx, dy) / 2);
@@ -393,7 +434,6 @@ export function compensateGcode(source, map, workOffset = { x: 0, y: 0 }, active
         if (/[%#\[\]]/.test(raw)) throw new Error('Macro expressions and subprogram blocks are not supported yet.');
         const code = raw.replace(/\([^)]*\)/g, '').split(';', 1)[0].trim();
         if (!code) { rows.push(raw); continue; }
-        if (/(?:^|\s)G\s*(?:2|3)(?:\s|$)/i.test(code)) throw new Error(`Arc moves G2/G3 are not supported yet: ${code}`);
         if (unsupported.test(code)) throw new Error(`Unsupported coordinate or motion command: ${code}`);
         if (/(?:^|\s)G\s*20(?:\s|$)/i.test(code)) throw new Error('This version only accepts metric G-code (G21).');
         const parsed = [...code.matchAll(words)].map((m) => [m[1].toUpperCase(), Number(m[2])]);
@@ -406,7 +446,10 @@ export function compensateGcode(source, map, workOffset = { x: 0, y: 0 }, active
             if (value === 90) absolute = true;
             if (value === 91) absolute = false;
             if (value === 0 || value === 1) motion = value;
-            if ([2, 3].includes(value)) throw new Error('Arc moves G2/G3 are not supported yet.');
+            if (value === 17) plane = 'G17';
+            if (value === 18 || value === 19) plane = `G${value}`;
+            if (value === 90.1) throw new Error('Absolute arc-center mode G90.1 is not supported; use incremental I/J offsets.');
+            if (value === 2 || value === 3) motion = value;
             if (value === 53 || value === 92) throw new Error(`Coordinate-system command G${value} is not supported in compensated files.`);
             if (value >= 54 && value <= 59 && `G${value}` !== activeWcs) throw new Error(`File selects G${value}, but current controller coordinate system is ${activeWcs}.`);
         }
@@ -422,21 +465,23 @@ export function compensateGcode(source, map, workOffset = { x: 0, y: 0 }, active
         const hasX = parsed.some(([letter]) => letter === 'X');
         const hasY = parsed.some(([letter]) => letter === 'Y');
         const hasZ = parsed.some(([letter]) => letter === 'Z');
+        const hasArcWords = parsed.some(([letter]) => ['I', 'J', 'R'].includes(letter));
+        const hasXYMove = hasX || hasY || ((motion === 2 || motion === 3) && hasArcWords);
         if ((hasX || hasY) && parsed.some(([letter]) => ['M', 'S', 'T'].includes(letter))) {
             throw new Error('Put spindle/tool M, S, or T words on a separate line from XY movement before compensating this file.');
         }
         const nextX = hasX ? get('X', x) : x;
         const nextY = hasY ? get('Y', y) : y;
         const nextZ = hasZ ? get('Z', z) : z;
-        if (motion === null && (hasX || hasY || hasZ)) throw new Error(`Axis move has no known G0/G1 mode: ${code}`);
-        if (units !== 'mm' && (hasX || hasY || hasZ)) throw new Error('G-code must explicitly select metric units (G21) before axis moves.');
-        if (absolute !== true && (hasX || hasY || hasZ)) throw new Error('G-code must explicitly select absolute positioning (G90) before axis moves.');
+        if (motion === null && (hasX || hasY || hasZ)) throw new Error(`Axis move has no known G0/G1/G2/G3 mode: ${code}`);
+        if (units !== 'mm' && (hasX || hasY || hasZ || hasArcWords)) throw new Error('G-code must explicitly select metric units (G21) before axis moves.');
+        if (absolute !== true && (hasX || hasY || hasZ || hasArcWords)) throw new Error('G-code must explicitly select absolute positioning (G90) before axis moves.');
 
         if ((hasX || hasY) && (nextX === null || nextY === null || ((x === null || y === null) && !(hasX && hasY)))) {
             throw new Error('Could not determine the start and end of an XY move.');
         }
-        if ((hasX || hasY) && motion !== 0 && motion !== 1) throw new Error('Only G0/G1 XY toolpaths can be compensated.');
-        if (hasX || hasY) {
+        if (hasXYMove && ![0, 1, 2, 3].includes(motion)) throw new Error('Only G0/G1/G2/G3 XY toolpaths can be compensated.');
+        if (hasXYMove) {
             if (x === null || y === null) {
                 if (motion !== 0 || !hasX || !hasY) {
                     throw new Error('The file must start with a rapid XY positioning move (G0 with both X and Y) before any mapped cutting moves.');
@@ -449,22 +494,45 @@ export function compensateGcode(source, map, workOffset = { x: 0, y: 0 }, active
                 continue;
             }
             const sx = x, sy = y, ex = nextX, ey = nextY;
-            const distance = Math.hypot(ex - sx, ey - sy);
-            const steps = Math.max(1, Math.ceil(distance / maxSegment));
+            const arc = motion === 2 || motion === 3;
+            if (arc && plane !== 'G17') throw new Error('Only XY-plane G17 arcs can be surface compensated.');
+            if (arc && parsed.some(([letter]) => letter === 'P')) throw new Error('Multi-turn arcs using P are not supported; split the arc into separate G2/G3 moves.');
+            const arcData = arc ? arcGeometry(sx, sy, ex, ey,
+                motion === 2,
+                parsed.find(([letter]) => letter === 'I')?.[1],
+                parsed.find(([letter]) => letter === 'J')?.[1],
+                parsed.find(([letter]) => letter === 'R')?.[1]) : null;
+            const pathLength = arc ? Math.abs(arcData.sweep) * arcData.radius : Math.hypot(ex - sx, ey - sy);
+            const steps = Math.max(1, Math.ceil(pathLength / maxSegment));
+            const pathPoint = (t) => arc
+                ? [arcData.cx + Math.cos(arcData.startAngle + arcData.sweep * t) * arcData.radius,
+                    arcData.cy + Math.sin(arcData.startAngle + arcData.sweep * t) * arcData.radius]
+                : [sx + (ex - sx) * t, sy + (ey - sy) * t];
+            if (Array.isArray(map.samples) && !map.fullMachineCoverage) {
+                let previous = { x: sx + workOffset.x, y: sy + workOffset.y };
+                for (let i = 1; i <= steps; i += 1) {
+                    const [px, py] = pathPoint(i / steps);
+                    const next = { x: px + workOffset.x, y: py + workOffset.y };
+                    if (!segmentInsidePolygon(previous, next, map.contourMachine)) {
+                        throw new Error(`Toolpath path from X${previous.x.toFixed(3)} Y${previous.y.toFixed(3)} crosses outside the scanned perimeter.`);
+                    }
+                    previous = next;
+                }
+            }
             const startZ = z ?? nextZ;
             const endZ = nextZ ?? startZ;
             if (startZ === null && motion === 1) throw new Error('A cutting XY move appears before any Z position is set. Add a safe-Z move before cutting.');
             for (let i = 1; i <= steps; i += 1) {
                 const t = i / steps;
-                const px = sx + (ex - sx) * t, py = sy + (ey - sy) * t;
+                const [px, py] = pathPoint(t);
                 const correction = interpolate(map, px + workOffset.x, py + workOffset.y) - map.referenceZ;
                 const pz = startZ === null ? null : startZ + (endZ - startZ) * t + correction;
                 const final = i === steps;
-                const tokens = [`G${motion}`, `X${fmt(px)}`, `Y${fmt(py)}`];
+                const tokens = [`G${motion === 0 ? 0 : 1}`, `X${fmt(i === steps ? ex : px)}`, `Y${fmt(i === steps ? ey : py)}`];
                 if (pz !== null) tokens.push(`Z${fmt(pz)}`);
                 if (i === 1 && parsed.some(([letter]) => letter === 'F') && feed !== null) tokens.push(`F${fmt(feed)}`);
                 if (final) {
-                    for (const [letter, value] of parsed) if (!['G', 'X', 'Y', 'Z', 'F'].includes(letter)) tokens.push(`${letter}${fmt(value)}`);
+                    for (const [letter, value] of parsed) if (!['G', 'X', 'Y', 'Z', 'F', 'I', 'J', 'R'].includes(letter)) tokens.push(`${letter}${fmt(value)}`);
                 }
                 rows.push(tokens.join(' '));
             }

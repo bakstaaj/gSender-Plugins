@@ -1,9 +1,9 @@
 import { getReduxState, gcode, machine, storage } from '@sienci/gsender-plugin-sdk';
-import { DEFAULTS, SHORT_RETRACT_MM, SLOW_PROBE_TRAVEL_MM, appendMachineOriginReturn, compensateGcode, computeProjectMapOrigin, computeProjectMapSettings, interpolate, makeContourProbePoints, makeStlExportRecord, mapCoversProjectBounds, parseAbsoluteXYBounds, parseClosedContours, parseProbePosition, parseTravelLimits, parseWorkOffsetLine, pointInPolygon, probePositionMatches, rebaseGcodeCoordinates, validateMachineTarget, validateMap } from './heightmap.js';
+import { DEFAULTS, SHORT_RETRACT_MM, SLOW_PROBE_TRAVEL_MM, compensateGcode, computeProjectMapOrigin, computeProjectMapSettings, interpolate, makeContourProbePoints, makeStlExportRecord, mapCoversProjectBounds, parseAbsoluteXYBounds, parseClosedContours, parseProbePosition, parseTravelLimits, parseWorkOffsetLine, pointInPolygon, probePositionMatches, rebaseGcodeCoordinates, validateMachineTarget, validateMap } from './heightmap.js';
 import './style.css';
 
 const $ = (id) => document.getElementById(id);
-const fields = ['lengthX', 'lengthY', 'pointsX', 'pointsY', 'fullRetract', 'fastFeed', 'slowFeed', 'puckThickness', 'parkX', 'parkY'];
+const fields = ['lengthX', 'lengthY', 'pointsX', 'pointsY', 'fullRetract', 'fastFeed', 'slowFeed', 'puckThickness'];
 const state = { origin: null, wposOrigin: null, probedOrigin: null, homeMachineZ: null, machinePosition: null, workPosition: null, positionMode: 'wpos', controllerHomed: false, adoptingHomedPosition: false, probeReportSequence: 0, probeWaiter: null, offsetParserSequence: 0, probeStatusSequence: 0, probeMotionStatus: '', probePinActive: false, probePinKnown: false, probeSignalTested: false, probeSignalTestCancelled: false, probeMoveGuard: null, probeMovePause: null, map: null, mapInvalid: false, stlExport: null, calibrationCheckpoint: null, calibrationChoiceResolve: null, file: null, project: null, analyzingProject: false, busy: false, stopRequested: false, abortPuck: null, calibrationReadings: [], calibrationReadingCount: 0, continuousJog: null };
 const setNotice = (message, kind = '') => { $('notice').textContent = message; $('notice').className = kind; };
 const setApplyStatus = (message, kind = '') => { $('applyStatus').textContent = message; $('applyStatus').className = kind; };
@@ -91,7 +91,7 @@ async function clearCalibrationCheckpoint(checkpoint = state.calibrationCheckpoi
 }
 
 function calibrationCheckpointMismatch(checkpoint, settings, flat) {
-    const keys = [...fields, 'surfaceType', 'probeMode', 'parkMode', 'wposOrigin', 'machineZeroX', 'machineZeroY'];
+    const keys = [...fields, 'surfaceType', 'probeMode', 'wposOrigin', 'machineZeroX', 'machineZeroY'];
     const changed = keys.filter((key) => checkpoint.settings?.[key] !== settings[key]);
     if (changed.length) return `Saved scan settings differ (${changed.join(', ')}). Restore them or start a new scan.`;
     if (checkpoint.planSignature !== scanPlanSignature(flat)) return 'The imported project or calculated probe path differs from the saved scan.';
@@ -294,7 +294,6 @@ function currentSettings() {
         machineZeroY: n('machineZeroY'),
         surfaceType: document.querySelector('input[name="surfaceType"]:checked').value,
         probeMode: document.querySelector('input[name="probeMode"]:checked')?.value ?? DEFAULTS.probeMode,
-        parkMode: $('parkMode').value,
         wposOrigin: selectedWposOrigin(),
     };
 }
@@ -310,8 +309,6 @@ function populateSettings(saved = {}) {
     document.querySelector(`input[name="surfaceType"][value="${surfaceType}"]`).checked = true;
     const probeMode = ['fast', 'precise'].includes(saved.probeMode) ? saved.probeMode : DEFAULTS.probeMode;
     document.querySelector(`input[name="probeMode"][value="${probeMode}"]`).checked = true;
-    $('parkMode').value = ['wpos-origin', 'machine-zero', 'custom-machine'].includes(saved.parkMode) ? saved.parkMode : DEFAULTS.parkMode;
-    updateParkFieldsVisibility();
     const origin = ['front-left', 'front-right', 'rear-left', 'rear-right', 'center'].includes(saved.wposOrigin) ? saved.wposOrigin : 'front-left';
     document.querySelector(`input[name="wposOrigin"][value="${origin}"]`).checked = true;
     for (const id of ['machineZeroX', 'machineZeroY']) {
@@ -323,10 +320,6 @@ function populateSettings(saved = {}) {
 
 function updatePuckThicknessVisibility() {
     $('puckThicknessField').hidden = document.querySelector('input[name="surfaceType"]:checked').value !== 'puck';
-}
-
-function updateParkFieldsVisibility() {
-    $('customParkFields').hidden = $('parkMode').value !== 'custom-machine';
 }
 
 function updateWorkZeroVisibility() {
@@ -1388,11 +1381,6 @@ function validateSettings(s, limits) {
     if (s.puckThickness < 0) throw new Error('Probe puck thickness cannot be negative.');
     if (!['conductive', 'puck', 'switch'].includes(s.surfaceType)) throw new Error('Choose Conductive, Puck, or Switch as the probe type.');
     if (!['fast', 'precise'].includes(s.probeMode)) throw new Error('Choose Fast or Precise as the probe method.');
-    if (!['wpos-origin', 'machine-zero', 'custom-machine'].includes(s.parkMode)) throw new Error('Choose a valid post-calibration park location.');
-    if (s.parkMode === 'machine-zero') {
-        validateMachineTarget({ x: 0, y: 0 }, limits);
-        if (limits.minZ > 0 || limits.maxZPosition < 0) throw new Error(`Machine Z0 is outside the reported Z travel ${limits.minZ}..${limits.maxZPosition} mm.`);
-    } else if (s.parkMode === 'custom-machine') validateMachineTarget({ x: s.parkX, y: s.parkY }, limits);
 }
 
 async function homeMachine() {
@@ -1838,30 +1826,7 @@ async function calibrate() {
         renderStlExport();
         $('stlStatus').textContent = '';
         $('copyStlStatus').textContent = '';
-        let parkError = null;
-        try {
-            if (settings.parkMode === 'machine-zero') {
-                setNotice('All probe points measured and saved. Raising to machine Z0, then parking at machine X0 Y0…');
-                await sendAndWait('G90 G53 G0 Z0');
-                await waitIdle();
-                await moveXYWithProbeGuard('G90 G53 G0 X0 Y0', 'to machine X0 Y0');
-            } else {
-                const destination = settings.parkMode === 'wpos-origin' ? 'WPOS X0 Y0' : `machine X${settings.parkX.toFixed(3)} Y${settings.parkY.toFixed(3)}`;
-                setNotice(`All probe points measured and saved. Retracting to WPOS +${settings.fullRetract.toFixed(1)} mm, then parking at ${destination}…`);
-                await sendAndWait(`G90 G53 G0 Z${retractMachineZ.toFixed(3)}`);
-                await waitIdle();
-                const parkMove = settings.parkMode === 'wpos-origin'
-                    ? 'G54 G90 G0 X0 Y0'
-                    : `G90 G53 G0 X${settings.parkX.toFixed(3)} Y${settings.parkY.toFixed(3)}`;
-                await moveXYWithProbeGuard(parkMove, `to ${destination}`);
-            }
-        } catch (error) {
-            parkError = error;
-            await logCalibration(`Calibration map saved; park move failed: ${error.message}`);
-        }
-        setNotice(parkError
-            ? `Calibration saved (${flat.length} points), but the return-to-park move did not complete: ${parkError.message}`
-            : `Calibration saved (${flat.length} points${state.project.mappingMode === 'contour' ? ', including perimeter and interior grid samples' : ''}).`, parkError ? 'error' : 'success');
+        setNotice(`Calibration saved (${flat.length} points${state.project.mappingMode === 'contour' ? ', including perimeter and interior grid samples' : ''}).`);
     } catch (err) {
         await logCalibration(`CALIBRATION ERROR: ${err.message}`);
         setNotice(err.message, 'error');
@@ -1926,7 +1891,7 @@ async function compensateFile() {
         const output = [
             '(Retract to machine Z0 before positioning to the file start)',
             'G21 G90 G53 G0 Z0',
-            appendMachineOriginReturn(compensated),
+            compensated,
         ].join('\n');
         const offsetChanged = Math.abs(oldG54[0] - targetG54.x) > 0.0001 || Math.abs(oldG54[1] - targetG54.y) > 0.0001;
         if (offsetChanged) {
@@ -1972,7 +1937,6 @@ async function start() {
             const geometryField = ['lengthX', 'lengthY', 'pointsX', 'pointsY'].includes(id);
             $(id).addEventListener('change', geometryField ? updateProjectGeometry : saveSettings);
         }
-        $('parkMode').addEventListener('change', () => { updateParkFieldsVisibility(); saveSettings(); });
         for (const id of ['machineZeroX', 'machineZeroY']) $(id).addEventListener('change', saveSettings);
         for (const input of document.querySelectorAll('input[name="surfaceType"]')) input.addEventListener('change', () => {
             updatePuckThicknessVisibility();

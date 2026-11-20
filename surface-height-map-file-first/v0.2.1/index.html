@@ -48,14 +48,6 @@
         <div class="grid fields settings-grid retract-grid">
           <label class="full-retract-field" title="Clearance above WPOS Z0 used for XY travel between probe points.">Full Retract Height (WPOS +Z mm)<input id="fullRetract" type="number" min="0.1" step="0.1" value="10"></label>
         </div>
-        <h3 class="settings-group-title">After calibration</h3>
-        <div class="grid fields settings-grid">
-          <label for="parkMode">Park location<select id="parkMode" title="Choose where the tool head moves after the final probe."><option value="wpos-origin">WPOS X0 Y0 (raise to Full Retract Height)</option><option value="machine-zero">Machine X0 Y0 (raise to machine Z0)</option><option value="custom-machine">Custom machine X/Y (raise to Full Retract Height)</option></select></label>
-        </div>
-        <div id="customParkFields" class="grid fields settings-grid retract-grid" hidden>
-          <label>Park machine X (mm)<input id="parkX" type="number" step="0.001"></label>
-          <label>Park machine Y (mm)<input id="parkY" type="number" step="0.001"></label>
-        </div>
         <fieldset class="probe-type-options" title="Choose how the probe makes contact at each point."><legend>Probe type</legend>
           <label class="inline" title="Conductive surface: attach the probe clip for the full calibration. The plugin prompts you once to confirm it is attached."><input type="radio" name="surfaceType" value="conductive" checked> Conductive</label>
           <label class="inline" title="Puck: use a conductive puck on non-conductive material. The plugin pauses at each point so you can move it; enter its thickness above."><input type="radio" name="surfaceType" value="puck"> Puck</label>
