@@ -71,7 +71,7 @@ export function polygonMesh(boundary, samples, spacing, bedZ, recesses=[], thres
         const ccw=h.loop.reduce((sum,p,i)=>sum+p.x*h.loop[(i+1)%h.loop.length].y-h.loop[(i+1)%h.loop.length].x*p.y,0)>0;
         for(let i=0;i<h.top.length;i++){const j=(i+1)%h.top.length;const faces=[[h.top[i],h.bottom[j],h.bottom[i]],[h.top[i],h.top[j],h.bottom[j]]];wallTriangles.push(...(ccw?faces:faces.map(([a,b,c])=>[a,c,b])));}
     }
-    if(!triangles.length)throw Error('The measured samples cannot form a surface within the candidate outline.');
+    if(!surfaceTriangles.length)throw Error('The measured samples cannot form a surface within the candidate outline.');
     const bed=edgeTop.map(p=>({x:p.x,y:p.y,z:bedZ,bed:true}));
     const outerCcw=edgeTop.reduce((sum,p,i)=>sum+p.x*edgeTop[(i+1)%edgeTop.length].y-edgeTop[(i+1)%edgeTop.length].x*p.y,0)>0;
     for(let i=0;i<edgeTop.length;i++){const j=(i+1)%edgeTop.length;const faces=[[edgeTop[i],bed[i],bed[j]],[edgeTop[i],bed[j],edgeTop[j]]];wallTriangles.push(...(outerCcw?faces:faces.map(([a,b,c])=>[a,c,b])));}
