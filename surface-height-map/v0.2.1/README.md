@@ -1,6 +1,6 @@
 # Surface Height Map for gSender
 
-**Latest release package:** [Download surface-height-map-v0.2.0.zip?updated=20261105](https://github.com/bakstaaj/gSender-Plugins/releases/download/surface-height-map-v0.2.0/surface-height-map-v0.2.0.zip?updated=20261105)
+**Latest release package:** [Download surface-height-map-v0.2.1.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/surface-height-map-v0.2.1/surface-height-map-v0.2.1.zip)
 
 Surface Height Map is a community gSender plugin for measuring a work surface at a regular grid of probe points, then applying those readings to a supported G-code toolpath. Calibration is saved independently of any one job. The measured material grid is extended to the controller's full machine XY travel: unprobed strips continue from the nearest measured edge row or column, and corner regions extrapolate along 45-degree diagonals. WPOS Z0 remains the compensation reference.
 
@@ -14,9 +14,12 @@ The WPOS-first workflow homes (or accepts gSender's existing homed state), provi
 
 ## What it does
 
+Version 0.2.1 persists each successful probe point immediately and offers resume or start-new after an interrupted calibration. It verifies the settings and re-probed WPOS origin before allowing a resume, then saves the completed map before attempting the parking move.
+
 - Detects existing gSender homing state or runs the homing cycle. Bounded XYZ jog controls position the probe; Probe WPOS origin performs a two-touch Z probe and sets G54 WPOS X0 Y0 Z0. Select front-left, front-right, rear-left, rear-right, or center as the work origin. The measured map is always stored and scanned front-left to back-right.
 - Supports three probe types: **Conductive** prompts once to confirm the clip is attached; **Puck** pauses at each point for the probe puck and corrects readings for its thickness; **Switch** probes like Conductive without the clip prompt.
 - Saves the measured map and calibration settings in gSender plugin storage so the map is available after restarting gSender.
+- Saves each successful probe point as it is collected. If calibration is interrupted or gSender restarts, probe the same WPOS origin and choose to resume at the first unmeasured point or start a new calibration. The completed map is saved before the optional parking move, so a parking failure does not discard the measurements.
 - Shows the sampled surface as a color-coded ISO grid, with minimum, maximum, range, and a vertical exaggeration control. The `(0,0)` marker follows the WPOS origin selected for calibration; X and Y labels sit at the right and left corners.
 - Prepares a true-scale STL surface mesh in millimetres and stores the generated text in gSender plugin storage for copying into a local `.stl` file; vertical exaggeration affects the preview only.
 - Preprocesses compatible G-code using bilinear interpolation, writes a new `-heightmapped` file, and loads that copy into gSender's visualizer.

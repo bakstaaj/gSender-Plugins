@@ -2,7 +2,7 @@
   "id": "com.bakstaaj.surface-height-map-file-first",
   "name": "Surface Height Map (File First)",
   "description": "Map G-code projects using closed-stock contours or a rectangular grid, choose a work zero, and compensate within the scanned surface.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "engine": ">=1.7.0-Edge-1",
   "ui": {
     "entry": "ui/index.html",

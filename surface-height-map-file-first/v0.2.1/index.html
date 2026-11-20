@@ -74,6 +74,7 @@
           <label for="progress">Probe progress</label>
           <div class="progress-line"><progress id="progress" max="1" value="0" aria-label="Calibration probe progress"></progress><output id="progressPercent" for="progress">0%</output></div>
         </div>
+        <p id="checkpointStatus" class="hint" role="status" aria-live="polite" hidden></p>
         <div class="readings-panel">
           <div class="readings-heading"><h4>Recent probe readings</h4><span id="probeReadingCount" aria-live="polite">No readings yet</span></div>
           <p class="hint readings-hint">Showing the latest 10 points, newest first. Z Abs Reading is controller machine Z; Z Offset is the puck-corrected surface height relative to the first probe point.</p>
@@ -125,6 +126,7 @@
         <div id="applyStatus" role="status" aria-live="polite"></div>
       </section>
       <dialog id="alignDialog"><h2>Align G54 to machine zero?</h2><p id="alignPrompt"></p><div class="row"><button id="cancelAlign" class="secondary">Cancel</button><button id="confirmAlign" class="primary">Set G54 and load copy</button></div></dialog>
+      <dialog id="resumeCalibrationDialog"><h2>Incomplete calibration saved</h2><p id="resumeCalibrationPrompt"></p><div class="row"><button id="cancelResumeCalibration" class="secondary" type="button">Cancel</button><button id="startNewCalibration" class="secondary" type="button">Start new scan</button><button id="resumeSavedCalibration" class="primary" type="button">Resume saved scan</button></div></dialog>
       <dialog id="gotoXYDialog" class="goto-xy-dialog"><h2>Go to XY position</h2><p id="gotoXYMode" class="hint"></p><p class="goto-xy-safety">Z moves to the configured Full Retract Height before XY travel. Check that this height clears the work and tool.</p><div class="goto-xy-fields"><label for="gotoX">X (mm)<input id="gotoX" type="number" step="any" inputmode="decimal"></label><label for="gotoY">Y (mm)<input id="gotoY" type="number" step="any" inputmode="decimal"></label></div><p id="gotoXYError" class="goto-xy-error" role="status" aria-live="polite" hidden></p><div class="row"><button id="cancelGotoXY" class="secondary" type="button">Cancel</button><button id="confirmGotoXY" class="primary" type="button" disabled>Move to XY</button></div></dialog>
       <dialog id="puckDialog"><h2 id="dialogTitle">Move the probe puck</h2><p id="puckPrompt"></p><div class="row"><button id="continuePuck" class="primary">Puck is in place</button><button id="cancelPuck" class="danger">Cancel calibration</button></div></dialog>
       <dialog id="probeSignalDialog" class="probe-signal-dialog"><h2>Verify probe signal</h2><p>Keep the machine idle. The plugin is checking the probe input automatically. Activate the probe, then release it when prompted. Status is polled about every 0.7 seconds.</p><p id="probeSignalDialogStatus" class="probe-signal-status error" role="status" aria-live="polite"></p><div class="row"><button id="cancelProbeSignalTest" class="secondary">Cancel WPOS probe</button><button id="continueProbeSignalTest" class="primary" disabled>Continue to WPOS probe</button></div></dialog>

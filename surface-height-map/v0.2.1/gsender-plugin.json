@@ -2,7 +2,7 @@
   "id": "com.bakstaaj.cubiko-height-map",
   "name": "Surface Height Map",
   "description": "Calibrate a surface with a probe and apply the measured height map to supported G-code.",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "engine": ">=1.7.0-Edge-1",
   "ui": {
     "entry": "ui/index.html",

@@ -4,14 +4,136 @@ import './style.css';
 
 const $ = (id) => document.getElementById(id);
 const fields = ['lengthX', 'lengthY', 'pointsX', 'pointsY', 'fullRetract', 'fastFeed', 'slowFeed', 'puckThickness', 'parkX', 'parkY'];
-const state = { origin: null, wposOrigin: null, probedOrigin: null, homeMachineZ: null, machinePosition: null, workPosition: null, positionMode: 'wpos', controllerHomed: false, adoptingHomedPosition: false, probeReportSequence: 0, probeWaiter: null, offsetParserSequence: 0, probeStatusSequence: 0, probeMotionStatus: '', probePinActive: false, probePinKnown: false, probeSignalTested: false, probeSignalTestCancelled: false, probeMoveGuard: null, probeMovePause: null, map: null, mapInvalid: false, stlExport: null, file: null, project: null, analyzingProject: false, busy: false, stopRequested: false, abortPuck: null, calibrationReadings: [], calibrationReadingCount: 0, continuousJog: null };
+const state = { origin: null, wposOrigin: null, probedOrigin: null, homeMachineZ: null, machinePosition: null, workPosition: null, positionMode: 'wpos', controllerHomed: false, adoptingHomedPosition: false, probeReportSequence: 0, probeWaiter: null, offsetParserSequence: 0, probeStatusSequence: 0, probeMotionStatus: '', probePinActive: false, probePinKnown: false, probeSignalTested: false, probeSignalTestCancelled: false, probeMoveGuard: null, probeMovePause: null, map: null, mapInvalid: false, stlExport: null, calibrationCheckpoint: null, calibrationChoiceResolve: null, file: null, project: null, analyzingProject: false, busy: false, stopRequested: false, abortPuck: null, calibrationReadings: [], calibrationReadingCount: 0, continuousJog: null };
 const setNotice = (message, kind = '') => { $('notice').textContent = message; $('notice').className = kind; };
 const setApplyStatus = (message, kind = '') => { $('applyStatus').textContent = message; $('applyStatus').className = kind; };
 const n = (id) => Number($(id).value);
 const round = (v) => Number(v.toFixed(4));
 const pause = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 const calibrationLogKey = 'calibrationLog';
+const calibrationProgressKey = 'fileFirstCalibrationProgress.v1';
+const calibrationChunkSize = 64;
 let calibrationLog = [];
+
+function calibrationChunkKey(scanId, chunkIndex) {
+    return `${calibrationProgressKey}:${scanId}:chunk:${chunkIndex}`;
+}
+
+function scanPlanSignature(points) {
+    const source = points.map(({ x, y, kind }) => `${round(x)},${round(y)},${kind ?? 'grid'}`).join(';');
+    let hash = 2166136261;
+    for (let index = 0; index < source.length; index += 1) {
+        hash ^= source.charCodeAt(index);
+        hash = Math.imul(hash, 16777619);
+    }
+    return `${points.length}:${(hash >>> 0).toString(16)}`;
+}
+
+async function readCalibrationCheckpoint() {
+    const saved = await storage.get(calibrationProgressKey, null);
+    if (!saved || saved.version !== 1 || !saved.scanId || !Number.isInteger(saved.totalPoints)
+        || saved.totalPoints < 1 || saved.totalPoints > 10201 || !Number.isInteger(saved.completedCount)
+        || saved.completedCount < 0 || saved.completedCount > saved.totalPoints) return null;
+    const samples = Array(saved.totalPoints).fill(null);
+    const chunkCount = Math.ceil(saved.completedCount / calibrationChunkSize);
+    for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) {
+        const chunk = await storage.get(calibrationChunkKey(saved.scanId, chunkIndex), null);
+        if (chunk?.scanId !== saved.scanId || !Array.isArray(chunk.samples)) continue;
+        const start = chunkIndex * calibrationChunkSize;
+        for (let offset = 0; offset < chunk.samples.length && start + offset < saved.completedCount; offset += 1) {
+            const sample = chunk.samples[offset];
+            if (sample && Number.isFinite(sample.x) && Number.isFinite(sample.y) && Number.isFinite(sample.z)) samples[start + offset] = sample;
+        }
+    }
+    const firstMissing = samples.findIndex((sample) => !sample);
+    saved.samples = samples;
+    saved.completedCount = firstMissing < 0 ? samples.length : firstMissing;
+    return saved;
+}
+
+function renderCalibrationCheckpoint() {
+    const output = $('checkpointStatus');
+    const checkpoint = state.calibrationCheckpoint;
+    if (!output) return;
+    if (!checkpoint) {
+        output.textContent = '';
+        output.hidden = true;
+        return;
+    }
+    output.textContent = `${checkpoint.completedCount} of ${checkpoint.totalPoints} probe points saved. Home the machine and probe the same WPOS origin, then start calibration to resume or begin a new scan.`;
+    output.hidden = false;
+}
+
+async function saveCalibrationCheckpointPoint(checkpoint, samples, pointIndex, referenceZ) {
+    const chunkIndex = Math.floor(pointIndex / calibrationChunkSize);
+    const chunkStart = chunkIndex * calibrationChunkSize;
+    await storage.set(calibrationChunkKey(checkpoint.scanId, chunkIndex), {
+        scanId: checkpoint.scanId,
+        samples: samples.slice(chunkStart, pointIndex + 1),
+    });
+    checkpoint.completedCount = pointIndex + 1;
+    checkpoint.referenceZ = referenceZ;
+    const { samples: _samples, ...metadata } = checkpoint;
+    await storage.set(calibrationProgressKey, metadata);
+    checkpoint.samples = samples;
+    state.calibrationCheckpoint = checkpoint;
+    renderCalibrationCheckpoint();
+}
+
+async function clearCalibrationCheckpoint(checkpoint = state.calibrationCheckpoint) {
+    if (checkpoint?.scanId && Number.isInteger(checkpoint.totalPoints)) {
+        const chunkCount = Math.ceil(checkpoint.totalPoints / calibrationChunkSize);
+        for (let chunkIndex = 0; chunkIndex < chunkCount; chunkIndex += 1) await storage.delete(calibrationChunkKey(checkpoint.scanId, chunkIndex));
+    }
+    await storage.delete(calibrationProgressKey);
+    state.calibrationCheckpoint = null;
+    renderCalibrationCheckpoint();
+}
+
+function calibrationCheckpointMismatch(checkpoint, settings, flat) {
+    const keys = [...fields, 'surfaceType', 'probeMode', 'parkMode', 'wposOrigin', 'machineZeroX', 'machineZeroY'];
+    const changed = keys.filter((key) => checkpoint.settings?.[key] !== settings[key]);
+    if (changed.length) return `Saved scan settings differ (${changed.join(', ')}). Restore them or start a new scan.`;
+    if (checkpoint.planSignature !== scanPlanSignature(flat)) return 'The imported project or calculated probe path differs from the saved scan.';
+    const prior = checkpoint.wposOrigin;
+    const current = state.wposOrigin;
+    const close = (a, b, tolerance = 0.05) => Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= tolerance;
+    if (!prior?.mpos || !current?.mpos || prior.corner !== current.corner
+        || prior.mpos.slice(0, 3).some((value, index) => !close(value, current.mpos[index]))
+        || !close(prior.surfaceMachineZ, current.surfaceMachineZ)
+        || !close(checkpoint.homeMachineZ, state.homeMachineZ, 0.1)) {
+        return 'The re-probed WPOS origin or machine home differs from the saved calibration.';
+    }
+    return '';
+}
+
+function chooseCalibrationAction(checkpoint, mismatch = '') {
+    const dialog = $('resumeCalibrationDialog');
+    $('resumeCalibrationPrompt').textContent = mismatch
+        ? `${checkpoint.completedCount} of ${checkpoint.totalPoints} points are saved. ${mismatch}`
+        : `${checkpoint.completedCount} of ${checkpoint.totalPoints} points are saved. Resume at the first unmeasured point, or discard this progress and start a new scan?`;
+    $('resumeSavedCalibration').hidden = Boolean(mismatch);
+    dialog.showModal();
+    return new Promise((resolve) => { state.calibrationChoiceResolve = resolve; });
+}
+
+function resolveCalibrationAction(action) {
+    const resolve = state.calibrationChoiceResolve;
+    state.calibrationChoiceResolve = null;
+    $('resumeCalibrationDialog').close();
+    resolve?.(action);
+}
+
+function restoreCalibrationReadings(checkpoint) {
+    const referenceZ = checkpoint.referenceZ;
+    const readings = checkpoint.samples.slice(0, checkpoint.completedCount).map((sample) => ({
+        x: sample.x, y: sample.y, zAbs: sample.machineZ,
+        zOffset: Number.isFinite(referenceZ) ? round(sample.z - referenceZ) : 0,
+    }));
+    state.calibrationReadingCount = readings.length;
+    state.calibrationReadings = readings.reverse().slice(0, 10);
+    renderProbeReadings();
+}
 
 async function logCalibration(message) {
     calibrationLog = [...calibrationLog, `${new Date().toISOString()} ${message}`].slice(-400);
@@ -971,6 +1093,7 @@ async function refreshUi() {
         ? `${state.map.lengthX} × ${state.map.lengthY} mm · ${Array.isArray(state.map.samples) ? `contour map with ${state.map.samples.length} points` : `${state.map.pointsX} × ${state.map.pointsY} grid`} · WPOS origin ${state.map.wposOriginCorner ?? 'front-left'} · ${state.map.fullMachineCoverage ? 'full machine XY coverage; edges extend from measured probes' : `captured at machine X${state.map.originX.toFixed(3)} Y${state.map.originY.toFixed(3)}`} · ${new Date(state.map.createdAt).toLocaleString()}`
         : 'No height map saved.';
     $('fileLabelApply').textContent = state.file ? `${state.file.name} · ${(state.file.size / 1024).toFixed(1)} KB` : 'Import a G-code project above.';
+    renderCalibrationCheckpoint();
     drawSurfaceMap();
 }
 
@@ -1583,7 +1706,7 @@ async function calibrate() {
         setNotice('Confirm homing in gSender or click Home machine before starting calibration.', 'error');
         return;
     }
-    state.busy = true; state.stopRequested = false; state.calibrationReadings = []; state.calibrationReadingCount = 0;
+    state.busy = true; state.stopRequested = false;
     await logCalibration('--- File First calibration started ---');
     $('calibrationProgress').hidden = false; $('progress').value = 0; $('progressPercent').textContent = '0%';
     renderProbeReadings();
@@ -1601,9 +1724,54 @@ async function calibrate() {
                 : validateMap({ originX: state.origin.x, originY: state.origin.y, lengthX: settings.lengthX, lengthY: settings.lengthY, pointsX: settings.pointsX, pointsY: settings.pointsY }, limits).flat();
         if (grid.some((point) => point.x < limits.minX || point.y < limits.minY || point.x > limits.maxXPosition || point.y > limits.maxYPosition)) throw new Error('A generated perimeter or grid probe point falls outside machine travel. Change map alignment or reduce the project area.');
         const flat = grid;
-        const measured = [];
+        let checkpoint = state.calibrationCheckpoint;
+        let measured;
+        let startIndex = 0;
+        if (checkpoint) {
+            const mismatch = calibrationCheckpointMismatch(checkpoint, settings, flat);
+            const action = await chooseCalibrationAction(checkpoint, mismatch);
+            if (action === 'cancel') {
+                setNotice('Calibration start canceled. Saved progress and the current setup are unchanged.');
+                return;
+            }
+            if (action === 'resume' && !mismatch) {
+                measured = checkpoint.samples.slice();
+                startIndex = measured.findIndex((sample) => !sample);
+                if (startIndex < 0) startIndex = flat.length;
+                restoreCalibrationReadings(checkpoint);
+                await logCalibration(`Resuming saved calibration ${checkpoint.completedCount}/${flat.length} points at point ${Math.min(startIndex + 1, flat.length)}/${flat.length}.`);
+            } else {
+                await clearCalibrationCheckpoint(checkpoint);
+                checkpoint = null;
+            }
+        }
+        if (!checkpoint) {
+            checkpoint = {
+                version: 1,
+                scanId: `${Date.now()}-${Math.random().toString(36).slice(2)}`,
+                createdAt: new Date().toISOString(),
+                settings: { ...settings },
+                wposOrigin: structuredClone(state.wposOrigin),
+                homeMachineZ: state.homeMachineZ,
+                planSignature: scanPlanSignature(flat),
+                totalPoints: flat.length,
+                completedCount: 0,
+                referenceZ: null,
+            };
+            measured = Array(flat.length).fill(null);
+            await storage.set(calibrationProgressKey, checkpoint);
+            state.calibrationCheckpoint = { ...checkpoint, samples: measured };
+            state.calibrationReadings = [];
+            state.calibrationReadingCount = 0;
+            renderCalibrationCheckpoint();
+            renderProbeReadings();
+        }
+        $('progress').value = startIndex / flat.length;
+        $('progressPercent').textContent = `${Math.round((startIndex / flat.length) * 100)}%`;
         if (settings.surfaceType === 'conductive') {
-            await confirmUser('Attach the probe clip to the conductive work surface for the calibration.', 'Prepare conductive probe', 'Clip is attached');
+            await confirmUser(startIndex
+                ? `Resume at saved point ${startIndex + 1} of ${flat.length}. Attach the probe clip to the material and keep it connected during the calibration.`
+                : 'Attach the probe clip to the conductive work surface for the calibration.', 'Prepare conductive probe', 'Clip is attached');
         }
         await machine.setBusy(true, 'Surface height-map calibration');
         const retractMachineZ = state.wposOrigin.surfaceMachineZ + (limits.zHomePositive ? 1 : -1) * settings.fullRetract;
@@ -1611,8 +1779,8 @@ async function calibrate() {
         setNotice(`Retracting to WPOS +${settings.fullRetract.toFixed(1)} mm before moving to the first probe point…`);
         await sendAndWait(`G90 G53 G0 Z${retractMachineZ.toFixed(3)}`);
         await waitIdle();
-        let firstZ = null;
-        for (let index = 0; index < flat.length; index += 1) {
+        let firstZ = Number.isFinite(checkpoint.referenceZ) ? checkpoint.referenceZ : null;
+        for (let index = startIndex; index < flat.length; index += 1) {
             if (state.stopRequested) break;
             const point = flat[index];
             const nextPoint = flat[index + 1];
@@ -1628,6 +1796,8 @@ async function calibrate() {
             if (state.stopRequested) break;
             const probe = await probeAt(settings, point, index, flat.length, limits, pointStart.mpos[2]);
             if (firstZ === null) firstZ = probe.z;
+            measured[index] = { x: point.x, y: point.y, ix: point.ix, iy: point.iy, z: round(probe.z), machineZ: round(probe.machineZ), kind: point.kind ?? 'grid' };
+            await saveCalibrationCheckpointPoint(checkpoint, measured, index, firstZ);
             state.calibrationReadings.unshift({ x: point.x, y: point.y, zAbs: probe.machineZ, zOffset: round(probe.z - firstZ) });
             state.calibrationReadingCount += 1;
             if (state.calibrationReadings.length > 10) state.calibrationReadings.pop();
@@ -1640,27 +1810,11 @@ async function calibrate() {
             await sendAndWait(`G90 G53 G0 Z${retractMachineZ.toFixed(3)}`);
             await waitIdle();
             setNotice(`Point ${index + 1}/${flat.length} saved. Retract complete; moving to the next point…`);
-            measured.push({ x: point.x, y: point.y, ix: point.ix, iy: point.iy, z: round(probe.z), kind: point.kind ?? 'grid' });
             $('progress').value = (index + 1) / flat.length;
             $('progressPercent').textContent = `${Math.round(((index + 1) / flat.length) * 100)}%`;
         }
-        if (state.stopRequested) throw new Error('Calibration stopped at a point boundary. Partial measurements were discarded; the previous saved map remains available.');
-        if (measured.length !== flat.length || measured.some((sample) => !Number.isFinite(sample.z))) throw new Error('Calibration ended with missing measurements; no new map was saved.');
-        if (settings.parkMode === 'machine-zero') {
-            setNotice('All probe points measured. Raising to machine Z0, then parking at machine X0 Y0…');
-            await sendAndWait('G90 G53 G0 Z0');
-            await waitIdle();
-            await moveXYWithProbeGuard('G90 G53 G0 X0 Y0', 'to machine X0 Y0');
-        } else {
-            const destination = settings.parkMode === 'wpos-origin' ? 'WPOS X0 Y0' : `machine X${settings.parkX.toFixed(3)} Y${settings.parkY.toFixed(3)}`;
-            setNotice(`All probe points measured. Retracting to WPOS +${settings.fullRetract.toFixed(1)} mm, then parking at ${destination}…`);
-            await sendAndWait(`G90 G53 G0 Z${retractMachineZ.toFixed(3)}`);
-            await waitIdle();
-            const parkMove = settings.parkMode === 'wpos-origin'
-                ? 'G54 G90 G0 X0 Y0'
-                : `G90 G53 G0 X${settings.parkX.toFixed(3)} Y${settings.parkY.toFixed(3)}`;
-            await moveXYWithProbeGuard(parkMove, `to ${destination}`);
-        }
+        if (state.stopRequested) throw new Error('Calibration stopped at a point boundary. Completed probe points are saved and can be resumed after rehoming and probing the same WPOS origin.');
+        if (measured.length !== flat.length || measured.some((sample) => !Number.isFinite(sample?.z))) throw new Error('Calibration ended with missing measurements. Completed points are saved and can be resumed.');
         state.map = {
             originX: state.origin.x, originY: state.origin.y,
             directionX: limits.directionX, directionY: limits.directionY,
@@ -1678,12 +1832,36 @@ async function calibrate() {
             createdAt: new Date().toISOString(),
         };
         await storage.set('heightMap', state.map);
+        await clearCalibrationCheckpoint(checkpoint);
         await storage.delete('stlExport');
         state.stlExport = null;
         renderStlExport();
         $('stlStatus').textContent = '';
         $('copyStlStatus').textContent = '';
-        setNotice(`Calibration saved (${flat.length} points${state.project.mappingMode === 'contour' ? ', including perimeter and interior grid samples' : ''}).`, 'success');
+        let parkError = null;
+        try {
+            if (settings.parkMode === 'machine-zero') {
+                setNotice('All probe points measured and saved. Raising to machine Z0, then parking at machine X0 Y0…');
+                await sendAndWait('G90 G53 G0 Z0');
+                await waitIdle();
+                await moveXYWithProbeGuard('G90 G53 G0 X0 Y0', 'to machine X0 Y0');
+            } else {
+                const destination = settings.parkMode === 'wpos-origin' ? 'WPOS X0 Y0' : `machine X${settings.parkX.toFixed(3)} Y${settings.parkY.toFixed(3)}`;
+                setNotice(`All probe points measured and saved. Retracting to WPOS +${settings.fullRetract.toFixed(1)} mm, then parking at ${destination}…`);
+                await sendAndWait(`G90 G53 G0 Z${retractMachineZ.toFixed(3)}`);
+                await waitIdle();
+                const parkMove = settings.parkMode === 'wpos-origin'
+                    ? 'G54 G90 G0 X0 Y0'
+                    : `G90 G53 G0 X${settings.parkX.toFixed(3)} Y${settings.parkY.toFixed(3)}`;
+                await moveXYWithProbeGuard(parkMove, `to ${destination}`);
+            }
+        } catch (error) {
+            parkError = error;
+            await logCalibration(`Calibration map saved; park move failed: ${error.message}`);
+        }
+        setNotice(parkError
+            ? `Calibration saved (${flat.length} points), but the return-to-park move did not complete: ${parkError.message}`
+            : `Calibration saved (${flat.length} points${state.project.mappingMode === 'contour' ? ', including perimeter and interior grid samples' : ''}).`, parkError ? 'error' : 'success');
     } catch (err) {
         await logCalibration(`CALIBRATION ERROR: ${err.message}`);
         setNotice(err.message, 'error');
@@ -1781,7 +1959,9 @@ async function start() {
         updateWorkZeroVisibility();
         state.map = await storage.get('heightMap', null);
         state.stlExport = await storage.get('stlExport', null);
+        state.calibrationCheckpoint = await readCalibrationCheckpoint();
         renderStlExport();
+        renderCalibrationCheckpoint();
         $('exaggeration').addEventListener('input', drawSurfaceMap);
         $('copyCalibrationLog').addEventListener('click', async () => {
             try { await navigator.clipboard.writeText(calibrationLog.join('\n')); setNotice('Calibration log copied.', 'success'); }
@@ -1826,7 +2006,11 @@ async function start() {
         document.addEventListener('keyup', stopContinuousJog);
         $('calibrate').addEventListener('click', calibrate);
         $('resumeProbe').addEventListener('click', resumePausedCalibration);
-        $('stop').addEventListener('click', () => { state.stopRequested = true; state.probeMovePause?.resumeResolve?.(false); state.abortPuck?.(); setNotice('Stop requested. The current controller move/probe will finish before calibration stops.'); });
+        $('stop').addEventListener('click', () => { state.stopRequested = true; state.probeMovePause?.resumeResolve?.(false); state.abortPuck?.(); setNotice('Stop requested. The current controller move/probe will finish; completed points remain saved for resuming.'); });
+        $('cancelResumeCalibration').addEventListener('click', () => resolveCalibrationAction('cancel'));
+        $('startNewCalibration').addEventListener('click', () => resolveCalibrationAction('new'));
+        $('resumeSavedCalibration').addEventListener('click', () => resolveCalibrationAction('resume'));
+        $('resumeCalibrationDialog').addEventListener('cancel', (event) => { event.preventDefault(); resolveCalibrationAction('cancel'); });
         $('clearMap').addEventListener('click', async () => { state.map = null; state.stlExport = null; await storage.delete('heightMap'); await storage.delete('stlExport'); renderStlExport(); $('stlStatus').textContent = ''; await refreshUi(); setNotice('Saved height map and STL export deleted.', 'success'); });
         $('exportStl').addEventListener('click', exportSurfaceStl);
         $('copyStlText').addEventListener('click', copyStlText);
