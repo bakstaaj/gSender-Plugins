@@ -27,7 +27,7 @@ const PERIMETER_RELEASE_DIAMETER_FACTOR = 0.75;
 const Z_LIMIT_MARGIN = 0.5;
 const MAX_SURFACE_SAMPLES = 15000;
 const MAX_PERIMETER_SAMPLES = 1200;
-const state = { connected: false, controllerHomed: false, homingStateInitialized: false, homingEventReceived: false, homedPositionCaptured: false, homingError: null, motionState: 'Unknown', machinePosition: null, workPosition: null, lastProbeStatusAt: 0, lastControllerStatusAt: 0, lastStatusQueryAt: 0, statusQueryAttempts: 0, statusOutageStartedAt: 0, lastStatusQueryError: null, statusRecoveryPromise: null, recoveryDialogOpen: false, recoveryCanceled: false, recoveryHoldInFlight: false, positionMode: 'wpos', gotoXYContext: null, xyMoveGuard: null, busy: false, continuousJog: null, rectangleOriginMachine: null, wposZeroMachine: null, bedWposZ: null, bedOriginWpos: null, bedStartMpos: null, originSafeRetract: false, originMessage: null, probePinKnown: false, probePinActive: false, probePinReportingSeen: false, lastProbeStatusLine: null, lastProbeStatusHadPinField: false, probeStatusSequence: 0, probeContactSequence: 0, lastProbeContact: null, activeProbeCapture: null, probeSignalTested: false, probeTestRunning: false, cancelProbeTest: false, finishProbeTest: null, scanRunning: false, stopScan: false, scanCheckpoint: null, incompleteScan: null, perimeterPoints: [], surfaceRings: [], surfaceCenter: null, surfaceComplete: false, fullSurfaceAvailable: false, latest: null };
+const state = { connected: false, controllerHomed: false, homingStateInitialized: false, homingEventReceived: false, homedPositionCaptured: false, homedMachinePosition: null, homingError: null, motionState: 'Unknown', machinePosition: null, workPosition: null, lastProbeStatusAt: 0, lastControllerStatusAt: 0, lastStatusQueryAt: 0, statusQueryAttempts: 0, statusOutageStartedAt: 0, lastStatusQueryError: null, statusRecoveryPromise: null, recoveryDialogOpen: false, recoveryCanceled: false, recoveryHoldInFlight: false, positionMode: 'wpos', gotoXYContext: null, xyMoveGuard: null, busy: false, continuousJog: null, rectangleOriginMachine: null, wposZeroMachine: null, bedWposZ: null, bedOriginWpos: null, bedStartMpos: null, originSafeRetract: false, originMessage: null, probePinKnown: false, probePinActive: false, probePinReportingSeen: false, lastProbeStatusLine: null, lastProbeStatusHadPinField: false, probeStatusSequence: 0, probeContactSequence: 0, lastProbeContact: null, activeProbeCapture: null, probeSignalTested: false, probeTestRunning: false, cancelProbeTest: false, finishProbeTest: null, scanRunning: false, stopScan: false, scanCheckpoint: null, incompleteScan: null, perimeterPoints: [], surfaceRings: [], surfaceCenter: null, surfaceComplete: false, fullSurfaceAvailable: false, latest: null };
 let persistenceTimer = 0;
 let scanPersistTimer = 0;
 let diagnosticPersistTimer = 0;
@@ -447,6 +447,10 @@ function updateLiveStatus(status = null) {
     $('homeStatus').textContent = state.controllerHomed ? 'Machine already homed' : homeStatusText;
     const jogDisabled = !state.connected || !state.controllerHomed
         || (state.busy && !state.continuousJog) || state.probeTestRunning;
+    const setWposDisabled = !state.connected || !state.controllerHomed || state.motionState !== 'Idle'
+        || state.busy || state.probeTestRunning || state.workflowRunning || state.scanRunning;
+    $('wposSystem').disabled = setWposDisabled;
+    $('setWposZero').disabled = setWposDisabled;
     $('jogStep').disabled = jogDisabled;
     document.querySelectorAll('[data-axis][data-sign]').forEach((button) => {
         button.disabled = jogDisabled || (!state.continuousJog && state.motionState !== 'Idle');
@@ -694,6 +698,7 @@ async function adoptControllerHoming(hasHomed) {
     });
     if (!state.controllerHomed) {
         state.homedPositionCaptured = false;
+        state.homedMachinePosition = null;
         state.rectangleOriginMachine = null;
         state.wposZeroMachine = null;
         state.bedWposZ = null;
@@ -719,6 +724,7 @@ async function adoptControllerHoming(hasHomed) {
         if (!state.controllerHomed || snapshot.state !== 'Idle') return;
         state.machinePosition = snapshot.mpos;
         state.workPosition = snapshot.wpos;
+        state.homedMachinePosition = snapshot.mpos;
         state.homedPositionCaptured = true;
     } catch (error) {
         logHomingDiagnostic('Could not capture homed position', { message: error.message });
@@ -869,6 +875,7 @@ async function homeMachine() {
     state.controllerHomed = false;
     state.homingStateInitialized = true;
     state.homedPositionCaptured = false;
+    state.homedMachinePosition = null;
     state.rectangleOriginMachine = null;
     state.wposZeroMachine = null;
     state.bedWposZ = null;
@@ -892,6 +899,7 @@ async function homeMachine() {
         state.homingError = null;
         state.machinePosition = snapshot.mpos;
         state.workPosition = snapshot.wpos;
+        state.homedMachinePosition = snapshot.mpos;
         state.homedPositionCaptured = true;
         $('saveStatus').textContent = '';
     } catch (error) {
@@ -910,17 +918,15 @@ async function jog(axis, sign) {
     if ($('jogStep').value === 'continuous') return;
     const step = Number($('jogStep').value);
     if (![0.1, 1, 10].includes(step)) return;
-    state.rectangleOriginMachine = null;
-    state.wposZeroMachine = null;
-    state.bedWposZ = null;
-    state.originSafeRetract = false;
-    state.originMessage = 'Machine jogged. Probe the WPOS origin again before scanning.';
     state.busy = true;
     updateLiveStatus();
     let busyAnnounced = false;
+    let jogCommandSent = false;
+    let snapshot = null;
     try {
-        const snapshot = await requestFreshControllerStatus();
+        snapshot = await requestFreshControllerStatus();
         if (snapshot.state !== 'Idle') throw new Error(`Jogging requires an idle machine (current state: ${snapshot.state}).`);
+        if (!snapshot.mpos?.every(Number.isFinite)) throw new Error('The controller did not report a valid fresh machine position; jog was not sent.');
         const limits = await readProbeLimits();
         const target = [...snapshot.mpos];
         const axisIndex = { X: 0, Y: 1, Z: 2 }[axis];
@@ -929,15 +935,71 @@ async function jog(axis, sign) {
         if (target[axisIndex] < travel.min || target[axisIndex] > travel.max) {
             throw new Error(`${axis} jog would exceed reported machine travel ${travel.min}..${travel.max} mm.`);
         }
+        state.rectangleOriginMachine = null;
+        state.wposZeroMachine = null;
+        state.bedWposZ = null;
+        state.originSafeRetract = false;
+        state.originMessage = 'Machine jogged. Probe the WPOS origin again before scanning.';
         await machine.setBusy(true, `Jog ${axis} ${sign > 0 ? '+' : '−'}${step} mm`);
         busyAnnounced = true;
+        jogCommandSent = true;
         await sendJogCommand(`G21 G91 G0 ${axis}${(sign * step).toFixed(3)}`);
         await waitForIdle();
         await sendJogCommand('G90', 5000);
         $('originCaptureStatus').textContent = `Jogged ${axis} ${sign > 0 ? '+' : '−'}${step} mm. Probe WPOS origin again before scanning.`;
     } catch (error) {
-        try { await sendJogCommand('G90', 5000); } catch { /* preserve the jog error */ }
+        if (jogCommandSent) try { await sendJogCommand('G90', 5000); } catch { /* preserve the jog error */ }
         $('originCaptureStatus').textContent = error.message;
+        logHomingDiagnostic('Manual jog rejected or failed', {
+            axis, sign, step, message: error.message,
+            motionState: snapshot?.state ?? state.motionState,
+            mpos: snapshot?.mpos ?? state.machinePosition,
+            wpos: snapshot?.wpos ?? state.workPosition
+        });
+    } finally {
+        state.busy = false;
+        if (busyAnnounced) try { await machine.setBusy(false); } catch { /* controller may have disconnected */ }
+        await checkConnection();
+    }
+}
+
+async function setWposZeroHere() {
+    if (!state.connected || !state.controllerHomed || state.busy || state.probeTestRunning || state.workflowRunning) return;
+    const p = Number($('wposSystem').value);
+    if (!Number.isInteger(p) || p < 1 || p > 6) {
+        setOriginMessage('Choose a valid work coordinate system from G54 to G59.');
+        return;
+    }
+    const system = `G${53 + p}`;
+    state.busy = true;
+    updateLiveStatus();
+    let busyAnnounced = false;
+    try {
+        const snapshot = await requestFreshControllerStatus();
+        if (snapshot.state !== 'Idle') throw new Error(`Setting WPOS requires an idle machine (current state: ${snapshot.state}).`);
+        if (!snapshot.mpos?.every(Number.isFinite)) throw new Error('The controller did not report a valid fresh machine position; no coordinate offset was changed.');
+        await machine.setBusy(true, `Set ${system} work position to zero here`);
+        busyAnnounced = true;
+        const command = `G10 L20 P${p} X0 Y0 Z0`;
+        logHomingDiagnostic('Set WPOS zero TX', { workCoordinateSystem: system, mpos: snapshot.mpos, wpos: snapshot.wpos, command });
+        const result = await queryController(command, { until: 'ok-or-error', timeout: 10000, maxLines: 40 });
+        logHomingDiagnostic('Set WPOS zero RX', { workCoordinateSystem: system, complete: result.complete, ok: result.ok, error: result.error, reason: result.reason, lines: result.lines });
+        if (!result.complete || !result.ok || result.error) {
+            throw new Error(`Controller did not accept the WPOS update: ${result.error ?? result.lines?.join(' ') ?? result.reason}`);
+        }
+        if (p === 1) {
+            state.rectangleOriginMachine = null;
+            state.wposZeroMachine = null;
+            state.bedWposZ = null;
+            state.originSafeRetract = false;
+        }
+        try { await requestFreshControllerStatus(); } catch (error) {
+            logHomingDiagnostic('Fresh status after setting WPOS unavailable', { message: error.message });
+        }
+        setOriginMessage(`Set ${system} WPOS X0 Y0 Z0 at the current machine position. No movement was sent.`);
+    } catch (error) {
+        setOriginMessage(`Set WPOS failed: ${error.message}`);
+        logHomingDiagnostic('Set WPOS zero failed', { workCoordinateSystem: system, message: error.message, motionState: state.motionState });
     } finally {
         state.busy = false;
         if (busyAnnounced) try { await machine.setBusy(false); } catch { /* controller may have disconnected */ }
@@ -949,23 +1011,24 @@ async function startContinuousJog(axis, sign, inputEvent) {
     if (state.busy || !state.controllerHomed || !['X', 'Y', 'Z'].includes(axis) || ![-1, 1].includes(sign)) return;
     const jog = { axis, sign, pointerId: inputEvent?.pointerId ?? null, key: inputEvent?.key ?? null, stopRequested: false, commandSent: false, cancelSent: false };
     state.continuousJog = jog;
-    state.rectangleOriginMachine = null;
-    state.wposZeroMachine = null;
-    state.bedWposZ = null;
-    state.originSafeRetract = false;
-    state.originMessage = 'Machine jogged. Probe the WPOS origin again before scanning.';
     state.busy = true;
     updateLiveStatus();
     let busyAnnounced = false;
     try {
         const snapshot = await requestFreshControllerStatus();
         if (snapshot.state !== 'Idle') throw new Error(`Jogging requires an idle machine (current state: ${snapshot.state}).`);
+        if (!snapshot.mpos?.every(Number.isFinite)) throw new Error('The controller did not report a valid fresh machine position; jog was not sent.');
         const limits = await readProbeLimits();
         const travel = axis === 'X' ? limits.x : axis === 'Y' ? limits.y : limits.z;
         const position = snapshot.mpos[{ X: 0, Y: 1, Z: 2 }[axis]];
         const distance = Math.abs((sign > 0 ? travel.max : travel.min) - position) - 0.1;
         if (!Number.isFinite(distance) || distance <= 0.1) throw new Error(`${axis} is already at its machine travel limit.`);
         if (jog.stopRequested) return;
+        state.rectangleOriginMachine = null;
+        state.wposZeroMachine = null;
+        state.bedWposZ = null;
+        state.originSafeRetract = false;
+        state.originMessage = 'Machine jogged. Probe the WPOS origin again before scanning.';
         await machine.setBusy(true, `Continuous jog ${axis} ${sign > 0 ? '+' : '−'}`);
         busyAnnounced = true;
         jog.commandSent = true;
@@ -983,6 +1046,11 @@ async function startContinuousJog(axis, sign, inputEvent) {
             try { await machine.command('gcode', '[\\x85]'); jog.cancelSent = true; await waitForIdle(); } catch { /* preserve the jog error */ }
         }
         $('originCaptureStatus').textContent = error.message;
+        logHomingDiagnostic('Continuous jog rejected or failed', {
+            axis, sign, message: error.message, motionState: state.motionState,
+            mpos: state.machinePosition, wpos: state.workPosition,
+            commandSent: jog.commandSent, stopRequested: jog.stopRequested
+        });
     } finally {
         state.continuousJog = null;
         state.busy = false;
@@ -1049,10 +1117,16 @@ async function readProbeLimits() {
                 if (missing.length === 0) {
                     const configuredTravels = configuredTravelSettings.map(([, value]) => value);
                     const travels = effectiveTravelSettings.map(([, value]) => value);
+                    const settingForcesOrigin = (homingCycleSetting & 8) !== 0;
+                    const homedAtMachineZero = state.homedPositionCaptured
+                        && state.homedMachinePosition?.every((value) => Number.isFinite(value) && Math.abs(value) <= 0.1);
+                    const forceSetOrigin = settingForcesOrigin || Boolean(homedAtMachineZero);
                     logHomingDiagnostic(`Controller travel settings parsed on attempt ${attempt}/3`, {
                         homingMask,
                         homingCycleSetting,
-                        forceSetOrigin: (homingCycleSetting & 8) !== 0,
+                        forceSetOrigin,
+                        settingForcesOrigin,
+                        homedAtMachineZero: Boolean(homedAtMachineZero),
                         hardLimitsEnabled: hardLimitsSetting === 1,
                         configuredTravels,
                         homingPullOffMm: pullOffClearance,
@@ -1066,19 +1140,32 @@ async function readProbeLimits() {
                         update();
                         persistSettingsSoon();
                     }
-                    // $23 selects the direction toward the homing switch. When grblHAL's
-                    // $22 bit 3 forces machine zero at the switch, usable travel extends
-                    // away from home, opposite that direction. Otherwise retain the
-                    // normal GRBL machine-coordinate range for each homing side.
-                    const forceSetOrigin = (homingCycleSetting & 8) !== 0;
+                    // grblHAL normally uses negative machine coordinates on every axis.
+                    // Some compatible controllers instead report machine zero at the
+                    // completed home position; detect that from the captured post-home
+                    // position so travel signs follow the actual controller convention.
                     const axis = (bit, travel) => {
-                        const homePositive = (homingMask & bit) === 0;
-                        const travelPositive = forceSetOrigin ? !homePositive : homePositive;
-                        return { homePositive, min: travelPositive ? 0 : -travel, max: travelPositive ? travel : 0 };
+                        const homeNegative = (homingMask & bit) !== 0;
+                        if (forceSetOrigin) {
+                            // With machine zero forced to the switch, the usable
+                            // range extends opposite the homing direction.
+                            const travelPositive = homeNegative;
+                            return { homePositive: !homeNegative, min: travelPositive ? 0 : -travel, max: travelPositive ? travel : 0 };
+                        }
+                        // grblHAL's normal machine space is negative on every axis,
+                        // irrespective of homing direction. Hard-limit pull-off
+                        // reserves the far endpoint as well as reducing travel.
+                        return { homePositive: !homeNegative, min: -travel, max: -pullOffClearance };
                     };
                     const x = axis(1, travels[0]);
                     const y = axis(2, travels[1]);
                     const z = axis(4, travels[2]);
+                    logHomingDiagnostic('Controller machine travel envelope calculated', {
+                        forceSetOrigin,
+                        hardLimitsEnabled: hardLimitsSetting === 1,
+                        homingPullOffMm: pullOffClearance,
+                        x, y, z
+                    });
                     return { x, y, z, zHomePositive: z.homePositive, minZ: z.min, maxZ: z.max, hardLimitsEnabled: hardLimitsSetting === 1, homingPullOffMm: pullOffClearance };
                 }
                 lastError = `Missing or invalid ${missing.join(', ')} in the controller's $$ response.`;
@@ -1680,20 +1767,26 @@ async function openGotoXYDialog() {
     try {
         const snapshot = await requestFreshControllerStatus();
         if (snapshot.state !== 'Idle') throw new Error(`GOTO XY requires an idle machine (current state: ${snapshot.state}).`);
-        await requireG54Active();
+        if (!snapshot.mpos?.every(Number.isFinite)) throw new Error('The controller did not report a valid fresh machine position.');
+        if (mode === 'wpos') await requireG54Active();
         const limits = await readProbeLimits();
-        const zero = state.wposZeroMachine?.every(Number.isFinite)
+        const hasSafeOrigin = Boolean(state.rectangleOriginMachine && state.wposZeroMachine?.every(Number.isFinite) && state.originSafeRetract);
+        const knownZero = state.wposZeroMachine?.every(Number.isFinite)
             ? [...state.wposZeroMachine]
-            : snapshot.mpos.map((value, index) => value - snapshot.wpos[index]);
-        if (!zero.every(Number.isFinite)) throw new Error('Could not determine the current G54 WPOS-to-machine offset.');
+            : snapshot.wpos?.every(Number.isFinite)
+                ? snapshot.mpos.map((value, index) => value - snapshot.wpos[index])
+                : null;
+        if (mode === 'wpos' && !knownZero?.every(Number.isFinite)) {
+            throw new Error('The fresh controller report did not include WPOS, so the work-coordinate offset cannot be verified. Select MPOS or wait for a report that includes WPOS.');
+        }
+        const zero = knownZero ?? [0, 0, 0];
         const offsetX = mode === 'wpos' ? zero[0] : 0;
         const offsetY = mode === 'wpos' ? zero[1] : 0;
         const minX = limits.x.min + Z_LIMIT_MARGIN - offsetX;
         const maxX = limits.x.max - Z_LIMIT_MARGIN - offsetX;
         const minY = limits.y.min + Z_LIMIT_MARGIN - offsetY;
         const maxY = limits.y.max - Z_LIMIT_MARGIN - offsetY;
-        const hasSafeOrigin = Boolean(state.rectangleOriginMachine && state.wposZeroMachine && state.originSafeRetract);
-        const safeWposZ = hasSafeOrigin ? fullClearanceHeight(state.latest) : snapshot.wpos[2];
+        const safeWposZ = hasSafeOrigin ? fullClearanceHeight(state.latest) : (snapshot.wpos?.[2] ?? null);
         const safeMachineZ = hasSafeOrigin ? zero[2] + safeWposZ : snapshot.mpos[2];
         if (hasSafeOrigin && (!Number.isFinite(safeMachineZ) || safeMachineZ < limits.z.min + Z_LIMIT_MARGIN || safeMachineZ > limits.z.max - Z_LIMIT_MARGIN)) {
             throw new Error(`Full-clearance WPOS Z${safeWposZ.toFixed(3)} maps outside reported machine Z travel.`);
@@ -1849,19 +1942,23 @@ async function executeGotoXY() {
     const mode = context.mode;
     const snapshot = await requestFreshControllerStatus();
     if (snapshot.state !== 'Idle') throw new Error(`GOTO XY requires an idle machine (current state: ${snapshot.state}).`);
+    if (!snapshot.mpos?.every(Number.isFinite)) throw new Error('The controller did not report a valid fresh machine position; no move was sent.');
     if (!state.probePinKnown || state.probePinActive) throw new Error('GOTO XY requires a confirmed clear probe input.');
     if (mode === 'wpos') await requireG54Active();
     const limits = await readProbeLimits();
     const zero = context.zero;
-    const liveOffset = snapshot.mpos.map((value, index) => value - snapshot.wpos[index]);
-    if (!zero?.every(Number.isFinite) || liveOffset.some((value, index) => Math.abs(value - zero[index]) > 0.15)) {
-        throw new Error('The active G54 offsets changed after opening GOTO XY. Close the dialog and open it again.');
+    const liveOffset = snapshot.wpos?.every(Number.isFinite)
+        ? snapshot.mpos.map((value, index) => value - snapshot.wpos[index])
+        : null;
+    if (mode === 'wpos' && (!zero?.every(Number.isFinite) || !liveOffset
+        || liveOffset.some((value, index) => Math.abs(value - zero[index]) > 0.15))) {
+        throw new Error('The active G54 offsets are unavailable or changed after opening GOTO XY. Close the dialog and reopen it after WPOS is reported.');
     }
     // This command preserves the reported current Z unless a confirmed safe
     // origin requires a lift. Do not reject an unchanged endpoint such as
     // machine Z0 just because the margin reserves it from new Z moves.
     const targetMachine = validateMachineTarget({ x: x + context.offsetX, y: y + context.offsetY }, limits);
-    const targetWpos = [targetMachine.x - zero[0], targetMachine.y - zero[1], snapshot.wpos[2]];
+    const targetWpos = [targetMachine.x - (zero?.[0] ?? 0), targetMachine.y - (zero?.[1] ?? 0), snapshot.wpos?.[2] ?? null];
     logHomingDiagnostic('GOTO XY execution plan', {
         mode, input: { x, y }, targetMachine, targetWpos,
         startMpos: snapshot.mpos, startWpos: snapshot.wpos,
@@ -1889,8 +1986,8 @@ async function executeGotoXY() {
             const lifted = await waitForIdle();
             if (Math.abs(lifted.mpos[2] - safeMachineZ) > 0.12) throw new Error('Controller did not confirm the full-clearance Z position.');
         }
-        const finalWpos = [targetWpos[0], targetWpos[1], context.hasSafeOrigin ? Math.max(snapshot.wpos?.[2] ?? 0, context.safeWposZ) : snapshot.wpos[2]];
-        validateMachineTarget({ x: zero[0] + finalWpos[0], y: zero[1] + finalWpos[1] }, limits);
+        const finalWpos = [targetWpos[0], targetWpos[1], context.hasSafeOrigin ? Math.max(snapshot.wpos?.[2] ?? 0, context.safeWposZ) : (snapshot.wpos?.[2] ?? null)];
+        if (mode === 'wpos') validateMachineTarget({ x: zero[0] + finalWpos[0], y: zero[1] + finalWpos[1] }, limits);
         if (context.hasSafeOrigin && finalWpos[2] > (snapshot.wpos?.[2] ?? finalWpos[2]) + 0.1) {
             validateMachineZ(zero[2] + finalWpos[2], limits, 'GOTO XY final clearance');
         }
@@ -5149,6 +5246,7 @@ async function initialize() {
     // Continue/cancel handlers are bound for each dialog run, matching the working
     // Surface Height Map probe dialog lifecycle.
     $('homeButton').addEventListener('click', homeMachine);
+    $('setWposZero').addEventListener('click', () => { void setWposZeroHere(); });
     $('copyHomingLog').addEventListener('click', async () => {
         try {
             await navigator.clipboard.writeText(homingDiagnostics.join('\n'));

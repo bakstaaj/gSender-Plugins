@@ -18,8 +18,8 @@
     "react/jsx-dev-runtime": "./vendor/react-jsx-dev-runtime.js"
   }
 }</script>
-    <script type="module" crossorigin src="./assets/index-Bx9OkbeU.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-CyZBE7w5.css">
+    <script type="module" crossorigin src="./assets/index--a8b2RM6.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-aDFu3BLH.css">
   </head>
   <body>
     <main class="app-shell">
@@ -130,6 +130,7 @@
                 <div class="object-title"><div><h3>Jog and Probe</h3><p>Position the probe above exposed bed just in front of the part.</p></div><span id="jogConnection" class="state-chip"><i></i> Checking</span></div>
                 <div class="jog-top"><label>Jog step<select id="jogStep"><option value="0.1">0.1 mm</option><option value="1" selected>1 mm</option><option value="10">10 mm</option><option value="continuous">Continuous (hold)</option></select></label><button id="homeButton" class="button button-outline" type="button" disabled>⌂ &nbsp;Home machine</button><span class="homed-state" id="homeStatus">Machine not homed</span></div>
                 <div class="dro" aria-label="Position coordinates"><button id="coordinateMode" class="dro-mode" type="button" title="Toggle between machine position and work position." aria-pressed="true">WPOS</button><span><b>X</b><output id="droX">—</output></span><span><b>Y</b><output id="droY">—</output></span><span><b>Z</b><output id="droZ">—</output></span></div>
+                <div class="wpos-tools"><label for="wposSystem">Work coordinate system<select id="wposSystem"><option value="1">G54</option><option value="2">G55</option><option value="3">G56</option><option value="4">G57</option><option value="5">G58</option><option value="6">G59</option></select></label><button id="setWposZero" class="button button-outline" type="button" disabled>Set WPOS to zero here</button><span>Sets X0 Y0 Z0 in the selected system at the current position; no movement.</span></div>
                 <div class="jog-layout" aria-label="Machine jog controls"><div class="xy-pad">
                   <button id="jogYPlus" data-axis="Y" data-sign="1" aria-label="Jog Y positive">Y<span>+</span></button><button id="jogXMinus" data-axis="X" data-sign="-1" aria-label="Jog X negative">X−</button><span class="pad-center" aria-hidden="true">✣</span><button id="jogXPlus" data-axis="X" data-sign="1" aria-label="Jog X positive">X+</button><button id="jogYMinus" data-axis="Y" data-sign="-1" aria-label="Jog Y negative">Y<span>−</span></button>
                 </div><div class="z-pad"><button id="jogZPlus" data-axis="Z" data-sign="1" aria-label="Jog Z positive">Z+</button><div class="z-label">Z AXIS</div><button id="jogZMinus" data-axis="Z" data-sign="-1" aria-label="Jog Z negative">Z−</button></div><div class="control-actions"><button id="gotoXY" class="button button-outline" type="button" disabled>Go to XY</button><button id="gotoOrigin" class="button button-outline" type="button" hidden disabled>Go to part center</button><button id="probeOriginButton" class="button button-primary" type="button" disabled>Start Probe</button><button id="stopPerimeterScan" class="button stop-button" type="button" disabled>Stop after current move</button></div></div>
