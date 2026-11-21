@@ -1,0 +1,19 @@
+{
+  "id": "com.bakstaaj.cnc-probe-offset-calibration",
+  "name": "CNC Probe Offset Calibration",
+  "version": "0.1.0",
+  "description": "Calibrate the fixed tool sensor against a bed probe and save an editable offset in plugin storage.",
+  "engine": "1.7.0-Edge-2",
+  "ui": {
+    "entry": "ui/index.html",
+    "contributions": [
+      { "slot": "tools-page", "route": "cnc-probe-offset-calibration", "label": "Probe Offset Calibration" }
+    ]
+  },
+  "permissions": ["machine:read", "machine:command", "machine:query", "machine:parse", "redux:read", "storage"],
+  "capabilities": {
+    "requestTypes": ["machine:get:context", "machine:command", "machine:query", "machine:parser:register", "machine:parser:unregister", "redux:get:state", "storage:get", "storage:set"],
+    "topics": [],
+    "allowedFunctions": ["machine", "redux", "storage"]
+  }
+}
