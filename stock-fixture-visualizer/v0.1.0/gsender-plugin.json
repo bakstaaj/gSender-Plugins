@@ -1,0 +1,18 @@
+{
+  "id": "com.bakstaaj.stock-fixture-visualizer",
+  "name": "Stock & Clamp Visualizer",
+  "version": "0.1.0",
+  "description": "Build a local library of stock and clamp models, place them around an NC toolpath, and inspect the setup in a free-orbit 3D view.",
+  "engine": ">=1.7.0-Edge-3",
+  "permissions": ["storage"],
+  "ui": {
+    "entry": "ui/index.html",
+    "contributions": [
+      { "slot": "tools-page", "route": "stock-fixture-visualizer", "label": "Stock & Clamp Visualizer" }
+    ]
+  },
+  "capabilities": {
+    "requestTypes": ["storage:get", "storage:set"],
+    "allowedFunctions": ["storage"]
+  }
+}
