@@ -1,0 +1,19 @@
+{
+  "name": "gsender-stock-fixture-visualizer",
+  "version": "0.1.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node scripts/copy-occt.js && vite build"
+  },
+  "dependencies": {
+    "@sienci/gsender-plugin-sdk": "0.2.3",
+    "occt-import-js": "^0.0.23",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "three": "0.168.0"
+  },
+  "devDependencies": {
+    "vite": "6.4.5"
+  }
+}
