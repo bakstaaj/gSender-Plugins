@@ -1,6 +1,6 @@
 # Surface Height Map for gSender
 
-**Latest release package:** [Download surface-height-map-v0.2.2.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/surface-height-map-v0.2.1/surface-height-map-v0.2.1.zip)
+**Latest release package:** [Download surface-height-map-v0.2.2.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/surface-height-map-v0.2.2/surface-height-map-v0.2.2.zip)
 
 Surface Height Map is a community gSender plugin for measuring a work surface at a regular grid of probe points, then applying those readings to a supported G-code toolpath. Calibration is saved independently of any one job. The measured material grid is extended to the controller's full machine XY travel: unprobed strips continue from the nearest measured edge row or column, and corner regions extrapolate along 45-degree diagonals. WPOS Z0 remains the compensation reference.
 
