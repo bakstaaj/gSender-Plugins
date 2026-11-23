@@ -1,0 +1,20 @@
+{
+  "id": "com.bakstaaj.basic-shape-cam",
+  "name": "Basic Shape CAM",
+  "version": "0.1.4",
+  "description": "Create downloadable profile G-code for common geometric shapes using saved material and tool presets.",
+  "engine": "1.7.0-Edge-2",
+  "permissions": ["storage", "visualizer:load", "workspace:navigate:carve", "file:save"],
+  "ui": {
+    "entry": "ui/index.html",
+    "contributions": [
+      { "slot": "tools-page", "route": "basic-shape-cam", "label": "Basic Shape CAM" }
+    ]
+  },
+  "capabilities": {
+    "requestTypes": [
+      "storage:get", "storage:set", "gcode:load:to:visualizer", "app:navigate", "file:save"
+    ],
+    "allowedFunctions": ["storage", "gcode", "navigation", "file"]
+  }
+}
