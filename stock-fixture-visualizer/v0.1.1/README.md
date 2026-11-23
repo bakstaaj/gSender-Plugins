@@ -1,5 +1,7 @@
 # Stock & Clamp Visualizer
 
+**Latest release package:** [Download stock-fixture-visualizer-v0.1.1.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/stock-fixture-visualizer-v0.1.1/stock-fixture-visualizer-v0.1.1.zip)
+
 A standalone gSender plugin for organizing stock and clamp models and reviewing their placement around an imported NC toolpath.
 
 ![Stock & Clamp Visualizer setup workspace](assets/stock-clamp-visualizer.png)
