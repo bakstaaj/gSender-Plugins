@@ -2,6 +2,8 @@
 
 **Prototype v0.1.24 · gSender 1.7.0-Edge-2 · Plugin SDK 0.2.3**
 
+**Release package:** [Download CAMLab v0.1.24](https://github.com/bakstaaj/gSender-Plugins/releases/download/camlab-v0.1.24/camlab-v0.1.24.zip)
+
 This build accepts stock thickness equal to the model height and allows 0.01 mm of mesh precision tolerance.
 
 Import an STL or STEP model, set its Z rotation in 90-degree increments, enter blank stock dimensions, select an end mill, and choose which side files to generate. The plugin intersects the rotated model mesh at successive levels along each setup's cutting axis, offsets each closed contour by the tool radius, and retains internal contours such as through-holes and slots. The top-side file places its two tabs on the left and right outline sides. Front and back files add no tabs and preserve the top-side tab support regions.
