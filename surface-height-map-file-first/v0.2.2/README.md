@@ -1,5 +1,5 @@
 # Surface Height Map (File First)
-**Latest release package:** [Download surface-height-map-file-first-v0.2.2.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/surface-height-map-file-first-v0.2.1/surface-height-map-file-first-v0.2.1.zip)
+**Latest release package:** [Download surface-height-map-file-first-v0.2.2.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/surface-height-map-file-first-v0.2.2/surface-height-map-file-first-v0.2.2.zip)
 
 This is a separately installable gSender plugin that imports project G-code first, then derives the calibration area and sampling grid from the actual toolpath. It retains contour-aware probing, selectable work-zero behavior, surface visualization, STL preparation, and G-code compensation. The updated workflow establishes a G54 WPOS origin before calibration and extends measured edges into unprobed machine travel; WPOS Z0 remains the compensation reference.
 
