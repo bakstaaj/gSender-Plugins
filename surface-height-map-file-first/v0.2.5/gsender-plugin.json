@@ -1,0 +1,74 @@
+{
+  "id": "com.bakstaaj.surface-height-map-file-first",
+  "name": "Surface Height Map",
+  "description": "Calibrate a surface from a G-code project or manual rectangular area, then export, inspect, and apply the height map.",
+  "version": "0.2.5",
+  "engine": ">=1.7.0-Edge-1",
+  "ui": {
+    "entry": "ui/index.html",
+    "contributions": [
+      {
+        "slot": "tools-page",
+        "route": "surface-height-map",
+        "label": "Surface Height Map"
+      }
+    ]
+  },
+  "parsers": [
+    {
+      "id": "probe-report",
+      "label": "Probe contact position",
+      "mode": "line",
+      "match": {
+        "source": "^\\[PRB:(?<x>[-\\d.]+),(?<y>[-\\d.]+),(?<z>[-\\d.]+)(?<rest>(?:,[-\\d.]+)*):(?<success>[01])\\]\\s*$"
+      }
+    },
+    {
+      "id": "probe-motion-status",
+      "label": "Probe state during motion",
+      "mode": "line",
+      "match": {
+        "source": "^<(?<status>[^>]+)>$"
+      }
+    }
+  ],
+  "permissions": [
+    "machine:read",
+    "machine:write",
+    "machine:parse",
+    "machine:query",
+    "redux:read",
+    "storage",
+    "visualizer:load",
+    "file:save"
+  ],
+  "capabilities": {
+    "requestTypes": [
+      "machine:get:context",
+      "machine:command",
+      "machine:query",
+      "machine:busy:set",
+      "machine:parser:register",
+      "machine:parser:unregister",
+      "redux:get:state",
+      "storage:get",
+      "storage:set",
+      "storage:delete",
+      "storage:get:all",
+      "storage:set:all",
+      "gcode:load:to:visualizer",
+      "file:save"
+    ],
+    "topics": [
+      "controller",
+      "parser"
+    ],
+    "allowedFunctions": [
+      "machine",
+      "redux",
+      "storage",
+      "gcode",
+      "file"
+    ]
+  }
+}
