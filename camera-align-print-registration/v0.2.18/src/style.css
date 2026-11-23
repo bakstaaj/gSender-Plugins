@@ -31,6 +31,7 @@ p { margin: 8px 0; line-height: 1.55; }
 .tool-tab:focus-visible { outline: 2px solid #4cbbd7; outline-offset: 2px; }
 .section-heading { display: flex; justify-content: space-between; align-items: center; gap: 14px; margin-bottom: 14px; }
 .camera-controls { display: grid; grid-template-columns: minmax(180px, 1fr) auto auto; align-items: end; gap: 10px; margin-bottom: 12px; }
+.camera-save-button { grid-column: 1 / -1; justify-self: start; padding: 4px 0; }
 .camera-workspace { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(300px, .9fr); gap: 18px; align-items: start; }
 .camera-setup { min-width: 0; padding-top: 2px; }
 .camera-workspace .video-shell { width: 100%; min-height: 0; aspect-ratio: 16/9; max-height: 470px; }

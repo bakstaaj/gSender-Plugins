@@ -6,9 +6,42 @@ import './style.css';
 
 const $ = (id) => document.getElementById(id);
 const defaults = { sourceType: 'usb', protocol: 'http', host: '', port: '', path: '/video', startMessage: 'start_stream', refreshMs: '500', deviceId: '' };
-const state = { stream: null, socket: null, snapshotTimer: null, healthTimer: null, frameTimer: null, objectUrl: null, running: false, profile: 'primary', sourceType: '', connectedAt: 0, lastFrameAt: 0, frameTimes: [], zoom: 1, flipped: false, rotation: 0, activeSettings: null, toolbarCollapsed: false };
+const SHARED_CAMERA_SELECTION_KEY = 'com.bakstaaj.gsender.shared-camera-selection';
+const state = { stream: null, socket: null, snapshotTimer: null, healthTimer: null, frameTimer: null, objectUrl: null, running: false, autoConnect: false, profile: 'primary', sourceType: '', connectedAt: 0, lastFrameAt: 0, frameTimes: [], zoom: 1, flipped: false, rotation: 0, activeSettings: null, toolbarCollapsed: false, sharedCameraSelection: null };
+const cameraInstanceId = `${Date.now()}-${Math.random()}`;
+let cameraBus = null;
+try { if (typeof BroadcastChannel === 'function') cameraBus = new BroadcastChannel('gsender-camera-owner'); } catch { /* Cross-view ownership is optional on restricted origins. */ }
+let cameraClaim = null;
 
 function id(profile, key) { return profile === 'primary' ? key : `second${key[0].toUpperCase()}${key.slice(1)}`; }
+function readSharedCameraSelection() {
+  try {
+    const value = JSON.parse(localStorage.getItem(SHARED_CAMERA_SELECTION_KEY) || 'null');
+    return value && typeof value.deviceId === 'string' ? value : null;
+  } catch { return null; }
+}
+function writeSharedCameraSelection(selection) {
+  state.sharedCameraSelection = selection;
+  try { localStorage.setItem(SHARED_CAMERA_SELECTION_KEY, JSON.stringify(selection)); } catch { /* Shared selection is a convenience; plugin storage remains available. */ }
+}
+async function saveSharedCameraSelection(deviceId, autoConnect = undefined, ownership = 'preserve') {
+  const select = $('device');
+  const option = [...select.options].find((entry) => entry.value === deviceId);
+  const prior = readSharedCameraSelection() || state.sharedCameraSelection;
+  const selection = {
+    deviceId: deviceId || '',
+    label: deviceId ? option?.textContent || '' : '',
+    groupId: prior?.deviceId === deviceId ? prior.groupId || '' : '',
+    autoConnect: typeof autoConnect === 'boolean' ? autoConnect : Boolean(prior?.autoConnect),
+    owner: ownership === 'claim' ? 'camera-monitor' : ownership === 'release' ? 'released' : prior?.owner || '',
+    instanceId: ownership === 'claim' ? cameraInstanceId : ownership === 'release' ? 'released' : prior?.instanceId || '',
+    updatedAt: Date.now(),
+  };
+  writeSharedCameraSelection(selection);
+  const devices = await navigator.mediaDevices?.enumerateDevices?.().catch(() => []) || [];
+  const device = devices.find((entry) => entry.kind === 'videoinput' && entry.deviceId === deviceId);
+  if (device) writeSharedCameraSelection({ ...selection, label: device.label || selection.label, groupId: device.groupId || selection.groupId });
+}
 function readForm(profile = 'primary') {
   return { sourceType: $(id(profile, 'sourceType')).value, protocol: $(id(profile, 'protocol')).value, host: $(id(profile, 'host')).value.trim(), port: $(id(profile, 'port')).value.trim(), path: $(id(profile, 'path')).value.trim() || '/', startMessage: $(id(profile, 'startMessage')).value, refreshMs: $(id(profile, 'refreshMs')).value, deviceId: $(id(profile, 'device')).value };
 }
@@ -55,7 +88,16 @@ async function populateDevices(profile = 'primary') {
     const cams = devices.filter((d) => d.kind === 'videoinput'), previous = select.value;
     select.replaceChildren(new Option(cams.length ? 'Choose a camera' : 'No camera found', ''));
     cams.forEach((d, i) => select.add(new Option(d.label || `Camera ${i + 1}`, d.deviceId)));
-    if (cams.some((d) => d.deviceId === previous)) select.value = previous;
+    let selected = cams.find((d) => d.deviceId === previous);
+    if (!selected && profile === 'primary' && state.sharedCameraSelection?.label) {
+      const sameLabel = cams.filter((d) => d.label === state.sharedCameraSelection.label);
+      selected = sameLabel.find((d) => state.sharedCameraSelection.groupId && d.groupId === state.sharedCameraSelection.groupId)
+        || (sameLabel.length === 1 ? sameLabel[0] : null);
+    }
+    if (selected) {
+      select.value = selected.deviceId;
+      if (profile === 'primary' && selected.deviceId !== state.sharedCameraSelection?.deviceId) await saveSharedCameraSelection(selected.deviceId);
+    }
   } catch { /* Device names may be hidden before permission. */ }
 }
 function secondConfigured() {
@@ -214,6 +256,7 @@ function explainCameraError(error) {
 }
 function stopTimers() { if (state.snapshotTimer) clearInterval(state.snapshotTimer); if (state.healthTimer) clearInterval(state.healthTimer); if (state.frameTimer) clearTimeout(state.frameTimer); state.snapshotTimer = state.healthTimer = state.frameTimer = null; }
 function clearPreview() {
+  cameraClaim = null;
   stopPip();
   stopTimers();
   if (state.socket) { state.socket.onclose = null; try { state.socket.close(); } catch { /* Already closed. */ } }
@@ -225,6 +268,43 @@ function clearPreview() {
   if (state.objectUrl) URL.revokeObjectURL(state.objectUrl);
   state.objectUrl = null; state.running = false; state.connectedAt = 0; state.lastFrameAt = 0; state.frameTimes = [];
   $('connect').disabled = false; $('disconnect').disabled = true; $('quickConnect').hidden = false; $('quickDisconnect').hidden = true; setStatus('Not connected'); setHealth('Camera off'); updatePipButton();
+}
+async function claimUsbCamera() {
+  const claim = `${cameraInstanceId}-${Date.now()}-${Math.random()}`;
+  cameraClaim = claim;
+  cameraBus?.postMessage({ type: 'claim', owner: cameraInstanceId });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  if (cameraClaim !== claim) throw new Error('The camera was opened in another gSender view. Connect again here to take over.');
+  return claim;
+}
+cameraBus?.addEventListener('message', (event) => {
+  if (event.data?.type !== 'claim' || event.data.owner === cameraInstanceId || !cameraClaim) return;
+  clearPreview();
+  setStatus('Camera opened in another view', 'error');
+  setHealth('Camera released', 'stale');
+  setMessage('The camera was released for another gSender view. Connect here to take it back.');
+});
+function watchUsbCamera(stream) {
+  const track = stream.getVideoTracks()[0];
+  if (!track) return;
+  track.addEventListener('ended', () => {
+    if (state.stream !== stream) return;
+    clearPreview();
+    setStatus('Camera disconnected', 'error');
+    setHealth('Camera track ended', 'stale');
+    setMessage('The camera connection ended. Connect again to reopen the camera.', 'error');
+  });
+  track.addEventListener('mute', () => {
+    if (state.stream !== stream) return;
+    setStatus('Camera signal interrupted', 'error');
+    setHealth('Waiting for camera signal', 'stale');
+    setMessage('The camera stopped sending video. Reconnect here to take camera ownership.');
+  });
+  track.addEventListener('unmute', () => {
+    if (state.stream !== stream) return;
+    setStatus('Live', 'live');
+    setMessage('Camera signal restored.', 'success');
+  });
 }
 function recordFrame() {
   const now = Date.now(); state.lastFrameAt = now; state.frameTimes.push(now); state.frameTimes = state.frameTimes.filter((t) => now - t < 5000);
@@ -262,9 +342,14 @@ async function connectWs(url, message) {
   ws.onmessage = (event) => { if (event.data instanceof Blob || event.data instanceof ArrayBuffer) showJpeg(event.data); };
   ws.onclose = () => { if (state.running) { clearPreview(); setStatus('Connection closed', 'error'); setMessage('The camera connection closed. Check the camera and reconnect.', 'error'); } };
 }
-async function saveSettings(show = true, autoConnect = false) {
+async function saveSettings(show = true, autoConnect = state.autoConnect, ownership = 'preserve') {
   const settings = { ...readForm(), secondEnabled: $('secondEnabled').checked, secondCamera: readForm('second'), autoConnect, activeProfile: state.profile };
-  try { await (await storagePromise).set('camera-monitor.settings', settings); if (show) setMessage('Camera settings saved in gSender.', 'success'); }
+  try {
+    await (await storagePromise).set('camera-monitor.settings', settings);
+    if (settings.sourceType === 'usb' && settings.deviceId) await saveSharedCameraSelection(settings.deviceId, autoConnect, ownership);
+    state.autoConnect = Boolean(autoConnect);
+    if (show) setMessage('Camera settings saved in gSender.', 'success');
+  }
   catch (error) { if (show) setMessage(`Could not save settings in gSender: ${error?.message || error}`, 'error'); }
 }
 async function connectCamera(profile = 'primary', persist = true) {
@@ -276,7 +361,17 @@ async function connectCamera(profile = 'primary', persist = true) {
   try {
     if (s.sourceType === 'usb') {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error('USB camera access is unavailable in this gSender view.');
-      state.stream = await openUsbCamera(s); $('video').srcObject = state.stream; showPreview('video'); await $('video').play(); await Promise.all([populateDevices('primary'), populateDevices('second')]); updateCameraSwitch();
+      const claim = await claimUsbCamera();
+      const stream = await openUsbCamera(s);
+      if (cameraClaim !== claim) { stream.getTracks().forEach((track) => track.stop()); throw new Error('The camera was opened in another gSender view. Connect again here to take over.'); }
+      state.stream = stream; watchUsbCamera(stream); $('video').srcObject = stream; showPreview('video'); await $('video').play(); await Promise.all([populateDevices('primary'), populateDevices('second')]);
+      const startedDeviceId = stream.getVideoTracks()[0]?.getSettings?.().deviceId || s.deviceId;
+      if (startedDeviceId) {
+        $(id(profile, 'device')).value = startedDeviceId;
+        s.deviceId = startedDeviceId;
+        if (profile === 'primary') await saveSharedCameraSelection(startedDeviceId, undefined, 'claim');
+      }
+      updateCameraSwitch();
     } else {
       const url = buildUrl(s);
       if (s.sourceType === 'bridge') { const target = new URL(url); if (!['http:', 'https:'].includes(target.protocol)) throw new Error('The local bridge viewer must use HTTP or HTTPS.'); $('bridgeFrame').src = url; showPreview('bridge'); }
@@ -302,17 +397,19 @@ function restoreProfile(profile, settings) {
 }
 async function loadSettings() {
   const storage = await storagePromise;
+  state.sharedCameraSelection = readSharedCameraSelection();
   let saved = null; try { saved = await storage.get('camera-monitor.settings'); } catch { /* First run. */ }
+  state.autoConnect = Boolean(saved?.autoConnect);
   const oldDevice = await storage.get('camera-monitor.deviceId').catch(() => '');
   const primary = saved?.primary || saved || {};
-  restoreProfile('primary', { ...primary, deviceId: primary.deviceId || oldDevice });
+  const savedDeviceId = state.sharedCameraSelection?.deviceId ?? primary.deviceId ?? oldDevice;
+  restoreProfile('primary', { ...primary, deviceId: savedDeviceId });
   restoreProfile('second', saved?.secondCamera || {});
   $('secondEnabled').checked = Boolean(saved?.secondEnabled);
   state.profile = saved?.activeProfile === 'second' && $('secondEnabled').checked ? 'second' : 'primary';
   await Promise.all([populateDevices('primary'), populateDevices('second')]);
-  if (primary.deviceId) $('device').value = primary.deviceId;
   updateForm('primary'); updateForm('second');
-  if (saved?.autoConnect) await connectCamera(saved.activeProfile === 'second' && secondConfigured() ? 'second' : 'primary', false);
+  if (state.autoConnect) await connectCamera(saved?.activeProfile === 'second' && secondConfigured() ? 'second' : 'primary', false);
 }
 
 $('sourceType').addEventListener('change', () => updateForm('primary'));
@@ -361,10 +458,18 @@ window.addEventListener('keydown', (event) => { if (event.key === 'Escape' && !b
 $('connect').addEventListener('click', () => connectCamera('primary'));
 $('quickConnect').addEventListener('click', () => connectCamera(state.profile));
 $('connectSecond').addEventListener('click', async () => { await saveSettings(false, false); await connectCamera('second'); });
-$('disconnect').addEventListener('click', async () => { clearPreview(); await saveSettings(false, false); setMessage('Camera disconnected.'); });
-$('quickDisconnect').addEventListener('click', async () => { clearPreview(); await saveSettings(false, false); setMessage('Camera disconnected.'); });
-$('save').addEventListener('click', () => saveSettings(true, false));
-$('device').addEventListener('change', async () => { try { await (await storagePromise).set('camera-monitor.deviceId', $('device').value); } catch { /* Optional convenience. */ } updateCameraSwitch(); });
+$('disconnect').addEventListener('click', async () => { clearPreview(); await saveSettings(false, false, 'release'); setMessage('Camera disconnected.'); });
+$('quickDisconnect').addEventListener('click', async () => { clearPreview(); await saveSettings(false, false, 'release'); setMessage('Camera disconnected.'); });
+$('save').addEventListener('click', () => saveSettings(true));
+$('device').addEventListener('change', async () => {
+  const deviceId = $('device').value || '';
+  const sharedSave = saveSharedCameraSelection(deviceId);
+  try {
+    await (await storagePromise).set('camera-monitor.deviceId', deviceId);
+    await sharedSave;
+  } catch (error) { setMessage(`Could not save the selected camera: ${error?.message || error}`, 'error'); }
+  updateCameraSwitch();
+});
 $('secondDevice').addEventListener('change', updateCameraSwitch);
 $('showPrimary').addEventListener('click', () => connectCamera('primary'));
 $('showSecondary').addEventListener('click', () => connectCamera('second'));
@@ -374,5 +479,27 @@ $('flipImage').addEventListener('click', () => { state.flipped = !state.flipped;
 $('rotateImage').addEventListener('click', () => { state.rotation = (state.rotation + 90) % 360; applyPictureSettings(); });
 $('togglePreviewToolbar').addEventListener('click', () => { state.toolbarCollapsed = !state.toolbarCollapsed; updateToolbar(); });
 $('pipToggle').addEventListener('click', togglePip);
+window.addEventListener('storage', async (event) => {
+  if (event.key !== SHARED_CAMERA_SELECTION_KEY || !event.newValue) return;
+  let selection;
+  try { selection = JSON.parse(event.newValue); } catch { return; }
+  if (!selection || typeof selection.deviceId !== 'string') return;
+  const anotherViewOwnsCamera = selection.owner === 'released' || Boolean(selection.instanceId && selection.instanceId !== cameraInstanceId);
+  const currentDeviceId = readForm('primary').deviceId;
+  const selectionChanged = currentDeviceId !== selection.deviceId
+    || (state.sharedCameraSelection?.label || '') !== (selection.label || '')
+    || (state.sharedCameraSelection?.groupId || '') !== (selection.groupId || '');
+  state.sharedCameraSelection = selection;
+  if (selectionChanged) {
+    restoreProfile('primary', { ...readForm('primary'), deviceId: selection.deviceId });
+    await populateDevices('primary');
+    updateForm('primary');
+  }
+  if (anotherViewOwnsCamera && state.running && state.sourceType === 'usb') {
+    clearPreview();
+    setStatus('Camera opened in another gSender view', 'error');
+    setMessage('The camera was released for the other gSender view. Connect here to take it back.');
+  }
+});
 window.addEventListener('beforeunload', clearPreview);
 updateForm('primary'); updateForm('second'); applyPictureSettings(); updateToolbar(); updatePipButton(); loadSettings().catch((error) => setMessage(`Could not load saved camera settings: ${error.message}`, 'error'));

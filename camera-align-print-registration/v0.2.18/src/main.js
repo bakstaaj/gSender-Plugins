@@ -3,6 +3,7 @@ import { solveSimilarity, transformGcode } from './registration.js';
 import './style.css';
 
 const $ = (id) => document.getElementById(id);
+const SHARED_CAMERA_SELECTION_KEY = 'com.bakstaaj.gsender.shared-camera-selection';
 
 document.querySelector('#app').innerHTML = `
   <header class="page-header">
@@ -37,6 +38,7 @@ document.querySelector('#app').innerHTML = `
           <label>Camera device<select id="cameraDevice"><option value="">Choose a camera</option></select></label>
           <button id="startCamera" class="primary">Start camera</button>
           <button id="stopCamera" class="secondary" disabled>Stop camera</button>
+          <button id="saveCameraSettings" class="text-button camera-save-button" type="button">Save camera selection</button>
         </div>
         <details id="crosshairSettings" class="camera-help crosshair-settings"><summary>Crosshair &amp; work-zero button settings</summary>
           <div class="crosshair-fields">
@@ -172,6 +174,12 @@ const state = {
   machineIdle: false,
   positionAvailable: false,
   activeTab: 'camera',
+  cameraDeviceId: '',
+  cameraDeviceLabel: '',
+  cameraDeviceGroupId: '',
+  cameraSelectionLoaded: false,
+  sharedCameraSelection: null,
+  cameraClaim: null,
   activeWcs: null,
   selectedWcs: null,
   wcsSelectionTouched: false,
@@ -189,6 +197,17 @@ const state = {
   macros: [],
   overlayFill: true,
 };
+const cameraInstanceId = `${Date.now()}-${Math.random()}`;
+let cameraBus = null;
+try { if (typeof BroadcastChannel === 'function') cameraBus = new BroadcastChannel('gsender-camera-owner'); } catch { /* Cross-view ownership is optional on restricted origins. */ }
+let cameraDeviceListSignature = null;
+let pendingCameraDeviceList = null;
+let cameraDeviceRefreshTimer = null;
+cameraBus?.addEventListener('message', (event) => {
+  if (event.data?.type !== 'claim' || event.data.owner === cameraInstanceId || !state.cameraClaim) return;
+  stopCamera();
+  setNotice('Camera released for another gSender view. Start it here to take it back.');
+});
 
 // Keep controller queries one-at-a-time. The two-second UI refresh can otherwise
 // overlap a work-zero transaction and cause a reply to be attributed to the
@@ -602,16 +621,89 @@ async function refreshMachine() {
   render();
 }
 
-async function populateCameraDevices() {
+async function applyCameraDeviceList(cameras, signature) {
   const selector = $('cameraDevice');
-  const selected = selector.value;
-  const devices = await navigator.mediaDevices.enumerateDevices();
-  const cameras = devices.filter((device) => device.kind === 'videoinput');
+  const selected = state.cameraSelectionLoaded ? state.cameraDeviceId : selector.value;
   selector.replaceChildren(new Option(cameras.length ? 'Choose a camera' : 'No camera found', ''));
   for (const [index, camera] of cameras.entries()) {
     selector.add(new Option(camera.label || `Camera ${index + 1}`, camera.deviceId));
   }
-  if (cameras.some((camera) => camera.deviceId === selected)) selector.value = selected;
+  cameraDeviceListSignature = signature;
+  let selectedCamera = cameras.find((camera) => camera.deviceId === selected);
+  if (!selectedCamera && state.cameraDeviceLabel) {
+    const sameLabel = cameras.filter((camera) => camera.label === state.cameraDeviceLabel);
+    selectedCamera = sameLabel.find((camera) => state.cameraDeviceGroupId && camera.groupId === state.cameraDeviceGroupId)
+      || (sameLabel.length === 1 ? sameLabel[0] : null);
+  }
+  if (selectedCamera) {
+    selector.value = selectedCamera.deviceId;
+    if (selectedCamera.deviceId !== state.cameraDeviceId
+      || selectedCamera.label !== state.cameraDeviceLabel
+      || selectedCamera.groupId !== state.cameraDeviceGroupId) {
+      await persistCameraSelection(selectedCamera.deviceId, selectedCamera);
+    }
+  } else if (selected) {
+    selector.value = '';
+  }
+}
+
+async function populateCameraDevices() {
+  const selector = $('cameraDevice');
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  const cameras = devices.filter((device) => device.kind === 'videoinput')
+    .sort((left, right) => left.label.localeCompare(right.label) || left.deviceId.localeCompare(right.deviceId));
+  const signature = JSON.stringify(cameras.map(({ deviceId, label, groupId }) => [deviceId, label, groupId]));
+  if (signature === cameraDeviceListSignature) {
+    const selected = state.cameraSelectionLoaded ? state.cameraDeviceId : selector.value;
+    if (selected && [...selector.options].some((option) => option.value === selected)) selector.value = selected;
+    return;
+  }
+  if (document.activeElement === selector) {
+    pendingCameraDeviceList = { cameras, signature };
+    return;
+  }
+  pendingCameraDeviceList = null;
+  await applyCameraDeviceList(cameras, signature);
+}
+
+async function persistCameraSelection(deviceId, deviceInfo = null, autoConnect = undefined, ownership = 'preserve') {
+  const option = [...$('cameraDevice').options].find((entry) => entry.value === deviceId);
+  let previousShared = null;
+  try { previousShared = JSON.parse(localStorage.getItem(SHARED_CAMERA_SELECTION_KEY) || 'null'); } catch { /* Optional shared preference. */ }
+  previousShared ||= state.sharedCameraSelection;
+  state.cameraDeviceId = deviceId || '';
+  state.cameraDeviceLabel = deviceInfo?.label || (deviceId ? option?.textContent || '' : '');
+  state.cameraDeviceGroupId = deviceInfo?.groupId || (previousShared?.deviceId === state.cameraDeviceId ? previousShared.groupId || '' : '');
+  state.cameraSelectionLoaded = true;
+  const selection = {
+    deviceId: state.cameraDeviceId,
+    label: state.cameraDeviceLabel,
+    groupId: state.cameraDeviceGroupId,
+    autoConnect: typeof autoConnect === 'boolean' ? autoConnect : Boolean(previousShared?.autoConnect),
+    owner: ownership === 'claim' ? 'camera-align' : ownership === 'release' ? 'released' : previousShared?.owner || '',
+    instanceId: ownership === 'claim' ? cameraInstanceId : ownership === 'release' ? 'released' : previousShared?.instanceId || '',
+    updatedAt: Date.now(),
+  };
+  state.sharedCameraSelection = selection;
+  try { localStorage.setItem(SHARED_CAMERA_SELECTION_KEY, JSON.stringify(selection)); } catch { /* The gSender storage copy below remains the fallback. */ }
+  try { localStorage.setItem('com.bakstaaj.camera-align-print-registration.cameraSelection', JSON.stringify(selection)); } catch { /* gSender storage below is the primary copy. */ }
+  let resolvedDevice = deviceInfo;
+  if (!resolvedDevice && deviceId && navigator.mediaDevices?.enumerateDevices) {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    resolvedDevice = devices.find((device) => device.kind === 'videoinput' && device.deviceId === deviceId) || null;
+  }
+  if (resolvedDevice && (resolvedDevice.label !== selection.label || resolvedDevice.groupId !== selection.groupId)) {
+    state.cameraDeviceLabel = resolvedDevice.label || selection.label;
+    state.cameraDeviceGroupId = resolvedDevice.groupId || selection.groupId;
+    Object.assign(selection, { label: state.cameraDeviceLabel, groupId: state.cameraDeviceGroupId, updatedAt: Date.now() });
+    state.sharedCameraSelection = selection;
+    try { localStorage.setItem(SHARED_CAMERA_SELECTION_KEY, JSON.stringify(selection)); } catch { /* Best-effort shared label refresh. */ }
+    try { localStorage.setItem('com.bakstaaj.camera-align-print-registration.cameraSelection', JSON.stringify(selection)); } catch { /* The gSender storage copy below remains the fallback. */ }
+  }
+  await storage.set('cameraSelection', selection);
+  await storage.set('cameraDeviceId', state.cameraDeviceId);
+  const session = await storage.get('cameraSession').catch(() => null);
+  await storage.set('cameraSession', { running: typeof autoConnect === 'boolean' ? autoConnect : Boolean(session?.running), deviceId: state.cameraDeviceId });
 }
 
 async function readCameraDiagnostics(error) {
@@ -733,11 +825,55 @@ async function togglePip() {
 }
 
 function stopCamera() {
+  state.cameraClaim = null;
   stopPip();
   state.stream?.getTracks().forEach((track) => track.stop());
   state.stream = null;
   $('cameraVideo').srcObject = null;
   render();
+}
+
+async function claimCamera() {
+  const claim = `${cameraInstanceId}-${Date.now()}-${Math.random()}`;
+  state.cameraClaim = claim;
+  cameraBus?.postMessage({ type: 'claim', owner: cameraInstanceId });
+  await new Promise((resolve) => setTimeout(resolve, 500));
+  if (state.cameraClaim !== claim) throw new Error('The camera was opened in another gSender view. Start it here to take over.');
+  return claim;
+}
+
+function watchCameraTrack(stream) {
+  const track = stream.getVideoTracks()[0];
+  if (!track) return;
+  track.addEventListener('ended', () => {
+    if (state.stream !== stream) return;
+    stopCamera();
+    setNotice('Camera connection ended. Start the camera again to reconnect.', 'error');
+  });
+  track.addEventListener('mute', () => {
+    if (state.stream === stream) setNotice('Camera signal interrupted. Start the camera here to reconnect.', 'error');
+  });
+  track.addEventListener('unmute', () => {
+    if (state.stream === stream) setNotice('Camera signal restored.');
+  });
+}
+
+async function openCameraStream(deviceId) {
+  const selectedDevice = deviceId ? { deviceId: { exact: deviceId } } : {};
+  const videoProfiles = [
+    { ...selectedDevice, width: { ideal: 1280, max: 1280 }, height: { ideal: 720, max: 720 }, frameRate: { ideal: 15, max: 30 } },
+    { ...selectedDevice, width: { ideal: 640, max: 640 }, height: { ideal: 480, max: 480 }, frameRate: { ideal: 10, max: 15 } },
+    selectedDevice,
+  ];
+  let lastError;
+  for (let index = 0; index < videoProfiles.length; index += 1) {
+    try { return await navigator.mediaDevices.getUserMedia({ video: videoProfiles[index], audio: false }); }
+    catch (error) {
+      lastError = error;
+      if (index === videoProfiles.length - 1 || !['AbortError', 'NotReadableError', 'OverconstrainedError'].includes(error?.name)) throw error;
+    }
+  }
+  throw lastError;
 }
 
 function toggleCameraWindow() {
@@ -794,10 +930,10 @@ async function startCamera({ auto = false } = {}) {
   }
   stopCamera();
   const deviceId = $('cameraDevice').value;
-  const video = deviceId ? { deviceId: { exact: deviceId } } : true;
   let stream;
+  const claim = await claimCamera();
   try {
-    stream = await navigator.mediaDevices.getUserMedia({ video, audio: false });
+    stream = await openCameraStream(deviceId);
   } catch (error) {
     if (['NotAllowedError', 'PermissionDeniedError', 'SecurityError'].includes(error.name)) {
       $('cameraHelp').open = true;
@@ -818,7 +954,12 @@ async function startCamera({ auto = false } = {}) {
     }
     throw error;
   }
+  if (state.cameraClaim !== claim) {
+    stream.getTracks().forEach((track) => track.stop());
+    throw new Error('The camera was opened in another gSender view. Start it here to take over.');
+  }
   state.stream = stream;
+  watchCameraTrack(stream);
   $('cameraVideo').srcObject = stream;
   await $('cameraVideo').play();
   updateCameraAspect();
@@ -827,9 +968,17 @@ async function startCamera({ auto = false } = {}) {
   if (startedDeviceId && [...$('cameraDevice').options].some((option) => option.value === startedDeviceId)) {
     $('cameraDevice').value = startedDeviceId;
   }
+  const startedDevice = (await navigator.mediaDevices.enumerateDevices()).find((device) => device.kind === 'videoinput' && device.deviceId === startedDeviceId);
+  try {
+    await persistCameraSelection(startedDeviceId || deviceId || state.cameraDeviceId, startedDevice || null, true, 'claim');
+  } catch (error) {
+    setNotice(`Camera is live, but the selected camera could not be saved: ${error.message}`, 'error');
+  }
   // Remembered so the camera can restart when gSender remounts the plugin
   // (switching away from the Align tab unloads it) or after a restart.
-  storage.set('cameraSession', { running: true, deviceId: startedDeviceId || '' }).catch(() => {});
+  await storage.set('cameraSession', { running: true, deviceId: startedDeviceId || deviceId || '' }).catch((error) => {
+    setNotice(`Camera is live, but its restart preference could not be saved: ${error.message}`, 'error');
+  });
   render();
   // On a click this still counts as a user action. A slow camera permission
   // prompt can use up that window, and an automatic restart has none; then
@@ -856,18 +1005,23 @@ $('cameraVideo').addEventListener('resize', updateCameraAspect);
 // Stop requested by the user (not by unloading the plugin): don't restart
 // the camera automatically next time.
 function userStopCamera() {
+  const deviceId = $('cameraDevice').value || state.cameraDeviceId;
   stopCamera();
-  storage.set('cameraSession', { running: false, deviceId: $('cameraDevice').value || '' }).catch(() => {});
+  persistCameraSelection(deviceId, null, false, 'release').catch(() => {});
+  storage.set('cameraSession', { running: false, deviceId }).catch(() => {});
 }
 
 async function restoreCamera() {
-  if (!state.crosshair?.cameraAutoStart || !navigator.mediaDevices?.getUserMedia) return;
+  if (!navigator.mediaDevices?.getUserMedia) return;
   let session;
   try { session = await storage.get('cameraSession'); } catch { return; }
-  if (!session?.running) return;
-  if (session.deviceId && [...$('cameraDevice').options].some((option) => option.value === session.deviceId)) {
-    $('cameraDevice').value = session.deviceId;
+  if (!state.cameraSelectionLoaded && session?.deviceId) {
+    state.cameraDeviceId = session.deviceId;
+    state.cameraSelectionLoaded = true;
+    await persistCameraSelection(state.cameraDeviceId).catch(() => {});
   }
+  if (state.cameraDeviceId && [...$('cameraDevice').options].some((option) => option.value === state.cameraDeviceId)) $('cameraDevice').value = state.cameraDeviceId;
+  if (!state.crosshair?.cameraAutoStart || !session?.running) return;
   try {
     await startCamera({ auto: true });
     if (!pip.active) setNotice('Camera restarted automatically.');
@@ -1114,6 +1268,32 @@ async function runZeroMacro() {
 async function initialize() {
   state.crosshair = normalizeCrosshair();
   applyCrosshair();
+  let savedCameraSelection = null;
+  try {
+    const shared = JSON.parse(localStorage.getItem(SHARED_CAMERA_SELECTION_KEY) || 'null');
+    if (shared && typeof shared.deviceId === 'string') {
+      savedCameraSelection = shared;
+      state.sharedCameraSelection = shared;
+    }
+  } catch { /* Shared selection is optional on restricted origins. */ }
+  if (!savedCameraSelection) savedCameraSelection = await storage.get('cameraSelection').catch(() => null);
+  if (!savedCameraSelection) {
+    try { savedCameraSelection = JSON.parse(localStorage.getItem('com.bakstaaj.camera-align-print-registration.cameraSelection') || 'null'); }
+    catch { /* The namespaced local copy is optional. */ }
+  }
+  if (savedCameraSelection && typeof savedCameraSelection.deviceId === 'string') {
+    state.sharedCameraSelection ||= savedCameraSelection;
+    state.cameraDeviceId = savedCameraSelection.deviceId;
+    state.cameraDeviceLabel = typeof savedCameraSelection.label === 'string' ? savedCameraSelection.label : '';
+    state.cameraDeviceGroupId = typeof savedCameraSelection.groupId === 'string' ? savedCameraSelection.groupId : '';
+    state.cameraSelectionLoaded = true;
+  } else {
+    const savedCameraDeviceId = await storage.get('cameraDeviceId').catch(() => undefined);
+    if (typeof savedCameraDeviceId === 'string') {
+      state.cameraDeviceId = savedCameraDeviceId;
+      state.cameraSelectionLoaded = true;
+    }
+  }
   try {
     state.crosshair = normalizeCrosshair(await storage.get('crosshair'));
     applyCrosshair();
@@ -1144,7 +1324,10 @@ async function initialize() {
   }
   if (navigator.mediaDevices?.enumerateDevices) {
     await populateCameraDevices().catch(() => {});
-    navigator.mediaDevices.addEventListener?.('devicechange', () => populateCameraDevices().catch(() => {}));
+    navigator.mediaDevices.addEventListener?.('devicechange', () => {
+      clearTimeout(cameraDeviceRefreshTimer);
+      cameraDeviceRefreshTimer = window.setTimeout(() => populateCameraDevices().catch(() => {}), 250);
+    });
   }
   await refreshMachine();
   render();
@@ -1216,6 +1399,29 @@ document.querySelectorAll('[data-tab]').forEach((tab) => {
 document.querySelectorAll('[data-open-camera-tab]').forEach((button) => {
   button.onclick = () => { state.activeTab = 'camera'; render(); };
 });
+window.addEventListener('storage', async (event) => {
+  if (event.key !== SHARED_CAMERA_SELECTION_KEY || !event.newValue) return;
+  let selection;
+  try { selection = JSON.parse(event.newValue); } catch { return; }
+  if (!selection || typeof selection.deviceId !== 'string') return;
+  const anotherViewOwnsCamera = Boolean(selection.instanceId && selection.instanceId !== cameraInstanceId);
+  const selectionChanged = state.cameraDeviceId !== selection.deviceId
+    || state.cameraDeviceLabel !== (selection.label || '')
+    || state.cameraDeviceGroupId !== (selection.groupId || '');
+  state.sharedCameraSelection = selection;
+  if (selectionChanged) {
+    state.cameraDeviceId = selection.deviceId;
+    state.cameraDeviceLabel = typeof selection.label === 'string' ? selection.label : '';
+    state.cameraDeviceGroupId = typeof selection.groupId === 'string' ? selection.groupId : '';
+    state.cameraSelectionLoaded = true;
+    await populateCameraDevices();
+  }
+  if (anotherViewOwnsCamera && state.stream) {
+    stopCamera();
+    await storage.set('cameraSession', { running: false, deviceId: state.cameraDeviceId }).catch(() => {});
+    setNotice('Camera released to the other gSender view. Start it here to take it back.');
+  }
+});
 $('cameraDragHandle').addEventListener('pointerdown', startCameraWindowDrag);
 $('cameraDragHandle').addEventListener('pointermove', moveCameraWindow);
 $('cameraDragHandle').addEventListener('pointerup', stopCameraWindowDrag);
@@ -1233,11 +1439,35 @@ $('cameraDragHandle').addEventListener('keydown', (event) => {
   panel.style.left = `${Math.max(8, Math.min(maxLeft, rect.left + dx))}px`;
   panel.style.top = `${Math.max(8, Math.min(maxTop, rect.top + dy))}px`;
 });
+$('saveCameraSettings').onclick = async () => {
+  try {
+    await persistCameraSelection($('cameraDevice').value || '');
+    setNotice('Camera selection saved for Camera Monitor and Align.');
+  } catch (error) {
+    setNotice(`Could not save the camera selection: ${error.message}`, 'error');
+  }
+};
 $('cameraDevice').onchange = async () => {
-  if (!state.stream) return;
+  const selectedDeviceId = $('cameraDevice').value || '';
+  try {
+    await persistCameraSelection(selectedDeviceId);
+  } catch (error) {
+    setNotice(`Could not save the selected camera: ${error.message}`, 'error');
+    return;
+  }
+  if (!state.stream) {
+    setNotice('Camera selection saved.');
+    return;
+  }
   try { await startCamera(); setNotice('Camera device changed.'); }
   catch (error) { stopCamera(); setNotice(`Could not open that camera: ${error.message}`, 'error'); }
 };
+$('cameraDevice').addEventListener('blur', () => {
+  const pending = pendingCameraDeviceList;
+  if (!pending) return;
+  pendingCameraDeviceList = null;
+  applyCameraDeviceList(pending.cameras, pending.signature).catch((error) => setNotice(`Could not refresh the camera list: ${error.message}`, 'error'));
+});
 $('recordSpindle').onclick = async () => {
   try { await recordSpindlePoint(); }
   catch (error) { setNotice(error.message, 'error'); }
