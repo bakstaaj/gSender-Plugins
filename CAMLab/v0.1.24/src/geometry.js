@@ -599,6 +599,93 @@ function isCircularContour(contour) {
   return mean > 0 && (Math.max(...radii) - Math.min(...radii)) / mean < 0.04;
 }
 
+function contourCenter(contour) {
+  return contour.points.reduce((center, point) => [center[0] + point[0] / contour.points.length, center[1] + point[1] / contour.points.length], [0, 0]);
+}
+
+function orderFeatureContoursByDepth(layers, match) {
+  const tracks = [];
+  for (const layer of [...layers].sort((a, b) => a.depth - b.depth)) {
+    const contours = layer.contours.filter(match).map((contour) => ({ layer, contour, center: contourCenter(contour) }));
+    const availableTracks = new Set(tracks.map((track, index) => ({ track, index })).filter(({ track }) => track.at(-1).layer !== layer).map(({ index }) => index));
+    for (const item of contours) {
+      let bestIndex = -1;
+      let bestDistance = Infinity;
+      for (const index of availableTracks) {
+        const tail = tracks[index].at(-1);
+        const distance = Math.hypot(item.center[0] - tail.center[0], item.center[1] - tail.center[1]);
+        if (distance < bestDistance) { bestDistance = distance; bestIndex = index; }
+      }
+      // Slice contours can shift more than a millimeter when a mesh is coarse or tapered.
+      // Keep the nearest one-to-one feature match across successive levels so a hole is
+      // not split into separate tracks and interleaved with another hole's passes.
+      if (bestIndex >= 0) {
+        tracks[bestIndex].push(item);
+        availableTracks.delete(bestIndex);
+      } else tracks.push([item]);
+    }
+  }
+  return tracks;
+}
+
+function circleParameters(contour) {
+  if (!isCircularContour(contour)) return null;
+  const center = contourCenter(contour);
+  const radii = contour.points.map((point) => Math.hypot(point[0] - center[0], point[1] - center[1]));
+  return { center, radius: radii.reduce((sum, radius) => sum + radius, 0) / radii.length };
+}
+
+function helicalBoreLines(track, settings) {
+  const circles = track.map(({ layer, contour }) => ({ layer, contour, circle: circleParameters(contour) }));
+  if (!circles.length || circles.some((item) => !item.circle)) return null;
+  const reference = circles[0].circle;
+  if (circles.some(({ circle }) => Math.hypot(circle.center[0] - reference.center[0], circle.center[1] - reference.center[1]) > 0.05
+    || Math.abs(circle.radius - reference.radius) > Math.max(0.01, reference.radius * 0.02))) return null;
+
+  const firstDepth = circles[0].layer.depth;
+  const lastDepth = circles.at(-1).layer.depth;
+  const radius = Number(fmt(reference.radius));
+  if (!(radius > 0)) return null;
+  const centerX = Number(fmt(reference.center[0]));
+  const centerY = Number(fmt(reference.center[1]));
+  const startX = Number(fmt(centerX + radius));
+  const startY = centerY;
+  const oppositeX = Number(fmt(centerX - radius));
+  const direction = signedArea(circles[0].contour.points) >= 0 ? 'G3' : 'G2';
+  const halfArc = (x, i, depth = null) => `${direction} X${fmt(x)} Y${fmt(startY)} I${fmt(i)} J0.000${depth === null ? '' : ` Z-${fmt(depth)}`} F${Math.round(settings.feed)}`;
+  const lines = [
+    `(HELICAL BORE: center X${fmt(centerX)} Y${fmt(centerY)}, radius ${fmt(radius)} mm; max Z step ${fmt(settings.stepDown)} mm per revolution)`,
+    `(Waterline finishing depth Z-${fmt(firstDepth)})`,
+    `G0 Z${fmt(settings.safeZ)}`,
+    `G0 X${fmt(startX)} Y${fmt(startY)}`,
+    `G1 Z-${fmt(firstDepth)} F${Math.round(settings.plunge)}`,
+  ];
+  let previousDepth = firstDepth;
+  for (const { layer } of circles.slice(1)) {
+    const delta = layer.depth - previousDepth;
+    if (delta <= 1e-7) continue;
+    const turns = Math.max(1, Math.ceil(delta / Math.max(0.001, Number(settings.stepDown))));
+    for (let turn = 1; turn <= turns; turn += 1) {
+      const midDepth = previousDepth + delta * (turn - 0.5) / turns;
+      const depth = previousDepth + delta * turn / turns;
+      lines.push(`(Helical pass to Z-${fmt(depth)})`);
+      lines.push(halfArc(oppositeX, -radius, midDepth));
+      lines.push(halfArc(startX, radius, depth));
+    }
+    previousDepth = layer.depth;
+  }
+  if (lastDepth <= firstDepth + 1e-7) {
+    lines.push(halfArc(oppositeX, -radius));
+    lines.push(halfArc(startX, radius));
+  } else {
+    lines.push('(Final circular finish pass)');
+    lines.push(halfArc(oppositeX, -radius, lastDepth));
+    lines.push(halfArc(startX, radius, lastDepth));
+  }
+  lines.push(`G0 Z${fmt(settings.safeZ)}`);
+  return lines;
+}
+
 function optimizeRoughing(roughing) {
   return roughing.map((layer) => {
     const seen = new Set();
@@ -619,7 +706,9 @@ function optimizeSamePositionRetracts(lines, safeZ) {
   let x = null; let y = null; let z = null; let lastXYWasCut = false;
   const words = (line) => Object.fromEntries([...line.matchAll(/([XYZ])(-?\d+(?:\.\d+)?)/g)].map((match) => [match[1], Number(match[2])]));
   const isComment = (line) => !line.trim() || line.trim().startsWith('(');
-  const same = (a, b) => Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= 0.0005;
+  // G-code rounds XY to 0.001 mm; allow a few microns of mesh-slice drift
+  // when deciding whether consecutive depth contours can stay at cutting Z.
+  const same = (a, b) => Number.isFinite(a) && Number.isFinite(b) && Math.abs(a - b) <= 0.005;
 
   for (let i = 0; i < lines.length; i += 1) {
     const line = lines[i];
@@ -656,7 +745,7 @@ function optimizeSamePositionRetracts(lines, safeZ) {
   return output;
 }
 
-export function generateGcode({ layers, stock, settings, tool, roughingTool = tool, roughingExpansion = 0, omittedFeatureSections = 0, preplannedRoughing = null, previousRoughing = [], clampXBounds = null, side = 'top', cutExtent = stock.thickness, topTabContours = null, roughingLayers = layers, tabReleaseLayers = [] }) {
+export function generateGcode({ layers, stock, settings, tool, roughingTool = tool, roughingExpansion = 0, omittedFeatureSections = 0, preplannedRoughing = null, previousRoughing = [], clampXBounds = null, side = 'top', cutExtent = stock.thickness, topTabContours = null, roughingLayers = layers, tabReleaseLayers = [], rotationZ = 0, machiningSides = ['top', 'front', 'back', 'bottom'] }) {
   const tabCutDepth = Number(cutExtent) - Number(settings.tabHeight);
   const bottomSide = side === 'bottom';
   const undercutOnly = bottomSide || side === 'back';
@@ -672,8 +761,16 @@ export function generateGcode({ layers, stock, settings, tool, roughingTool = to
   const initialTool = roughing.length ? roughingTool : tool;
   const lines = [
     `(CAMLab ${sideLabel} waterline contours generated from an STL/STEP mesh)`,
-    '(MACHINING ORDER: TOP, FRONT, BACK, BOTTOM; USE THE FOUR PROGRAMS IN THIS ORDER)',
-    '(PATH OPTIMIZATION: duplicate contours and same-depth raster segments are removed; rasters, circular holes, pockets/slots, and perimeter cuts are grouped)',
+    `(MACHINING ORDER: ${machiningSides.map((item) => item.toUpperCase()).join(', ')}; USE THE SELECTED SIDE FILES IN THIS ORDER)`,
+    `(MODEL ROTATION: ${fmt(rotationZ)} DEGREES ABOUT THE CENTER OF THE MODEL IN THE XY PLANE)`,
+    side === 'bottom'
+      ? '(CUT ORDER: missed internal undercut contours only; no outside perimeter is generated)'
+      : side === 'back'
+        ? '(CUT ORDER: roughing and internal features first; tab-support perimeter undercuts are the final cuts)'
+        : '(CUT ORDER: roughing, holes, and pockets/slots first; the outside perimeter is the final finishing operation)',
+    '(PATH OPTIMIZATION: duplicate contours and same-depth raster segments are removed; roughing rasters, internal features, and perimeter cuts are grouped)',
+    '(HOLE ORDER: all internal contour sections are matched by feature location across depth, even when a section changes between circular and non-circular profiles; each feature is completed before moving to the next)',
+    '(CIRCULAR BORES: stable circular profiles use G2/G3 helical interpolation with at most one configured step-down per revolution)',
     '(PATH OPTIMIZATION: compatible outside waterline contours are linked into a continuous spiral; tab and clamp keepouts remain protected)',
     '(PATH LINKING: a safe-Z retract and repeated XY rapid are removed when the next plunge starts at the exact previous cut endpoint)',
     `(Stock ${fmt(stock.length)} x ${fmt(stock.width)} x ${fmt(stock.thickness)} mm; XY origin: ${stock.originMode === 'center' ? 'stock center' : 'imported model coordinates'}; Z0 at ${bottomSide ? 'flipped exposed face' : side === 'front' || side === 'back' ? 'newly exposed side face' : 'stock top'})`,
@@ -737,11 +834,13 @@ export function generateGcode({ layers, stock, settings, tool, roughingTool = to
     lines.push(`(Change to finishing tool T${Math.max(1, Math.floor(Number(tool.number) || 1))}, diameter ${fmt(tool.diameter)} mm)`);
     lines.push(`G0 Z${fmt(settings.safeZ)}`, 'M5', `T${Math.max(1, Math.floor(Number(tool.number) || 1))} M6`, `S${Math.round(settings.rpm)} M3`);
   }
-  const finishGroups = [
-    { label: 'CIRCULAR HOLE CONTOURS (END-MILL INTERPOLATION)', match: isCircularContour },
-    { label: 'POCKET / SLOT CONTOURS', match: (contour) => contour.hole && !isCircularContour(contour) },
-    { label: 'PERIMETER CONTOURS', match: (contour) => !contour.hole },
+  // Keep a physical internal feature together even when its sliced profile changes
+  // from circular to non-circular at another depth (for example a counterbore or slot).
+  const featureGroups = [
+    { label: 'INTERNAL HOLE / BORING / POCKET / SLOT CONTOURS (COMPLETE EACH FEATURE THROUGH DEPTH)', match: (contour) => contour.hole },
   ];
+  const perimeterGroup = { label: 'PERIMETER CONTOURS', match: (contour) => !contour.hole };
+  const finishGroups = [...featureGroups, perimeterGroup];
   for (const group of finishGroups) {
     lines.push(`(${group.label})`);
     let spiraledOuters = null;
@@ -755,11 +854,32 @@ export function generateGcode({ layers, stock, settings, tool, roughingTool = to
         spiraledOuters.push(...spiral.outerContours);
       }
     }
-    for (const layer of layers) {
-      lines.push(`(Waterline finishing depth Z-${fmt(layer.depth)})`);
-      const contours = layer.contours.filter((contour) => group.match(contour) && !spiraledOuters?.includes(contour)).sort((a, b) => b.area - a.area);
-      const mainOuter = layer.contours.find((contour) => !contour.hole);
-      for (const contour of contours) {
+    const perimeterGroupActive = group.label === 'PERIMETER CONTOURS';
+    const workTracks = perimeterGroupActive
+      ? layers.flatMap((layer) => layer.contours.filter((contour) => group.match(contour) && !spiraledOuters?.includes(contour)).sort((a, b) => b.area - a.area).map((contour) => [{ layer, contour }]))
+      : orderFeatureContoursByDepth(layers, (contour) => group.match(contour));
+    let lastDepth = null;
+    for (const track of workTracks) {
+      if (!perimeterGroupActive) {
+        const helix = helicalBoreLines(track, settings);
+        const avoidsKeepouts = helix && track.every(({ layer, contour }) => {
+          const sideKeepouts = (side === 'front' || side === 'back')
+            ? sideTabKeepoutsAtDepth(sideTabKeepoutPolygons, side, stock, layer.depth, tool.diameter, settings.tabHeight)
+            : [];
+          const path = contour.points.map((point) => ({ point, tab: false }));
+          return !splitPathSegments(path, [...sideKeepouts, ...clampKeepouts]).some((segment) => segment.blocked);
+        });
+        if (avoidsKeepouts) {
+          lines.push(...helix);
+          continue;
+        }
+      }
+      for (const { layer, contour } of track) {
+      if (layer.depth !== lastDepth) {
+        lines.push(`(Waterline finishing depth Z-${fmt(layer.depth)})`);
+        lastDepth = layer.depth;
+      }
+      const mainOuter = layer.contours.find((item) => !item.hole);
       const keepTabs = side === 'top' && layer.depth > tabCutDepth + 1e-7 && contour === mainOuter;
       const path = keepTabs ? makeCutPath(contour.points, Number(settings.tabWidth), { placement: 'left-right' }).path : contour.points.map((point) => ({ point, tab: false }));
       const sideKeepouts = (side === 'front' || side === 'back')

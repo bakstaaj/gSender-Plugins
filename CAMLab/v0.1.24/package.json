@@ -1,6 +1,6 @@
 {
   "name": "gsender-camlab",
-  "version": "0.1.23",
+  "version": "0.1.24",
   "private": true,
   "type": "module",
   "scripts": {
@@ -8,7 +8,7 @@
     "package": "bash scripts/package.sh"
   },
   "dependencies": {
-    "@sienci/gsender-plugin-sdk": "0.2.2",
+    "@sienci/gsender-plugin-sdk": "0.2.3",
     "clipper-lib": "^6.4.2",
     "occt-import-js": "^0.0.23",
     "polygon-clipping": "^0.15.7",

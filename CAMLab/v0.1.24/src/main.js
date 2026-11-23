@@ -1,11 +1,11 @@
-import { gcode } from '@sienci/gsender-plugin-sdk';
+import { file, gcode, navigation } from '@sienci/gsender-plugin-sdk';
 import { bounds, generateGcode, makeCutPath, parseStl, planContourSweeps, planRoughingPaths } from './geometry.js';
 import { analyzeModel, ensureMillAccessible, isContourAccessibleFrom, offsetContours, sliceContours } from './mesh-slices.js';
 import './style.css';
 
 const $ = (id) => document.getElementById(id);
 const state = {
-  modelName: '', geometry: null, triangles: [], modelSize: null, gcode: '', bottomGcode: '', frontGcode: '', backGcode: '', prepared: null,
+  modelName: '', geometry: null, triangles: [], sourceTriangles: [], modelSize: null, rotationZ: 0, gcode: '', bottomGcode: '', frontGcode: '', backGcode: '', prepared: null,
   colletDiameters: { '1/4 in': 6.35, '6 mm': 6, '4 mm': 4, '1/8 in': 3.175, '3 mm': 3 },
   standardToolDiameters: [6.35, 6, 4, 3.175, 3],
 };
@@ -35,6 +35,7 @@ document.querySelector('#app').innerHTML = `
     <div class="controls">
       <section class="panel"><div class="section-title"><span>01</span><div><h2>Import model</h2><p>STL is interpreted in millimeters. STEP units are converted to millimeters.</p></div></div>
         <label class="file-drop" for="modelFile" title="Choose the 3D part model. STL is treated as millimeters; STEP units are converted to millimeters."><span class="file-icon">＋</span><strong id="fileName">Choose an STL or STEP file</strong><span>STL · STP · STEP</span><input id="modelFile" type="file" accept=".stl,.stp,.step,model/stl,application/step" title="Choose the 3D part model. STL is treated as millimeters; STEP units are converted to millimeters."></label>
+        <div class="fields model-rotation"><label>Part Z rotation<select id="rotationZ" title="Rotate the loaded part around its bounding-box center in 90-degree increments. All four side toolpaths use the rotated orientation."><option value="0">0°</option><option value="90">90°</option><option value="180">180°</option><option value="270">270°</option></select></label></div>
         <div id="modelInfo" class="model-info">No model loaded.</div>
       </section>
       <section class="panel"><div class="section-title"><span>02</span><div><h2>Blank stock</h2><p>Model top aligns with stock top. Choose how its XY coordinates are placed.</p></div></div>
@@ -46,7 +47,10 @@ document.querySelector('#app').innerHTML = `
       <section class="panel"><div class="section-title"><span>04</span><div><h2>Cutout tabs</h2><p>Two top-side tabs are placed on the left and right outline sides.</p></div></div>
         <div class="fields"><label>Tab width along edge (mm)<input id="tabWidth" type="number" min="1" step="0.1" value="6" title="Length of each uncut bridge along the outside edge. Top-side tabs are centered on the left and right outline sides; front/back passes preserve those tab support zones and add no side tabs."></label><label>Tab height from stock bottom (mm)<input id="tabHeight" type="number" min="0.1" step="0.1" value="2" title="Material thickness left under each top-side tab at the final through-cut. Larger values leave stronger tabs. This value is saved between sessions."></label><label>Safe Z (mm)<input id="safeZ" type="number" min="0.1" step="0.1" value="5" title="Clearance height above the stock for rapid XY moves and retracts. Ensure clamps and fixtures are below this height."></label></div>
       </section>
-      <div class="actions"><button id="generate" class="primary" disabled>Generate preview</button><button id="load" disabled>Load top-side</button><button id="loadFront" disabled>Load front-side</button><button id="loadBack" disabled>Load back-side</button><button id="loadBottom" disabled>Load bottom-side</button><button id="download" class="secondary" disabled>Download top-side</button><button id="downloadFront" class="secondary" disabled>Download front-side</button><button id="downloadBack" class="secondary" disabled>Download back-side</button><button id="downloadBottom" class="secondary" disabled>Download bottom-side</button></div>
+      <section class="panel"><div class="section-title"><span>05</span><div><h2>Machining sides</h2><p>Choose which side files to generate. Selected sides keep the top → front → back → bottom order.</p></div></div>
+        <div class="side-toggle-grid"><label class="side-toggle"><input id="sideTop" type="checkbox" checked title="Generate the top-side roughing, feature, and tabbed perimeter program."><span>Top</span></label><label class="side-toggle"><input id="sideFront" type="checkbox" checked title="Generate the front Y− side roughing, feature, and perimeter program."><span>Front (Y−)</span></label><label class="side-toggle"><input id="sideBack" type="checkbox" checked title="Generate the back Y+ side roughing, missed-feature, and tab-undercut program."><span>Back (Y+)</span></label><label class="side-toggle"><input id="sideBottom" type="checkbox" checked title="Generate the bottom-side missed-undercut program."><span>Bottom</span></label></div>
+      </section>
+      <div class="actions"><button id="generate" class="primary" disabled>Generate preview</button><button id="load" disabled>Load top-side</button><button id="loadFront" disabled>Load front-side</button><button id="loadBack" disabled>Load back-side</button><button id="loadBottom" disabled>Load bottom-side</button><button id="download" class="secondary" disabled>Save top-side</button><button id="downloadFront" class="secondary" disabled>Save front-side</button><button id="downloadBack" class="secondary" disabled>Save back-side</button><button id="downloadBottom" class="secondary" disabled>Save bottom-side</button></div>
       <p id="status" class="status" role="status" aria-live="polite">Import a model to begin.</p>
     </div>
     <div class="right-column">
@@ -61,13 +65,14 @@ document.querySelector('#app').innerHTML = `
       <aside class="caution"><strong>Setup order and clamp rails</strong><p>Run the files in this order: top, front, back, bottom. The front is the Y− face rotated −90° about stock-centered X; the back is the Y+ face rotated +90°. Keep the selected X datum registered and reset Z0 at each exposed face. CAMLab carries the stock removed by prior roughing and hole/slot paths into later roughing plans, and groups roughing, circular hole contours, pockets/slots, and perimeter cuts after removing same-depth duplicates. Left and right stock rails outside the top perimeter path are reserved for clamping and are excluded from cutting paths on all four sides. Top uses left/right tabs; front/back avoid their support zones. Secure and support the stock for each setup, and simulate every file before cutting.</p></aside>
     </div>
   </div>
-  <footer>CAMLab v0.1.23 · G-code generation only · no job is started<div id="copyright-footer">Copyright 2026 bakStaaJ Designs LLC.</div></footer>
+  <footer>CAMLab v0.1.24 · G-code generation only · no job is started<div id="copyright-footer">Copyright 2026 bakStaaJ Designs LLC.</div></footer>
 `;
 
 const SETTINGS_KEY = 'com.bakstaaj.camlab.settings.v1';
 const LEGACY_TAB_SETTINGS_KEY = 'com.bakstaaj.camlab.tab-settings.v1';
 const PERSISTENT_NUMBER_FIELDS = ['stockLength', 'stockWidth', 'stockThickness', 'rpm', 'stepDown', 'feed', 'plunge', 'tabWidth', 'tabHeight', 'safeZ'];
-const PERSISTENT_SELECT_FIELDS = ['xyOrigin', 'colletSize'];
+const PERSISTENT_SELECT_FIELDS = ['xyOrigin', 'colletSize', 'rotationZ'];
+const PERSISTENT_CHECKBOX_FIELDS = ['sideTop', 'sideFront', 'sideBack', 'sideBottom'];
 
 function restoreSettings() {
   try {
@@ -80,6 +85,7 @@ function restoreSettings() {
     for (const id of PERSISTENT_SELECT_FIELDS) {
       if (typeof saved[id] === 'string' && [...$(id).options].some((option) => option.value === saved[id])) $(id).value = saved[id];
     }
+    for (const id of PERSISTENT_CHECKBOX_FIELDS) if (typeof saved[id] === 'boolean') $(id).checked = saved[id];
   } catch { /* Keep the built-in defaults when stored settings are unavailable or invalid. */ }
 }
 
@@ -91,6 +97,7 @@ function persistSettings() {
       if (Number.isFinite(value) && value > 0) saved[id] = value;
     }
     for (const id of PERSISTENT_SELECT_FIELDS) saved[id] = $(id).value;
+    for (const id of PERSISTENT_CHECKBOX_FIELDS) saved[id] = $(id).checked;
     localStorage.setItem(SETTINGS_KEY, JSON.stringify(saved));
     localStorage.setItem(LEGACY_TAB_SETTINGS_KEY, JSON.stringify({ width: saved.tabWidth, height: saved.tabHeight }));
   } catch { /* CAMLab remains usable if browser storage is unavailable. */ }
@@ -121,6 +128,18 @@ function stepTrianglesFromImport(result) {
   return triangles;
 }
 
+function rotateTrianglesZ(triangles, degrees) {
+  const turns = ((Math.round(Number(degrees) / 90) % 4) + 4) % 4;
+  if (!turns) return triangles;
+  const { center } = analyzeModel(triangles);
+  return triangles.map((triangle) => triangle.map(([x, y, z]) => {
+    const dx = x - center.x; const dy = y - center.y;
+    if (turns === 1) return [center.x - dy, center.y + dx, z];
+    if (turns === 2) return [center.x - dx, center.y - dy, z];
+    return [center.x + dy, center.y - dx, z];
+  }));
+}
+
 async function loadModel(file) {
   if (!file) return;
   const ext = file.name.split('.').pop().toLowerCase();
@@ -136,10 +155,13 @@ async function loadModel(file) {
       const result = occt.ReadStepFile(new Uint8Array(buffer), { linearUnit: 'millimeter', linearDeflectionType: 'absolute_value', linearDeflection: 0.12, angularDeflection: 0.45 });
       triangles = stepTrianglesFromImport(result);
     } else throw new Error('Choose an STL, STP, or STEP file.');
-    const model = analyzeModel(triangles);
-    state.geometry = model; state.triangles = triangles; state.modelSize = model.size; state.modelName = file.name; state.gcode = ''; state.bottomGcode = ''; state.frontGcode = ''; state.backGcode = ''; state.prepared = null;
+    state.sourceTriangles = triangles;
+    state.rotationZ = Number($('rotationZ').value);
+    state.triangles = rotateTrianglesZ(state.sourceTriangles, state.rotationZ);
+    const model = analyzeModel(state.triangles);
+    state.geometry = model; state.modelSize = model.size; state.modelName = file.name; state.gcode = ''; state.bottomGcode = ''; state.frontGcode = ''; state.backGcode = ''; state.prepared = null;
     $('fileName').textContent = file.name;
-    $('modelInfo').innerHTML = `<strong>${model.size.length.toFixed(2)} × ${model.size.width.toFixed(2)} × ${model.size.height.toFixed(2)} mm</strong><span>${triangles.length.toLocaleString()} mesh triangles · projected outline</span>`;
+    $('modelInfo').innerHTML = `<strong>${model.size.length.toFixed(2)} × ${model.size.width.toFixed(2)} × ${model.size.height.toFixed(2)} mm</strong><span>${triangles.length.toLocaleString()} mesh triangles · rotated ${state.rotationZ}° about Z</span>`;
     $('gcodePreview').textContent = 'Generate a preview to build the mesh-slice contours.';
     $('bottomGcodePreview').textContent = 'Generate a preview to build the flipped-side undercut contours.';
     $('frontGcodePreview').textContent = 'Generate a preview to build front-side contours.';
@@ -153,11 +175,24 @@ async function loadModel(file) {
   } catch (error) { setStatus(error.message || String(error), 'error'); }
 }
 
+function applyModelRotation() {
+  persistSettings();
+  if (!state.sourceTriangles.length) return;
+  state.rotationZ = Number($('rotationZ').value);
+  state.triangles = rotateTrianglesZ(state.sourceTriangles, state.rotationZ);
+  state.geometry = analyzeModel(state.triangles);
+  state.modelSize = state.geometry.size;
+  $('modelInfo').innerHTML = `<strong>${state.modelSize.length.toFixed(2)} × ${state.modelSize.width.toFixed(2)} × ${state.modelSize.height.toFixed(2)} mm</strong><span>${state.triangles.length.toLocaleString()} mesh triangles · rotated ${state.rotationZ}° about Z</span>`;
+  invalidatePreview();
+  setStatus(`Part rotated ${state.rotationZ}° about Z. Generate a new preview to update the toolpaths.`, 'success');
+}
+
 function values() {
   return {
     stock: { length: Number($('stockLength').value), width: Number($('stockWidth').value), thickness: Number($('stockThickness').value), originMode: $('xyOrigin').value },
     settings: { rpm: Number($('rpm').value), stepDown: Number($('stepDown').value), feed: Number($('feed').value), plunge: Number($('plunge').value), tabWidth: Number($('tabWidth').value), tabHeight: Number($('tabHeight').value), safeZ: Number($('safeZ').value) },
     colletDiameter: state.colletDiameters[$('colletSize').value],
+    sides: { top: $('sideTop').checked, front: $('sideFront').checked, back: $('sideBack').checked, bottom: $('sideBottom').checked },
   };
 }
 
@@ -273,17 +308,17 @@ function prepareMissedBackUndercuts(frontLayers, backLayers, stock, settings) {
 
 function prepareWithTool(tool) {
   if (!state.geometry) throw new Error('Import a model first.');
-  const { stock, settings, colletDiameter } = values();
+  const { stock, settings, colletDiameter, sides } = values();
+  if (!Object.values(sides).some(Boolean)) throw new Error('Select at least one machining side.');
   for (const [name, value] of Object.entries({ 'stock length': stock.length, 'stock width': stock.width, 'stock thickness': stock.thickness, 'spindle speed': settings.rpm, 'step down': settings.stepDown, 'feed rate': settings.feed, 'plunge rate': settings.plunge, 'tab width': settings.tabWidth, 'tab height': settings.tabHeight, 'safe Z': settings.safeZ })) {
     if (!Number.isFinite(value) || value <= 0) throw new Error(`${name} must be greater than zero.`);
   }
   if (settings.tabHeight >= stock.thickness) throw new Error('Tab height must be less than the stock thickness.');
   if (settings.tabWidth < tool.diameter * 1.5) throw new Error('Tab width should be at least 1.5 times the cutter diameter; CAMLab will try a smaller standard cutter.');
   if (state.modelSize.height <= 0.01) throw new Error('The model needs measurable Z thickness for mesh-slice finishing.');
-  if (state.modelSize.height > stock.thickness) throw new Error('Model height is greater than the stock thickness. Align or scale the model, or use thicker stock.');
+  const thicknessTolerance = 0.01;
+  if (state.modelSize.height - stock.thickness > thicknessTolerance) throw new Error(`Model height exceeds the stock thickness by more than ${thicknessTolerance.toFixed(2)} mm. Align or scale the model, or use thicker stock.`);
   const topBottomLevels = Math.ceil(stock.thickness / settings.stepDown);
-  const sideLevels = Math.ceil(stock.width / settings.stepDown);
-  if (Math.max(topBottomLevels, sideLevels) > 500) throw new Error('These settings create over 500 contour levels across the four sides. Increase step-down or reduce stock dimensions.');
   const originOffset = stock.originMode === 'source' ? state.geometry.center : { x: 0, y: 0 };
   const sliceEpsilon = Math.min(0.001, state.modelSize.height / 1000);
   const topContours = sliceContours(state.triangles, state.geometry.maxZ - sliceEpsilon, state.geometry.center);
@@ -315,44 +350,46 @@ function prepareWithTool(tool) {
     }
     layers.undercutFallback = { depth: accessIssue.depth, continuationDepth };
   }
-  const bottomYOffset = stock.originMode === "center" ? 0 : stock.width - state.geometry.center.y;
-  const bottomAccessContours = offsetModelContours(bottomContours, tool.diameter);
-  for (const contour of bottomAccessContours) contour.points = contour.points.map(([x, y]) => [x + originOffset.x, -y + bottomYOffset]);
-  const bottomAccess = { depth: 0, contours: bottomAccessContours };
-  const rawBottomLayers = [];
-  for (let index = 1; index <= topBottomLevels; index += 1) {
-    const depth = Math.min(stock.thickness, index * settings.stepDown);
-    const modelDepth = Math.min(depth, state.modelSize.height - 0.0001);
-    const rawContours = depth >= state.modelSize.height ? topContours : sliceContours(state.triangles, state.geometry.minZ + modelDepth, state.geometry.center, -1);
-    if (!rawContours.length) continue;
-    const contours = offsetModelContours(rawContours, tool.diameter);
-    for (const contour of contours) contour.points = contour.points.map(([x, y]) => [x + originOffset.x, -y + bottomYOffset]);
-    rawBottomLayers.push({ depth, contours });
-  }
   const bottomLayers = [];
-  const tolerance = Math.max(0.05, Math.min(0.15, settings.stepDown * 0.1));
-  for (const layer of rawBottomLayers) {
-    if (layer.depth >= state.modelSize.height) continue;
-    const correspondingTopDepth = state.modelSize.height - layer.depth;
-    const upperTopLayers = [topAccess, ...topLayersForAccess.filter((upper) => upper.depth < correspondingTopDepth + 1e-5)];
-    const exactTopContours = sliceContours(state.triangles, state.geometry.maxZ - correspondingTopDepth, state.geometry.center);
-    if (exactTopContours.length) {
-      const exact = offsetModelContours(exactTopContours, tool.diameter);
-      for (const contour of exact) contour.points = contour.points.map(([x, y]) => [x + originOffset.x, y + originOffset.y]);
-      upperTopLayers.push({ depth: correspondingTopDepth, contours: exact });
+  if (sides.bottom) {
+    const bottomYOffset = stock.originMode === 'center' ? 0 : stock.width - state.geometry.center.y;
+    const bottomAccessContours = offsetModelContours(bottomContours, tool.diameter);
+    for (const contour of bottomAccessContours) contour.points = contour.points.map(([x, y]) => [x + originOffset.x, -y + bottomYOffset]);
+    const bottomAccess = { depth: 0, contours: bottomAccessContours };
+    const rawBottomLayers = [];
+    for (let index = 1; index <= topBottomLevels; index += 1) {
+      const depth = Math.min(stock.thickness, index * settings.stepDown);
+      const modelDepth = Math.min(depth, state.modelSize.height - 0.0001);
+      const rawContours = depth >= state.modelSize.height ? topContours : sliceContours(state.triangles, state.geometry.minZ + modelDepth, state.geometry.center, -1);
+      if (!rawContours.length) continue;
+      const contours = offsetModelContours(rawContours, tool.diameter);
+      for (const contour of contours) contour.points = contour.points.map(([x, y]) => [x + originOffset.x, -y + bottomYOffset]);
+      rawBottomLayers.push({ depth, contours });
     }
-    const upperBottomLayers = [bottomAccess, ...rawBottomLayers.filter((upper) => upper.depth < layer.depth)];
-    const missedUndercuts = layer.contours.filter((contour) => {
-      if (!contour.hole) return false;
-      const topCoordinates = { ...contour, points: contour.points.map(([x, y]) => [x, bottomYOffset - y + originOffset.y]) };
-      return isContourAccessibleFrom(contour, upperBottomLayers, tolerance)
-        && !isContourAccessibleFrom(topCoordinates, upperTopLayers, tolerance);
-    });
-    if (missedUndercuts.length) bottomLayers.push({ depth: layer.depth, contours: missedUndercuts });
+    const tolerance = Math.max(0.05, Math.min(0.15, settings.stepDown * 0.1));
+    for (const layer of rawBottomLayers) {
+      if (layer.depth >= state.modelSize.height) continue;
+      const correspondingTopDepth = state.modelSize.height - layer.depth;
+      const upperTopLayers = [topAccess, ...topLayersForAccess.filter((upper) => upper.depth < correspondingTopDepth + 1e-5)];
+      const exactTopContours = sliceContours(state.triangles, state.geometry.maxZ - correspondingTopDepth, state.geometry.center);
+      if (exactTopContours.length) {
+        const exact = offsetModelContours(exactTopContours, tool.diameter);
+        for (const contour of exact) contour.points = contour.points.map(([x, y]) => [x + originOffset.x, y + originOffset.y]);
+        upperTopLayers.push({ depth: correspondingTopDepth, contours: exact });
+      }
+      const upperBottomLayers = [bottomAccess, ...rawBottomLayers.filter((upper) => upper.depth < layer.depth)];
+      const missedUndercuts = layer.contours.filter((contour) => {
+        if (!contour.hole) return false;
+        const topCoordinates = { ...contour, points: contour.points.map(([x, y]) => [x, bottomYOffset - y + originOffset.y]) };
+        return isContourAccessibleFrom(contour, upperBottomLayers, tolerance)
+          && !isContourAccessibleFrom(topCoordinates, upperTopLayers, tolerance);
+      });
+      if (missedUndercuts.length) bottomLayers.push({ depth: layer.depth, contours: missedUndercuts });
+    }
   }
-  const frontLayers = prepareSideLayers('front', stock, settings, tool);
-  const fullBackLayers = prepareSideLayers('back', stock, settings, tool);
-  const backLayers = prepareMissedBackUndercuts(frontLayers, fullBackLayers, stock, settings);
+  const frontLayers = sides.front || sides.back ? prepareSideLayers('front', stock, settings, tool) : [];
+  const fullBackLayers = sides.back ? prepareSideLayers('back', stock, settings, tool) : [];
+  const backLayers = sides.back ? prepareMissedBackUndercuts(frontLayers, fullBackLayers, stock, settings) : [];
   const allPoints = [...layers, ...bottomLayers].flatMap((layer) => layer.contours.flatMap((contour) => contour.points));
   const extents = bounds(allPoints);
   const stockBounds = stock.originMode === 'center'
@@ -360,7 +397,7 @@ function prepareWithTool(tool) {
     : { minX: 0, maxX: stock.length, minY: 0, maxY: stock.width };
   const fitsStock = extents.minX >= stockBounds.minX && extents.maxX <= stockBounds.maxX && extents.minY >= stockBounds.minY && extents.maxY <= stockBounds.maxY;
   if (!fitsStock && stock.originMode === 'center') throw new Error('Model plus cutter radius does not fit inside the entered stock dimensions.');
-  return { layers, bottomLayers, frontLayers, backLayers, fullBackLayers, stock, settings, tool, roughingTool: tool, roughingExpansion: 0, colletDiameter, originOffset, stockBounds, fitsStock, undercutFallback: layers.undercutFallback || null, bottomUndercutFallback: null };
+  return { layers, bottomLayers, frontLayers, backLayers, fullBackLayers, stock, settings, tool, roughingTool: tool, roughingExpansion: 0, colletDiameter, originOffset, stockBounds, fitsStock, sides, rotationZ: state.rotationZ, undercutFallback: layers.undercutFallback || null, bottomUndercutFallback: null };
 }
 
 function prepare() {
@@ -409,6 +446,10 @@ function drawPreview(prepared = null) {
   const modelPath = projectedLoops.map((ring) => `${ring.map((point, index) => `${index ? 'L' : 'M'}${xy([point[0] + originOffset.x, point[1] + originOffset.y]).join(',')}`).join(' ')} Z`).join(' ');
   svg('path', { d: modelPath, class: 'model', 'fill-rule': 'evenodd' });
   if (!data) return;
+  if (!data.sides.top) {
+    $('previewCaption').textContent = `Model ${state.modelSize.length.toFixed(1)} × ${state.modelSize.width.toFixed(1)} × ${state.modelSize.height.toFixed(1)} mm · rotated ${data.rotationZ}° · top-side output disabled`;
+    return;
+  }
   const firstLayer = data.layers[0];
   for (const contour of firstLayer.contours) {
     const path = contour.points.map((point, index) => `${index ? 'L' : 'M'}${xy(point).join(',')}`).join(' ') + ' Z';
@@ -423,7 +464,7 @@ function drawPreview(prepared = null) {
     }
   }
   const originLabel = data.stock.originMode === 'center' ? 'center origin' : 'imported XY origin';
-  $('previewCaption').textContent = `Model ${state.modelSize.length.toFixed(1)} × ${state.modelSize.width.toFixed(1)} × ${state.modelSize.height.toFixed(1)} mm · ${data.layers.length} contour levels · orange shows finishing contours; raster roughing is in top/front/back G-code · ${originLabel}`;
+  $('previewCaption').textContent = `Model ${state.modelSize.length.toFixed(1)} × ${state.modelSize.width.toFixed(1)} × ${state.modelSize.height.toFixed(1)} mm · rotated ${data.rotationZ}° · ${data.layers.length} contour levels · orange shows finishing contours; raster roughing is in top/front/back G-code · ${originLabel}`;
 }
 
 function generate() {
@@ -434,30 +475,60 @@ function generate() {
   const clampXBounds = outerPoints.length
     ? { minX: Math.min(...outerPoints.map((point) => point[0])), maxX: Math.max(...outerPoints.map((point) => point[0])) }
     : null;
-  const topRoughing = planRoughingPaths({ layers: data.layers, stock: data.stock, settings: data.settings, tool: data.roughingTool, side: 'top', topTabContours, roughingExpansion: data.roughingExpansion, clampXBounds });
-  const topHistory = [
+  const selectedSides = ['top', 'front', 'back', 'bottom'].filter((side) => data.sides[side]);
+  const orderNote = selectedSides.join(', ');
+  const commonGcodeOptions = { rotationZ: data.rotationZ, machiningSides: selectedSides };
+  const topRoughing = data.sides.top
+    ? planRoughingPaths({ layers: data.layers, stock: data.stock, settings: data.settings, tool: data.roughingTool, side: 'top', topTabContours, roughingExpansion: data.roughingExpansion, clampXBounds })
+    : [];
+  const topHistory = data.sides.top ? [
     { side: 'top', layers: topRoughing, diameter: data.roughingTool.diameter },
     planContourSweeps({ layers: data.layers, stock: data.stock, settings: data.settings, side: 'top', toolDiameter: data.tool.diameter, clampXBounds }),
-  ];
-  state.gcode = generateGcode({ layers: data.layers, stock: data.stock, settings: data.settings, tool: data.tool, roughingTool: data.roughingTool, roughingExpansion: data.roughingExpansion, omittedFeatureSections: data.omittedFeatureSections, preplannedRoughing: topRoughing, clampXBounds, side: 'top' });
+  ] : [];
+  state.gcode = data.sides.top
+    ? generateGcode({ ...commonGcodeOptions, layers: data.layers, stock: data.stock, settings: data.settings, tool: data.tool, roughingTool: data.roughingTool, roughingExpansion: data.roughingExpansion, omittedFeatureSections: data.omittedFeatureSections, preplannedRoughing: topRoughing, clampXBounds, side: 'top' })
+    : '';
 
-  const frontRoughing = planRoughingPaths({ layers: data.frontLayers, stock: data.stock, settings: data.settings, tool: data.roughingTool, side: 'front', topTabContours, roughingExpansion: data.roughingExpansion, previousRoughing: topHistory, clampXBounds });
-  state.frontGcode = generateGcode({ layers: data.frontLayers, stock: data.stock, settings: data.settings, tool: data.tool, roughingTool: data.roughingTool, roughingExpansion: data.roughingExpansion, omittedFeatureSections: data.omittedFeatureSections, preplannedRoughing: frontRoughing, previousRoughing: topHistory, clampXBounds, side: 'front', cutExtent: data.stock.width, topTabContours });
+  const frontRoughing = data.sides.front
+    ? planRoughingPaths({ layers: data.frontLayers, stock: data.stock, settings: data.settings, tool: data.roughingTool, side: 'front', topTabContours, roughingExpansion: data.roughingExpansion, previousRoughing: topHistory, clampXBounds })
+    : [];
+  state.frontGcode = data.sides.front
+    ? generateGcode({ ...commonGcodeOptions, layers: data.frontLayers, stock: data.stock, settings: data.settings, tool: data.tool, roughingTool: data.roughingTool, roughingExpansion: data.roughingExpansion, omittedFeatureSections: data.omittedFeatureSections, preplannedRoughing: frontRoughing, previousRoughing: topHistory, clampXBounds, side: 'front', cutExtent: data.stock.width, topTabContours })
+    : '';
 
-  const frontFeatureHistory = planContourSweeps({ layers: data.frontLayers, stock: data.stock, settings: data.settings, side: 'front', toolDiameter: data.tool.diameter, cutExtent: data.stock.width, topTabContours, clampXBounds });
-  const previousRoughing = [...topHistory, { side: 'front', layers: frontRoughing, diameter: data.roughingTool.diameter }, frontFeatureHistory];
-  const backRoughing = planRoughingPaths({ layers: data.fullBackLayers, stock: data.stock, settings: data.settings, tool: data.roughingTool, side: 'back', topTabContours, roughingExpansion: data.roughingExpansion, previousRoughing, clampXBounds });
-  state.backGcode = generateGcode({ layers: data.backLayers, roughingLayers: data.fullBackLayers, tabReleaseLayers: data.fullBackLayers, stock: data.stock, settings: data.settings, tool: data.tool, roughingTool: data.roughingTool, roughingExpansion: data.roughingExpansion, omittedFeatureSections: data.omittedFeatureSections, preplannedRoughing: backRoughing, previousRoughing, clampXBounds, side: 'back', cutExtent: data.stock.width, topTabContours });
+  const frontFeatureHistory = data.sides.front
+    ? planContourSweeps({ layers: data.frontLayers, stock: data.stock, settings: data.settings, side: 'front', toolDiameter: data.tool.diameter, cutExtent: data.stock.width, topTabContours, clampXBounds })
+    : null;
+  const previousRoughing = [...topHistory];
+  if (data.sides.front) previousRoughing.push({ side: 'front', layers: frontRoughing, diameter: data.roughingTool.diameter }, frontFeatureHistory);
+  const backRoughing = data.sides.back
+    ? planRoughingPaths({ layers: data.fullBackLayers, stock: data.stock, settings: data.settings, tool: data.roughingTool, side: 'back', topTabContours, roughingExpansion: data.roughingExpansion, previousRoughing, clampXBounds })
+    : [];
+  state.backGcode = data.sides.back
+    ? generateGcode({ ...commonGcodeOptions, layers: data.backLayers, roughingLayers: data.fullBackLayers, tabReleaseLayers: data.fullBackLayers, stock: data.stock, settings: data.settings, tool: data.tool, roughingTool: data.roughingTool, roughingExpansion: data.roughingExpansion, omittedFeatureSections: data.omittedFeatureSections, preplannedRoughing: backRoughing, previousRoughing, clampXBounds, side: 'back', cutExtent: data.stock.width, topTabContours })
+    : '';
 
-  state.bottomGcode = generateGcode({ layers: data.bottomLayers, stock: data.stock, settings: data.settings, tool: data.tool, roughingTool: data.roughingTool, roughingExpansion: data.roughingExpansion, omittedFeatureSections: data.omittedFeatureSections, clampXBounds, side: 'bottom' });
-  $('gcodePreview').textContent = state.gcode;
-  $('bottomGcodePreview').textContent = state.bottomGcode;
-  $('frontGcodePreview').textContent = state.frontGcode;
-  $('backGcodePreview').textContent = state.backGcode;
-  for (const id of ['load', 'loadBottom', 'loadFront', 'loadBack', 'download', 'downloadBottom', 'downloadFront', 'downloadBack', 'copyTop', 'copyBottom', 'copyFront', 'copyBack']) $(id).disabled = false;
+  state.bottomGcode = data.sides.bottom
+    ? generateGcode({ ...commonGcodeOptions, layers: data.bottomLayers, stock: data.stock, settings: data.settings, tool: data.tool, roughingTool: data.roughingTool, roughingExpansion: data.roughingExpansion, omittedFeatureSections: data.omittedFeatureSections, clampXBounds, side: 'bottom' })
+    : '';
+  $('gcodePreview').textContent = state.gcode || 'Top-side output disabled. Select Top and generate a preview to create this file.';
+  $('bottomGcodePreview').textContent = state.bottomGcode || 'Bottom-side output disabled. Select Bottom and generate a preview to create this file.';
+  $('frontGcodePreview').textContent = state.frontGcode || 'Front-side output disabled. Select Front and generate a preview to create this file.';
+  $('backGcodePreview').textContent = state.backGcode || 'Back-side output disabled. Select Back and generate a preview to create this file.';
+  for (const side of ['top', 'front', 'back', 'bottom']) {
+    const enabled = data.sides[side] && Boolean(side === 'top' ? state.gcode : state[`${side}Gcode`]);
+    const controls = sideControls[side];
+    $(controls.load).disabled = !enabled;
+    $(controls.download).disabled = !enabled;
+    $(controls.copy).disabled = !enabled;
+  }
   drawPreview(data);
   const extentNote = data.fitsStock ? '' : ' Toolpath extends beyond the entered stock rectangle; check placement.';
-  const accessNote = ` Generated programs in machining order: top, front, back, bottom. Front assumes the Y− face is rotated −90° about stock-centered X; back assumes Y+ is rotated +90°. Re-zero Z at each exposed face and preserve the selected X datum. Later roughing paths exclude the swept areas removed by earlier roughing setups.`;
+  const setupNotes = [];
+  if (data.sides.front) setupNotes.push('Front assumes the Y− face is rotated −90° about stock-centered X.');
+  if (data.sides.back) setupNotes.push('Back assumes the Y+ face is rotated +90° about stock-centered X.');
+  if (data.sides.bottom) setupNotes.push('Bottom assumes a 180° flip about stock-centered X.');
+  const accessNote = ` Generated programs in machining order: ${orderNote}. Part is rotated ${data.rotationZ}° about its center in the XY plane. ${setupNotes.join(' ')} Preserve the selected X datum, re-zero Z at each exposed face, and account for prior selected setups in later roughing paths.`;
   const toolNote = data.tool.number === 2
     ? ` T1 ${data.roughingTool.diameter.toFixed(3)} mm roughing, then T2 ${data.tool.diameter.toFixed(3)} mm contouring.`
     : ` T1 ${data.tool.diameter.toFixed(3)} mm for all generated cuts.`;
@@ -482,7 +553,12 @@ async function loadIntoGsender(side) {
   try {
     const name = `${state.modelName.replace(/\.[^.]+$/, '').replace(/[^a-z0-9_-]+/gi, '-')}-${side}-side.nc`;
     await gcode.loadToVisualizer(content, name);
-    setStatus(`Loaded ${name} into gSender for review. No job was started.`, 'success');
+    try {
+      await navigation.navigateToCarve();
+      setStatus(`Loaded ${name} and opened the gSender visualizer for review. No job was started.`, 'success');
+    } catch (error) {
+      setStatus(`Loaded ${name}, but could not open the visualizer: ${error?.message || error}. No job was started.`, 'working');
+    }
   } catch (error) { setStatus(`Could not load ${side}-side G-code: ${error?.message || error}`, 'error'); }
   finally { $(controls.load).disabled = false; }
 }
@@ -501,6 +577,8 @@ function invalidatePreview() {
 $('modelFile').addEventListener('change', (event) => loadModel(event.target.files?.[0]));
 $('colletSize').addEventListener('change', () => { persistSettings(); invalidatePreview(); });
 $('xyOrigin').addEventListener('change', () => { persistSettings(); invalidatePreview(); });
+$('rotationZ').addEventListener('change', applyModelRotation);
+for (const id of PERSISTENT_CHECKBOX_FIELDS) $(id).addEventListener('change', () => { persistSettings(); invalidatePreview(); });
 document.querySelectorAll('input[type="number"]').forEach((input) => input.addEventListener('change', () => { persistSettings(); invalidatePreview(); }));
 $('generate').addEventListener('click', () => { try { generate(); } catch (error) { setStatus(error.message, 'error'); } });
 $('load').addEventListener('click', () => loadIntoGsender('top'));
@@ -528,12 +606,28 @@ async function copyAllGcode(side) {
     setStatus(`Could not copy ${side}-side G-code: ${error?.message || error}`, 'error');
   }
 }
-const downloadGcode = (side) => {
+const downloadGcode = async (side) => {
   const content = side === 'top' ? state.gcode : state[`${side}Gcode`];
   if (!content) return;
   const name = `${state.modelName.replace(/\.[^.]+$/, '').replace(/[^a-z0-9_-]+/gi, '-')}-${side}-side.nc`;
-  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' }); const url = URL.createObjectURL(blob);
-  const link = document.createElement('a'); link.href = url; link.download = name; link.click(); URL.revokeObjectURL(url);
+  const button = $(sideControls[side].download);
+  button.disabled = true;
+  try {
+    const result = await file.openSaveDialog({
+      content,
+      options: {
+        defaultFileName: name,
+        title: `Save ${side} side G-code`,
+        filters: [{ name: 'G-code files', extensions: ['nc', 'gcode', 'tap'] }],
+      },
+    });
+    if (result.success) setStatus(`Saved ${name} to the selected location.`, 'success');
+    else setStatus(`Save ${side}-side G-code canceled.`, 'working');
+  } catch (error) {
+    setStatus(`Could not save ${side}-side G-code: ${error?.message || error}`, 'error');
+  } finally {
+    button.disabled = false;
+  }
 };
 $('download').addEventListener('click', () => downloadGcode('top'));
 $('downloadBottom').addEventListener('click', () => downloadGcode('bottom'));

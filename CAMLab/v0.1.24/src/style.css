@@ -21,6 +21,10 @@ main { max-width: 1420px; margin: auto; padding: 24px 26px 18px; }
 .file-icon { color: var(--blue); font-size: 1.25rem; line-height: 1; }
 .model-info { display: flex; justify-content: space-between; gap: 10px; margin-top: 9px; color: var(--muted); font-size: .75rem; }
 .model-info strong { color: #294a61; }
+.model-rotation { margin-top: 10px; }
+.side-toggle-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px 12px; }
+.side-toggle { display: flex; flex-direction: row; align-items: center; gap: 8px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px; background: #f8fbfd; }
+.side-toggle input { width: 16px; height: 16px; margin: 0; accent-color: var(--blue); }
 .fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 11px 13px; }
 .fields.three { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 label { display: flex; min-width: 0; flex-direction: column; gap: 5px; color: #324c60; font-size: .77rem; font-weight: 650; }
