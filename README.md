@@ -25,7 +25,7 @@ Source repository for gSender plugins maintained by Bakstaaj. Plugin version fol
 - [CNC Camera Monitor Local Bridge](camera-monitor-local-bridge/v0.1.0/README.md) — Windows companion installer for named ONVIF/RTSP streams through go2rtc.
 - [G-code Job Cost Estimator](job-cost-estimator/v0.1.0/README.md) — prototype 0.1.0; local runtime and job-cost estimates, safe-height review, and read-only XY path analysis.
 - [Basic Shape CAM](basic-shape-cam/v0.1.3/README.md) — prototype 0.1.5; generate-and-load-to-visualizer for Carve review, plus downloadable profiles for rectangles, squares, circles, ovals, slots, triangles, and regular polygons.
-- [Image Heightmap Engraver](image-heightmap-engraver/v0.1.4/README.md) — prototype 0.1.4; convert uploaded images to grayscale heightmaps and load, export, or copy raster engraving G-code, with an optional Z0 frame and selectable 0–20,000 RPM spindle speed.
+- [Heightmap Engraver](image-heightmap-engraver/v0.2.0/README.md) — Version 0.2.0; create relief toolpaths from grayscale images, STL or STEP topography, or images draped over models; supports G-code review, export, copy, and selectable finishing paths.
 
 ## Plugin screenshots
 
@@ -44,8 +44,8 @@ Source repository for gSender plugins maintained by Bakstaaj. Plugin version fol
 | [CNC Camera Monitor Local Bridge](camera-monitor-local-bridge/v0.1.0/README.md) | <img src="camera-monitor-local-bridge/v0.1.0/screenshots/carve-view.png" alt="Camera feed displayed over the gSender Carve visualizer using the local bridge" width="300"> |
 | [G-code Job Cost Estimator](job-cost-estimator/v0.1.0/README.md) | <img src="job-cost-estimator/v0.1.0/screenshots/01-estimate-summary.jpg" alt="Estimated runtime, cost, and time breakdown" width="300"> |
 | [Basic Shape CAM](basic-shape-cam/v0.1.3/README.md) | <img src="basic-shape-cam/v0.1.3/docs/screenshots/02-slot-preview.jpg" alt="Generated rounded slot profile preview" width="300"> |
-| [Image Heightmap Engraver](image-heightmap-engraver/v0.1.4/README.md) | <img src="image-heightmap-engraver/v0.1.4/docs/screenshots/engraving-settings.png" alt="Image Heightmap Engraver settings and grayscale image preview" width="300"> <img src="image-heightmap-engraver/v0.1.4/docs/screenshots/carve-heightmap-preview.png" alt="Heightmap loaded in gSender Carve" width="300"> |
-| [Image Heightmap Engraver](image-heightmap-engraver/v0.1.0/README.md) | <img src="image-heightmap-engraver/v0.1.0/docs/screenshots/engraving-settings.png" alt="Image Heightmap Engraver image and engraving dimensions" width="300"> <img src="image-heightmap-engraver/v0.1.0/docs/screenshots/carve-heightmap-preview.png" alt="Generated heightmap shown in gSender Carve" width="300"> |
+| [Heightmap Engraver](image-heightmap-engraver/v0.2.0/README.md) | <img src="image-heightmap-engraver/v0.2.0/docs/screenshots/engraving-settings.png" alt="Heightmap Engraver settings and grayscale image preview" width="300"> <img src="image-heightmap-engraver/v0.2.0/docs/screenshots/carve-heightmap-preview.png" alt="Heightmap loaded in gSender Carve" width="300"> |
+| [Heightmap Engraver (prototype archive)](image-heightmap-engraver/v0.1.0/README.md) | <img src="image-heightmap-engraver/v0.1.0/docs/screenshots/engraving-settings.png" alt="Heightmap Engraver image and engraving dimensions" width="300"> <img src="image-heightmap-engraver/v0.1.0/docs/screenshots/carve-heightmap-preview.png" alt="Generated heightmap shown in gSender Carve" width="300"> |
 
 ## Version folder layout
 

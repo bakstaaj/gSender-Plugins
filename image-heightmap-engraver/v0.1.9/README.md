@@ -1,5 +1,5 @@
-# Image Heightmap Engraver
-**Latest release package:** [Download image-heightmap-engraver-v0.1.9.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/image-heightmap-engraver-v0.1.9/image-heightmap-engraver-v0.1.9.zip)
+# Heightmap Engraver
+**Latest release package:** [Download image-heightmap-engraver-v0.2.0.zip](https://github.com/bakstaaj/gSender-Plugins/releases/download/image-heightmap-engraver-v0.2.0/image-heightmap-engraver-v0.2.0.zip)
 
 Version 0.1.9 for gSender 1.7.0-Edge-2. Converts an uploaded image to 8-bit grayscale and generates raster or elliptical spiral heightmap G-code for review in gSender Carve.
 

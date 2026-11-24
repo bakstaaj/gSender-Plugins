@@ -1,0 +1,6 @@
+{
+  "id":"com.bakstaaj.image-heightmap-engraver","name":"Heightmap Engraver","version":"0.2.0",
+  "description":"Engrave grayscale images on a flat surface or sampled STL/STEP top surfaces with selectable finish paths.","engine":"1.7.0-Edge-2",
+  "permissions":["visualizer:load","workspace:navigate:carve","file:save"],"ui":{"entry":"ui/index.html","contributions":[{"slot":"tools-page","route":"image-heightmap-engraver","label":"Heightmap Engraver"}]},
+  "capabilities":{"requestTypes":["gcode:load:to:visualizer","app:navigate","file:save"],"allowedFunctions":["gcode","navigation","file"]}
+}
