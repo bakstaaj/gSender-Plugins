@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Carve Studio</title>
+  <link rel="stylesheet" href="style.css">
+  <style>.gcode-preview{display:none!important}</style>
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand"><span class="mark">C</span><div><strong>Carve Studio</strong><small>Top-side design</small></div></div>
+    <div class="project-name" id="project-name">Untitled project <span class="saved-dot"></span></div>
+    <div class="top-actions"><button id="open-project">Open project</button><button id="save-project">Save project</button><button id="undo" title="Undo" disabled>↶</button><button id="redo" title="Redo" disabled>↷</button><button class="primary" id="export">Export vectors</button></div>
+  </header>
+  <main class="layout">
+    <aside class="left-panel">
+      <div class="panel-heading"><span>DESIGN</span><button class="quiet" id="new-project">New</button></div>
+      <label class="field-label" for="file-input">Import drawing</label>
+      <button class="import-button" id="import-button"><span>＋</span> Import SVG or DXF</button>
+      <input id="file-input" type="file" accept=".svg,.dxf,image/svg+xml,application/dxf" hidden>
+      <p class="hint">Vectors stay editable after import. Units are interpreted as millimeters.</p>
+      <div id="text-settings" hidden><div class="section-title">TEXT</div>
+        <label class="text-field-label" for="text-content">Text<input id="text-content" type="text" maxlength="120" placeholder="Enter text"></label>
+        <label class="text-field-label" for="text-font">Font<select id="text-font"><optgroup label="Included fonts"><option value="anton">Anton · bold</option><option value="oswald">Oswald · condensed</option><option value="bebas">Bebas Neue · tall</option><option value="barlow">Barlow Condensed · black</option><option value="alfa">Alfa Slab One · slab</option><option value="shortstack">Short Stack · rounded</option></optgroup><optgroup label="CNC engraving"><option value="relief">Relief SingleLine · CNC</option></optgroup><optgroup id="imported-font-options" label="Imported fonts" hidden></optgroup></select></label>
+        <small class="optimize-hint">Relief SingleLine is designed for CNC engraving; other fonts create outlined letters.</small>
+        <div class="field-row"><label for="text-size">Height</label><div class="input-unit"><input id="text-size" type="number" min="2" max="500" step="1" value="25"><span>mm</span></div></div>
+        <button id="place-text" class="text-place-button">Place text</button>
+        <button id="import-font-button" class="font-import-button" type="button">Import new font</button><input id="font-file-input" type="file" accept=".ttf,.otf,font/ttf,font/otf" hidden><small id="font-import-status" class="optimize-hint" aria-live="polite">Import a TTF or OTF font to add it to this gSender profile.</small>
+      </div>
+      <section id="stock-panel" class="side-panel" hidden><div class="section-title">STOCK</div>
+      <div class="field-row"><label for="stock-width">Width</label><div class="input-unit"><input id="stock-width" type="number" min="1" value="300"><span>mm</span></div></div>
+      <div class="field-row"><label for="stock-height">Height</label><div class="input-unit"><input id="stock-height" type="number" min="1" value="200"><span>mm</span></div></div>
+      <div class="field-row"><label for="stock-thickness">Thickness</label><div class="input-unit"><input id="stock-thickness" type="number" min="0.1" step="0.1" value="18"><span>mm</span></div></div>
+      <label class="optimize-toggle"><input id="auto-stock-size" type="checkbox" checked> Auto-size from first import (+10%)</label>
+      </section>
+      <section id="layers-panel" class="side-panel" hidden><div class="section-title layer-title">LAYERS <button class="quiet" id="add-layer">＋</button></div>
+      <div id="layers" class="layers"></div>
+      </section>
+      <section id="selection-panel" class="side-panel"><div class="section-title selection-title">SELECTION</div>
+      <div id="selection-info" class="selection-info">Nothing selected</div>
+      <div class="selection-tools">
+        <div class="edit-grid"><label>X<input id="edit-x" type="number" step="0.1" disabled></label><label>Y<input id="edit-y" type="number" step="0.1" disabled></label><label>Width<input id="edit-width" type="number" min="0.1" step="0.1" disabled></label><label>Height<input id="edit-height" type="number" min="0.1" step="0.1" disabled></label></div>
+      </div>
+      </section>
+      <section id="offset-panel" class="side-panel" hidden><div class="section-title">OFFSET</div><p>Creates an offset copy of the selected vectors. Positive distance expands closed outlines; negative distance contracts them. For open vectors, positive follows the left side of the drawing direction.</p><label class="cam-label">Offset distance<input id="offset-distance" type="number" step="0.1" value="2"></label><button id="apply-offset" class="primary" disabled>Create offset copy</button><div id="offset-status" class="profile-status" aria-live="polite"></div></section>
+    </aside>
+    <section class="workspace">
+      <div class="toolbar">
+        <div class="tool-group"><button class="tool active" data-tool="select" data-panel="selection" title="Select and move; double-click to select connected vectors">↖</button><button class="tool" data-tool="pan" title="Pan view">✋</button></div>
+        <div class="tool-group"><button class="tool" data-panel="stock" title="Show stock settings">▣</button><button class="tool" data-panel="layers" title="Show layers">▤</button></div>
+        <div class="tool-divider"></div>
+        <button class="tool text-tool" data-tool="line" title="Draw line">╱</button><button class="tool text-tool" data-tool="rect" title="Draw rectangle">▱</button><button class="tool text-tool" data-tool="circle" title="Draw circle">◯</button><button class="tool text-tool" data-tool="trim" title="Trim outline segments between intersections">✂</button>
+        <button class="tool text-tool" data-tool="text" data-panel="text" title="Place block text using the font and height controls">T</button>
+        <button class="tool" id="center-on-stock" title="Center selected objects on the stock" aria-label="Center selection on stock" disabled>⌖</button>
+        <div class="tool-group selection-toolbar-actions"><button class="tool offset-tool" data-panel="offset" id="offset-tool" title="Offset selected vectors" aria-label="Offset selected vectors" disabled>Offset</button><button class="tool" id="duplicate-selected" title="Duplicate selected objects" aria-label="Duplicate selected objects" disabled>⧉</button><button class="tool" id="mirror-x" title="Flip across the stock's vertical centerline" aria-label="Flip left and right" disabled>↔</button><button class="tool" id="mirror-y" title="Flip across the stock's horizontal centerline" aria-label="Flip top and bottom" disabled>↕</button><button class="tool" id="duplicate-mirror-x" title="Duplicate across the stock's vertical centerline" aria-label="Duplicate and mirror horizontally" disabled>⊕↔</button><button class="tool" id="duplicate-mirror-y" title="Duplicate across the stock's horizontal centerline" aria-label="Duplicate and mirror vertically" disabled>⊕↕</button><button class="tool delete-tool" id="delete-selected" title="Delete selected objects" aria-label="Delete selected objects" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 3v7m4-7v7"/></svg></button></div>
+        <button class="tool" id="grid-toggle" title="Toggle grid and snapping" aria-pressed="false">▦</button><select id="grid-resolution" title="Grid and snap spacing"><option value="0.5">0.5 mm</option><option value="1">1 mm</option><option value="2">2 mm</option><option value="5" selected>5 mm</option><option value="10">10 mm</option><option value="20">20 mm</option></select>
+        <div class="toolbar-spacer"></div><span id="zoom-label">100%</span><button class="tool" id="zoom-out">−</button><button class="tool" id="zoom-in">＋</button><button class="tool fit-button" id="fit-view">Fit</button>
+      </div>
+      <div class="canvas-wrap" id="canvas-wrap">
+        <svg id="canvas" xmlns="http://www.w3.org/2000/svg" role="application" aria-label="Top view drawing canvas">
+          <defs><pattern id="grid-pattern" width="5" height="5" patternUnits="userSpaceOnUse"><circle id="grid-dot" cx="0" cy="0" r=".35" fill="#53667b" fill-opacity="1"/></pattern></defs>
+          <g id="view-root"><rect id="board-shadow"/><rect id="board"/><rect id="grid-overlay" fill="url(#grid-pattern)" visibility="hidden" pointer-events="none"/><path id="region-highlight" class="region-highlight" fill-rule="evenodd" visibility="hidden" pointer-events="none"/><g id="drawing"></g><g id="region-cutouts" pointer-events="none"></g><g id="drawing-preview" pointer-events="none"></g><g id="toolpath-preview" pointer-events="none"></g><rect id="selection-box" class="selection-box window" visibility="hidden" pointer-events="none"/><circle id="selection-center" class="selection-center-handle" visibility="hidden"/></g>
+        </svg>
+        <div class="coord-readout" id="coordinates">X 0.0&nbsp;&nbsp; Y 0.0 mm</div>
+      </div>
+      <footer class="statusbar"><span><i class="status-light"></i> Top view</span><span id="object-count">0 objects</span><span>Units: mm</span><span class="status-right">Carve Studio · design workspace</span></footer>
+    </section>
+    <aside class="right-panel">
+      <div class="panel-heading"><span>TOOLPATHS</span><span class="coming-soon">PROFILE</span></div>
+      <div id="cam-operations">
+        <details class="operation-section"><summary>Profile on vector</summary><p>Follows selected vectors or the full drawing at centerline.</p><label class="cam-label">Cut from<select id="profile-scope"><option value="selected" selected>Selected vectors</option><option value="all">All vectors</option></select></label><label class="cam-label">Cut depth (mm)<input id="profile-depth" type="number" min="0.1" step="0.1"></label><label class="cam-label">Pass depth (mm)<input id="profile-stepdown" type="number" min="0.1" step="0.1" value="1"></label><label class="optimize-toggle"><input id="profile-through-stock" type="checkbox" checked> Profile through stock thickness</label><div class="cam-grid"><label>Tabs per contour<input id="profile-tab-count" type="number" min="0" max="12" step="1" value="4"></label><label>Tab width (mm)<input id="profile-tab-width" type="number" min="0.1" step="0.5" value="6"></label><label>Tab height (mm)<input id="profile-tab-height" type="number" min="0.1" step="0.5" value="2"></label></div><small class="optimize-hint">Default: full stock depth, with 4 tabs 6 mm wide and 2 mm high.</small><div class="cam-grid"><label>Safe Z (mm)<input id="profile-safez" type="number" min="0.1" step="0.1" value="5"></label><label>Feed (mm/min)<input id="profile-feed" type="number" min="1" step="1" value="800"></label><label>Plunge (mm/min)<input id="profile-plunge" type="number" min="1" step="1" value="250"></label><label>Spindle RPM<input id="profile-rpm" type="number" min="1" step="100" value="12000"></label></div><label class="optimize-toggle"><input id="optimize-moves" type="checkbox" checked> Optimize joins and rapid moves</label><small class="optimize-hint">Joins open vectors meeting within 0.02 mm; reorders remaining contours.</small><button id="preview-profile" class="primary cam-button">Generate Toolpath</button></details>
+        <details class="operation-section"><summary>Drilling</summary><p>Drills circle centers. The physical drill bit sets the hole diameter.</p><label class="cam-label">Circle vectors<select id="drill-scope"><option value="all">All circles</option><option value="selected">Selected circles</option></select></label><label class="cam-label">Drill depth (mm)<input id="drill-depth" type="number" min="0.1" step="0.1"></label><label class="cam-label">Peck depth (mm)<input id="drill-stepdown" type="number" min="0.1" step="0.1" value="1"></label><div class="cam-grid"><label>Safe Z (mm)<input id="drill-safez" type="number" min="0.1" step="0.1" value="5"></label><label>Feed (mm/min)<input id="drill-feed" type="number" min="1" step="1" value="800"></label><label>Plunge (mm/min)<input id="drill-plunge" type="number" min="1" step="1" value="250"></label><label>Spindle RPM<input id="drill-rpm" type="number" min="1" step="100" value="12000"></label></div><button id="preview-drill" class="primary cam-button">Generate Toolpath</button></details>
+        <details class="operation-section"><summary>V Groove Profile</summary><p>Creates centerline paths for closed letter outlines and follows Relief SingleLine strokes directly. Include outside and counter outlines for block text.</p><label class="cam-label">V-bit included angle<select id="vgroove-angle"><option value="30">30°</option><option value="45">45°</option><option value="60">60°</option><option value="90" selected>90°</option><option value="120">120°</option></select></label><label class="cam-label">Maximum depth (mm)<input id="vgroove-max-depth" type="number" min="0.1" step="0.1"></label><label class="optimize-toggle"><input id="vgroove-singleline" type="checkbox"> Treat selected font outlines as single-line</label><small class="optimize-hint">Uses one centerline pass at the selected maximum depth. Groove width depends on the bit angle.</small><div class="cam-grid"><label>Safe Z (mm)<input id="vgroove-safez" type="number" min="0.1" step="0.1" value="5"></label><label>Feed (mm/min)<input id="vgroove-feed" type="number" min="1" step="1" value="800"></label><label>Plunge (mm/min)<input id="vgroove-plunge" type="number" min="1" step="1" value="250"></label><label>Spindle RPM<input id="vgroove-rpm" type="number" min="1" step="100" value="12000"></label></div><button id="preview-vgroove" class="primary cam-button">Generate Toolpath</button></details>
+        <details class="operation-section"><summary>Pocket</summary><p>Clears the inside of selected closed shapes using nested tool-center loops.</p><div class="cam-grid"><label>Pocket depth (mm)<input id="pocket-depth" type="number" min="0.1" step="0.1"></label><label>Pass depth (mm)<input id="pocket-stepdown" type="number" min="0.1" step="0.1" value="1"></label><label>Tool diameter (mm)<input id="pocket-tool-diameter" type="number" min="0.1" step="0.1" value="3.175"></label><label>Overlap (%)<input id="pocket-overlap" type="number" min="0" max="95" step="1" value="50"></label><label>Safe Z (mm)<input id="pocket-safez" type="number" min="0.1" step="0.1" value="5"></label><label>Feed (mm/min)<input id="pocket-feed" type="number" min="1" step="1" value="800"></label><label>Plunge (mm/min)<input id="pocket-plunge" type="number" min="1" step="1" value="250"></label><label>Spindle RPM<input id="pocket-rpm" type="number" min="1" step="100" value="12000"></label></div><button id="preview-pocket" class="primary cam-button">Generate Toolpath</button></details>
+      </div>
+      <div class="toolpath-card"><div class="toolpath-list-header"><strong>Generated toolpaths</strong><span id="toolpath-count">0 paths</span></div><div id="toolpath-list" class="toolpath-list"></div><button id="build-combined-nc" class="primary cam-button" disabled>Build final NC</button><div id="profile-status" class="profile-status">Choose an operation, set its parameters, then generate a toolpath preview.</div><textarea id="gcode-preview" class="gcode-preview" readonly hidden></textarea><button id="load-visualizer" class="cam-button" disabled>Load into Visualizer</button><button id="save-gcode" class="cam-button" disabled>Save G-code…</button></div>
+      <div class="section-title">DESIGN CHECKS</div><div class="check-item"><span class="check-icon">✓</span><div><strong>Top-side workspace</strong><small>No 3D relief or rotary machining</small></div></div><div class="check-item"><span class="check-icon muted">•</span><div><strong id="check-geometry">Waiting for vectors</strong><small>Import SVG or DXF to begin</small></div></div>
+    </aside>
+  </main>
+  <input id="project-input" type="file" accept="application/json,.carve,.json" hidden>
+  <dialog id="new-project-dialog" class="new-project-dialog"><form method="dialog"><strong>Save current project?</strong><p>Your drawing will be cleared when the new project starts.</p><div class="dialog-actions"><button value="cancel">Cancel</button><button value="discard">Discard</button><button class="primary" value="save">Save</button></div></form></dialog>
+  <script type="module" src="src/main.js"></script>
+</body>
+</html>

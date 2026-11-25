@@ -1,0 +1,21 @@
+{
+  "name": "gsender-carve-studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "deploy:local": "npm run build && C:\\msys64\\usr\\bin\\bash.exe ./deploy-local.sh"
+  },
+  "dependencies": {
+    "@sienci/gsender-plugin-sdk": "0.2.2",
+    "clipper-lib": "6.4.2",
+    "d3-delaunay": "^6.0.4",
+    "opentype.js": "^2.0.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4"
+  },
+  "devDependencies": {
+    "vite": "6.4.6"
+  }
+}
