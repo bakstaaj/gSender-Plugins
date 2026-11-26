@@ -5,7 +5,7 @@
 
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Carve Studio</title>
+  <title>Carve Studio</title>
   <style>.gcode-preview{display:none!important}</style>
   <script type="importmap">{
   "imports": {
@@ -19,8 +19,8 @@
     "react/jsx-dev-runtime": "./vendor/react-jsx-dev-runtime.js"
   }
 }</script>
-  <script type="module" crossorigin src="./assets/index-CzqyRrdL.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-0wAN-6L5.css">
+  <script type="module" crossorigin src="./assets/index-B3dGhTsO.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-CotFIzia.css">
 </head>
 <body>
   <header class="topbar">
@@ -28,13 +28,25 @@
     <div class="project-name" id="project-name">Untitled project <span class="saved-dot"></span></div>
     <div class="top-actions"><button id="open-project">Open project</button><button id="save-project">Save project</button><button id="undo" title="Undo" disabled>↶</button><button id="redo" title="Redo" disabled>↷</button><button class="primary" id="export">Export vectors</button></div>
   </header>
-  <main class="layout">
+  <nav class="studio-tabs" role="tablist" aria-label="Carve Studio">
+    <button id="editor-tab" type="button" role="tab" aria-selected="true" aria-controls="editor-panel">Design</button>
+    <button id="registration-tab" type="button" role="tab" aria-selected="false" aria-controls="registration-panel" tabindex="-1">Registration</button>
+  </nav>
+  <main class="editor-panel" id="editor-panel" role="tabpanel" aria-labelledby="editor-tab">
+    <div class="workspace-error" id="workspace-error" hidden>
+      <div class="workspace-error-content">
+        <strong>Error</strong>
+        <p id="workspace-error-message" role="alert"></p>
+      </div>
+      <button type="button" id="dismiss-workspace-error" aria-label="Dismiss error">Dismiss</button>
+    </div>
+    <div class="layout">
     <aside class="left-panel">
       <div class="panel-heading"><span>DESIGN</span><button class="quiet" id="new-project">New</button></div>
       <label class="field-label" for="file-input">Import drawing</label>
-      <button class="import-button" id="import-button"><span>＋</span> Import SVG or DXF</button>
-      <input id="file-input" type="file" accept=".svg,.dxf,image/svg+xml,application/dxf" hidden>
-      <p class="hint">Vectors stay editable after import. Units are interpreted as millimeters.</p>
+      <button class="import-button" id="import-button" type="button" aria-describedby="drawing-import-hint">Unlock SVG/DXF import</button>
+      <input id="file-input" type="file" accept=".svg,.dxf,image/svg+xml,application/dxf" disabled hidden>
+      <p class="hint" id="drawing-import-hint">SVG and DXF import requires registration.</p>
       <div id="text-settings" hidden><div class="section-title">TEXT</div>
         <label class="text-field-label" for="text-content">Text<input id="text-content" type="text" maxlength="120" placeholder="Enter text"></label>
         <label class="text-field-label" for="text-font">Font<select id="text-font"><optgroup label="Included fonts"><option value="anton">Anton · bold</option><option value="oswald">Oswald · condensed</option><option value="bebas">Bebas Neue · tall</option><option value="barlow">Barlow Condensed · black</option><option value="alfa">Alfa Slab One · slab</option><option value="shortstack">Short Stack · rounded</option></optgroup><optgroup label="CNC engraving"><option value="relief">Relief SingleLine · CNC</option></optgroup><optgroup id="imported-font-options" label="Imported fonts" hidden></optgroup></select></label>
@@ -59,41 +71,214 @@
       </div>
       </section>
       <section id="offset-panel" class="side-panel" hidden><div class="section-title">OFFSET</div><p>Creates an offset copy of the selected vectors. Positive distance expands closed outlines; negative distance contracts them. For open vectors, positive follows the left side of the drawing direction.</p><label class="cam-label">Offset distance<input id="offset-distance" type="number" step="0.1" value="2"></label><button id="apply-offset" class="primary" disabled>Create offset copy</button><div id="offset-status" class="profile-status" aria-live="polite"></div></section>
+      <section id="array-panel" class="side-panel geometry-panel" hidden>
+        <div class="section-title">ARRAY</div>
+        <label class="cam-label">Layout<select id="array-layout"><option value="rectangular">Rectangular</option><option value="circular">Circular</option></select></label>
+        <div class="cam-grid" id="rectangular-array-fields">
+          <label>Columns<input id="array-columns" type="number" min="1" max="1000" step="1" value="2"></label>
+          <label>Rows<input id="array-rows" type="number" min="1" max="1000" step="1" value="2"></label>
+          <label>X spacing (mm)<input id="array-pitch-x" type="number" step="any" value="25"></label>
+          <label>Y spacing (mm)<input id="array-pitch-y" type="number" step="any" value="25"></label>
+        </div>
+        <div id="circular-array-fields" hidden>
+          <div class="cam-grid">
+            <label>Positions<input id="array-count" type="number" min="2" max="1000" step="1" value="6"></label>
+            <label>Sweep (°)<input id="array-sweep" type="number" min="-360" max="360" step="any" value="360"></label>
+            <label>Center X (mm)<input id="array-center-x" type="number" step="any"></label>
+            <label>Center Y (mm)<input id="array-center-y" type="number" step="any"></label>
+          </div>
+          <label class="cam-label">Radius (mm)<input id="array-radius" type="number" min="0" step="any" aria-describedby="array-radius-hint"></label>
+          <p class="hint" id="array-radius-hint">Blank uses the selection’s current distance from the center. Enter a radius to move the original onto that ring.</p>
+          <button id="pick-array-center" type="button" aria-pressed="false">Pick center on canvas</button>
+          <p class="hint">Blank center uses the stock center. Copies keep their orientation.</p>
+        </div>
+        <button id="apply-array" type="button" class="primary" disabled>Create array</button>
+        <p id="array-status" class="profile-status" role="status"></p>
+      </section>
+      <section id="corner-panel" class="side-panel geometry-panel" hidden>
+        <div class="section-title">CORNERS</div>
+        <label class="cam-label">Corner type<select id="corner-mode"><option value="fillet">Fillet</option><option value="chamfer">Chamfer</option><option value="concave">Concave fillet</option></select></label>
+        <label class="cam-label"><span id="corner-size-label">Radius (mm)</span><input id="corner-size" type="number" min="0.01" step="any" value="5"></label>
+        <p class="hint">Click a corner or apply to all corners of the selected rectangles, polygons, or polylines.</p>
+        <button id="apply-corners" type="button" class="primary" disabled>Apply to all corners</button>
+        <p id="corner-status" class="profile-status" role="status"></p>
+      </section>
+      <section id="path-panel" class="side-panel geometry-panel" hidden>
+        <div class="section-title" id="path-title"></div>
+        <p id="path-status" class="hint" role="status"></p>
+        <div class="path-actions" id="polyline-actions" hidden>
+          <button type="button" id="finish-polyline" disabled>Finish open</button>
+          <button type="button" id="close-polyline" disabled>Close polyline</button>
+        </div>
+      </section>
     </aside>
     <section class="workspace">
-      <div class="toolbar">
-        <div class="tool-group"><button class="tool active" data-tool="select" data-panel="selection" title="Select and move; double-click to select connected vectors">↖</button><button class="tool" data-tool="pan" title="Pan view">✋</button></div>
-        <div class="tool-group"><button class="tool" data-panel="stock" title="Show stock settings">▣</button><button class="tool" data-panel="layers" title="Show layers">▤</button></div>
-        <div class="tool-divider"></div>
-        <button class="tool text-tool" data-tool="line" title="Draw line">╱</button><button class="tool text-tool" data-tool="rect" title="Draw rectangle">▱</button><button class="tool text-tool" data-tool="circle" title="Draw circle">◯</button><button class="tool text-tool" data-tool="trim" title="Trim outline segments between intersections">✂</button>
-        <button class="tool text-tool" data-tool="text" data-panel="text" title="Place block text using the font and height controls">T</button>
-        <button class="tool" id="center-on-stock" title="Center selected objects on the stock" aria-label="Center selection on stock" disabled>⌖</button>
-        <div class="tool-group selection-toolbar-actions"><button class="tool offset-tool" data-panel="offset" id="offset-tool" title="Offset selected vectors" aria-label="Offset selected vectors" disabled>Offset</button><button class="tool" id="duplicate-selected" title="Duplicate selected objects" aria-label="Duplicate selected objects" disabled>⧉</button><button class="tool" id="mirror-x" title="Flip across the stock's vertical centerline" aria-label="Flip left and right" disabled>↔</button><button class="tool" id="mirror-y" title="Flip across the stock's horizontal centerline" aria-label="Flip top and bottom" disabled>↕</button><button class="tool" id="duplicate-mirror-x" title="Duplicate across the stock's vertical centerline" aria-label="Duplicate and mirror horizontally" disabled>⊕↔</button><button class="tool" id="duplicate-mirror-y" title="Duplicate across the stock's horizontal centerline" aria-label="Duplicate and mirror vertically" disabled>⊕↕</button><button class="tool delete-tool" id="delete-selected" title="Delete selected objects" aria-label="Delete selected objects" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 3v7m4-7v7"/></svg></button></div>
-        <button class="tool" id="grid-toggle" title="Toggle grid and snapping" aria-pressed="false">▦</button><select id="grid-resolution" title="Grid and snap spacing"><option value="0.5">0.5 mm</option><option value="1">1 mm</option><option value="2">2 mm</option><option value="5" selected>5 mm</option><option value="10">10 mm</option><option value="20">20 mm</option></select>
-        <div class="toolbar-spacer"></div><span id="zoom-label">100%</span><button class="tool" id="zoom-out">−</button><button class="tool" id="zoom-in">＋</button><button class="tool fit-button" id="fit-view">Fit</button>
+      <div class="toolbar" role="group" aria-label="Drawing toolbar">
+        <div class="tool-group" role="group" aria-label="Navigate">
+          <button aria-label="Select" class="tool active" data-tool="select" data-panel="selection" title="Select and move; double-click to select connected vectors">↖</button>
+          <button aria-label="Pan" class="tool" data-tool="pan" title="Pan view">✋</button>
+        </div>
+        <div class="tool-group" role="group" aria-label="Drawing setup">
+          <button aria-label="Stock" class="tool" data-panel="stock" title="Show stock settings">▣</button>
+          <button aria-label="Layers" class="tool" data-panel="layers" title="Show layers">▤</button>
+        </div>
+        <div class="tool-group" role="group" aria-label="Draw">
+          <button aria-label="Line" class="tool text-tool" data-tool="line" title="Draw line">╱</button>
+          <button class="tool" data-tool="polyline" aria-label="Polyline" title="Draw a polyline"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m4 18 6-11 5 8 5-10"/><path d="M4 18h.01M10 7h.01M15 15h.01M20 5h.01" stroke-width="3.8"/></svg></button>
+          <button class="tool" data-tool="arc" aria-label="3-point arc" title="Draw a 3-point arc"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 18a8 11 0 0 1 16 0"/><path d="M4 18h.01M12 7h.01M20 18h.01" stroke-width="3.8"/></svg></button>
+          <button aria-label="Rectangle" class="tool text-tool" data-tool="rect" title="Draw rectangle">▱</button>
+          <button aria-label="Circle" class="tool text-tool" data-tool="circle" title="Draw circle">◯</button>
+          <button aria-label="Text" class="tool text-tool" data-tool="text" data-panel="text" title="Place block text using the font and height controls">T</button>
+        </div>
+        <div class="tool-group" role="group" aria-label="Edit outlines">
+          <button aria-label="Trim" class="tool text-tool" data-tool="trim" title="Trim outline segments between intersections">✂</button>
+          <button class="tool" data-tool="corner" data-panel="corner" title="Corners (fillet, chamfer, or concave fillet)" aria-label="Corners"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20v-8a8 8 0 0 1 8-8h8"/><path d="M4 8V4h4" stroke-dasharray="1.5 2"/></svg></button>
+          <button class="tool" data-panel="offset" id="offset-tool" title="Offset selected vectors" aria-label="Offset selected vectors" disabled><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1"/><rect x="8" y="8" width="8" height="8" rx=".5"/></svg></button>
+        </div>
+        <div class="tool-group selection-toolbar-actions" role="group" aria-label="Arrange selection">
+          <button class="tool" id="center-on-stock" title="Center selected objects on the stock" aria-label="Center selection on stock" disabled>⌖</button>
+          <button class="tool" id="duplicate-selected" title="Duplicate selected objects" aria-label="Duplicate selected objects" disabled>⧉</button>
+          <button class="tool" id="array-tool" data-panel="array" title="Array (rectangular or circular)" aria-label="Array" disabled><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z"/></svg></button>
+          <button class="tool" id="mirror-x" title="Flip across the stock's vertical centerline" aria-label="Flip left and right" disabled>↔</button>
+          <button class="tool" id="mirror-y" title="Flip across the stock's horizontal centerline" aria-label="Flip top and bottom" disabled>↕</button>
+          <button class="tool" id="duplicate-mirror-x" title="Duplicate across the stock's vertical centerline" aria-label="Duplicate and mirror horizontally" disabled>⊕↔</button>
+          <button class="tool" id="duplicate-mirror-y" title="Duplicate across the stock's horizontal centerline" aria-label="Duplicate and mirror vertically" disabled>⊕↕</button>
+          <button class="tool delete-tool" id="delete-selected" title="Delete selected objects" aria-label="Delete selected objects" disabled><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3m3 0-1 13H7L6 7m4 3v7m4-7v7"/></svg></button>
+        </div>
+        <div class="tool-group" role="group" aria-label="Snapping">
+          <button aria-label="Grid and snapping" class="tool" id="grid-toggle" title="Toggle grid and object snapping" aria-pressed="false">▦</button>
+          <select id="grid-resolution" title="Grid and snap spacing"><option value="0.5">0.5 mm</option><option value="1">1 mm</option><option value="2">2 mm</option><option value="5" selected>5 mm</option><option value="10">10 mm</option><option value="20">20 mm</option></select>
+        </div>
+        <div class="toolbar-spacer" aria-hidden="true"></div>
+        <div class="tool-group" role="group" aria-label="View">
+          <span id="zoom-label">100%</span>
+          <button aria-label="Zoom out" class="tool" id="zoom-out">−</button>
+          <button aria-label="Zoom in" class="tool" id="zoom-in">＋</button>
+          <button aria-label="Fit drawing" class="tool fit-button" id="fit-view">Fit</button>
+        </div>
       </div>
       <div class="canvas-wrap" id="canvas-wrap">
-        <svg id="canvas" xmlns="http://www.w3.org/2000/svg" role="application" aria-label="Top view drawing canvas">
+        <svg id="canvas" xmlns="http://www.w3.org/2000/svg" role="application" aria-label="Top view drawing canvas" tabindex="-1">
           <defs><pattern id="grid-pattern" width="5" height="5" patternUnits="userSpaceOnUse"><circle id="grid-dot" cx="0" cy="0" r=".35" fill="#53667b" fill-opacity="1"/></pattern></defs>
-          <g id="view-root"><rect id="board-shadow"/><rect id="board"/><rect id="grid-overlay" fill="url(#grid-pattern)" visibility="hidden" pointer-events="none"/><path id="region-highlight" class="region-highlight" fill-rule="evenodd" visibility="hidden" pointer-events="none"/><g id="drawing"></g><g id="region-cutouts" pointer-events="none"></g><g id="drawing-preview" pointer-events="none"></g><g id="toolpath-preview" pointer-events="none"></g><rect id="selection-box" class="selection-box window" visibility="hidden" pointer-events="none"/><circle id="selection-center" class="selection-center-handle" visibility="hidden"/></g>
+          <g id="view-root"><rect id="board-shadow"/><rect id="board"/><rect id="grid-overlay" fill="url(#grid-pattern)" visibility="hidden" pointer-events="none"/><path id="region-highlight" class="region-highlight" fill-rule="evenodd" visibility="hidden" pointer-events="none"/><g id="drawing"></g><g id="region-cutouts" pointer-events="none"></g><g id="drawing-preview" pointer-events="none"></g><g id="geometry-preview"></g><g id="toolpath-preview" pointer-events="none"></g><rect id="selection-box" class="selection-box window" visibility="hidden" pointer-events="none"/><circle id="selection-center" class="selection-center-handle" visibility="hidden"/><g id="object-snap-marker" visibility="hidden" pointer-events="none" aria-hidden="true"><path class="snap-halo" d="M0-6l6 6-6 6-6-6zM-2 0h4M0-2v4"/><path d="M0-6l6 6-6 6-6-6zM-2 0h4M0-2v4"/></g></g>
         </svg>
         <div class="coord-readout" id="coordinates">X 0.0&nbsp;&nbsp; Y 0.0 mm</div>
       </div>
       <footer class="statusbar"><span><i class="status-light"></i> Top view</span><span id="object-count">0 objects</span><span>Units: mm</span><span class="status-right">Carve Studio · design workspace</span></footer>
     </section>
     <aside class="right-panel">
-      <div class="panel-heading"><span>TOOLPATHS</span><span class="coming-soon">PROFILE</span></div>
+      <div class="panel-heading"><span>TOOLPATHS</span><button type="button" class="tool-library-button" id="open-tool-library">Tool library</button></div>
       <div id="cam-operations">
-        <details class="operation-section"><summary>Profile on vector</summary><p>Follows selected vectors or the full drawing at centerline.</p><label class="cam-label">Cut from<select id="profile-scope"><option value="selected" selected>Selected vectors</option><option value="all">All vectors</option></select></label><label class="cam-label">Cut depth (mm)<input id="profile-depth" type="number" min="0.1" step="0.1"></label><label class="cam-label">Pass depth (mm)<input id="profile-stepdown" type="number" min="0.1" step="0.1" value="1"></label><label class="optimize-toggle"><input id="profile-through-stock" type="checkbox" checked> Profile through stock thickness</label><div class="cam-grid"><label>Tabs per contour<input id="profile-tab-count" type="number" min="0" max="12" step="1" value="4"></label><label>Tab width (mm)<input id="profile-tab-width" type="number" min="0.1" step="0.5" value="6"></label><label>Tab height (mm)<input id="profile-tab-height" type="number" min="0.1" step="0.5" value="2"></label></div><small class="optimize-hint">Default: full stock depth, with 4 tabs 6 mm wide and 2 mm high.</small><div class="cam-grid"><label>Safe Z (mm)<input id="profile-safez" type="number" min="0.1" step="0.1" value="5"></label><label>Feed (mm/min)<input id="profile-feed" type="number" min="1" step="1" value="800"></label><label>Plunge (mm/min)<input id="profile-plunge" type="number" min="1" step="1" value="250"></label><label>Spindle RPM<input id="profile-rpm" type="number" min="1" step="100" value="12000"></label></div><label class="optimize-toggle"><input id="optimize-moves" type="checkbox" checked> Optimize joins and rapid moves</label><small class="optimize-hint">Joins open vectors meeting within 0.02 mm; reorders remaining contours.</small><button id="preview-profile" class="primary cam-button">Generate Toolpath</button></details>
-        <details class="operation-section"><summary>Drilling</summary><p>Drills circle centers. The physical drill bit sets the hole diameter.</p><label class="cam-label">Circle vectors<select id="drill-scope"><option value="all">All circles</option><option value="selected">Selected circles</option></select></label><label class="cam-label">Drill depth (mm)<input id="drill-depth" type="number" min="0.1" step="0.1"></label><label class="cam-label">Peck depth (mm)<input id="drill-stepdown" type="number" min="0.1" step="0.1" value="1"></label><div class="cam-grid"><label>Safe Z (mm)<input id="drill-safez" type="number" min="0.1" step="0.1" value="5"></label><label>Feed (mm/min)<input id="drill-feed" type="number" min="1" step="1" value="800"></label><label>Plunge (mm/min)<input id="drill-plunge" type="number" min="1" step="1" value="250"></label><label>Spindle RPM<input id="drill-rpm" type="number" min="1" step="100" value="12000"></label></div><button id="preview-drill" class="primary cam-button">Generate Toolpath</button></details>
-        <details class="operation-section"><summary>V Groove Profile</summary><p>Creates centerline paths for closed letter outlines and follows Relief SingleLine strokes directly. Include outside and counter outlines for block text.</p><label class="cam-label">V-bit included angle<select id="vgroove-angle"><option value="30">30°</option><option value="45">45°</option><option value="60">60°</option><option value="90" selected>90°</option><option value="120">120°</option></select></label><label class="cam-label">Maximum depth (mm)<input id="vgroove-max-depth" type="number" min="0.1" step="0.1"></label><label class="optimize-toggle"><input id="vgroove-singleline" type="checkbox"> Treat selected font outlines as single-line</label><small class="optimize-hint">Uses one centerline pass at the selected maximum depth. Groove width depends on the bit angle.</small><div class="cam-grid"><label>Safe Z (mm)<input id="vgroove-safez" type="number" min="0.1" step="0.1" value="5"></label><label>Feed (mm/min)<input id="vgroove-feed" type="number" min="1" step="1" value="800"></label><label>Plunge (mm/min)<input id="vgroove-plunge" type="number" min="1" step="1" value="250"></label><label>Spindle RPM<input id="vgroove-rpm" type="number" min="1" step="100" value="12000"></label></div><button id="preview-vgroove" class="primary cam-button">Generate Toolpath</button></details>
-        <details class="operation-section"><summary>Pocket</summary><p>Clears the inside of selected closed shapes using nested tool-center loops.</p><div class="cam-grid"><label>Pocket depth (mm)<input id="pocket-depth" type="number" min="0.1" step="0.1"></label><label>Pass depth (mm)<input id="pocket-stepdown" type="number" min="0.1" step="0.1" value="1"></label><label>Tool diameter (mm)<input id="pocket-tool-diameter" type="number" min="0.1" step="0.1" value="3.175"></label><label>Overlap (%)<input id="pocket-overlap" type="number" min="0" max="95" step="1" value="50"></label><label>Safe Z (mm)<input id="pocket-safez" type="number" min="0.1" step="0.1" value="5"></label><label>Feed (mm/min)<input id="pocket-feed" type="number" min="1" step="1" value="800"></label><label>Plunge (mm/min)<input id="pocket-plunge" type="number" min="1" step="1" value="250"></label><label>Spindle RPM<input id="pocket-rpm" type="number" min="1" step="100" value="12000"></label></div><button id="preview-pocket" class="primary cam-button">Generate Toolpath</button></details>
+        <details class="operation-section"><summary>Profile</summary><label class="cam-label">Tool<select id="profile-tool"><option value="">Manual settings</option></select></label><div id="profile-tool-empty" class="profile-tool-empty" hidden><span>No flat end mills in the tool library.</span><button type="button" id="add-profile-tool">Add end mill</button></div><p>Inside and Outside cuts use the cutter radius. For nested outlines, the cut side is reversed for holes.</p><label class="cam-label">Cut side<select id="profile-side"><option value="on">On vector</option><option value="inside">Inside</option><option value="outside">Outside</option></select></label><label class="cam-label" id="profile-diameter-field" hidden>Cutter diameter (mm)<input id="profile-tool-diameter" type="number" min="0.01" max="10000" step="any"></label><label class="cam-label">Cut from<select id="profile-scope"><option value="selected" selected>Selected vectors</option><option value="all">All vectors</option></select></label><label class="cam-label">Cut depth (mm)<input id="profile-depth" type="number" min="0.1" step="0.1"></label><label class="cam-label">Pass depth (mm)<input id="profile-stepdown" type="number" min="0.1" step="0.1" value="1"></label><label class="optimize-toggle"><input id="profile-through-stock" type="checkbox" checked> Profile through stock thickness</label><div class="cam-grid"><label>Tabs per contour<input id="profile-tab-count" type="number" min="0" max="12" step="1" value="4"></label><label>Tab width (mm)<input id="profile-tab-width" type="number" min="0.1" step="0.5" value="6"></label><label>Tab height (mm)<input id="profile-tab-height" type="number" min="0.1" step="0.5" value="2"></label></div><small class="optimize-hint">Default: full stock depth, with 4 tabs 6 mm wide and 2 mm high.</small><div class="cam-grid"><label>Safe Z (mm)<input id="profile-safez" type="number" min="0.1" step="0.1" value="5"></label></div><details class="cam-rates" id="profile-rates" open><summary hidden>Feeds &amp; speeds<span class="cam-rates-modified" hidden> · Modified</span></summary><div class="cam-grid"><label>Feed (mm/min)<input id="profile-feed" type="number" min="1" step="1" value="800"></label><label>Plunge (mm/min)<input id="profile-plunge" type="number" min="1" step="1" value="250"></label><label>Spindle RPM<input id="profile-rpm" type="number" min="1" step="100" value="12000"></label></div></details><label class="optimize-toggle"><input id="optimize-moves" type="checkbox" checked> Optimize joins and rapid moves</label><small class="optimize-hint">Joins open vectors meeting within 0.02 mm; reorders remaining contours.</small><button id="preview-profile" class="primary cam-button">Generate Toolpath</button></details>
+        <details class="operation-section"><summary>Drilling</summary><label class="cam-label">Tool<select id="drill-tool"><option value="">Manual settings</option></select></label><p>Drills circle centers. The physical drill bit sets the hole diameter.</p><label class="cam-label">Circle vectors<select id="drill-scope"><option value="all">All circles</option><option value="selected">Selected circles</option></select></label><label class="cam-label">Drill depth (mm)<input id="drill-depth" type="number" min="0.1" step="0.1"></label><label class="cam-label">Peck depth (mm)<input id="drill-stepdown" type="number" min="0.1" step="0.1" value="1"></label><div class="cam-grid"><label>Safe Z (mm)<input id="drill-safez" type="number" min="0.1" step="0.1" value="5"></label></div><details class="cam-rates" id="drill-rates" open><summary hidden>Feeds &amp; speeds<span class="cam-rates-modified" hidden> · Modified</span></summary><div class="cam-grid"><label>Feed (mm/min)<input id="drill-feed" type="number" min="1" step="1" value="800"></label><label>Plunge (mm/min)<input id="drill-plunge" type="number" min="1" step="1" value="250"></label><label>Spindle RPM<input id="drill-rpm" type="number" min="1" step="100" value="12000"></label></div></details><button id="preview-drill" class="primary cam-button">Generate Toolpath</button></details>
+        <details class="operation-section"><summary>V Groove</summary><label class="cam-label">Tool<select id="vgroove-tool"><option value="">Manual settings</option></select></label><p>Creates centerline paths for closed letter outlines and follows Relief SingleLine strokes directly. Include outside and counter outlines for block text.</p><label class="cam-label">V-bit included angle<input id="vgroove-angle" type="number" min="0.01" max="179.99" step="any" value="90"></label><label class="cam-label">Maximum depth (mm)<input id="vgroove-max-depth" type="number" min="0.1" step="0.1"></label><label class="optimize-toggle"><input id="vgroove-singleline" type="checkbox"> Treat selected font outlines as single-line</label><small class="optimize-hint">Uses one centerline pass at the selected maximum depth. Groove width depends on the bit angle.</small><div class="cam-grid"><label>Safe Z (mm)<input id="vgroove-safez" type="number" min="0.1" step="0.1" value="5"></label></div><details class="cam-rates" id="vgroove-rates" open><summary hidden>Feeds &amp; speeds<span class="cam-rates-modified" hidden> · Modified</span></summary><div class="cam-grid"><label>Feed (mm/min)<input id="vgroove-feed" type="number" min="1" step="1" value="800"></label><label>Plunge (mm/min)<input id="vgroove-plunge" type="number" min="1" step="1" value="250"></label><label>Spindle RPM<input id="vgroove-rpm" type="number" min="1" step="100" value="12000"></label></div></details><button id="preview-vgroove" class="primary cam-button">Generate Toolpath</button></details>
+        <details class="operation-section"><summary>Pocket</summary><label class="cam-label">Tool<select id="pocket-tool"><option value="">Manual settings</option></select></label><p>Clears the inside of selected closed shapes using nested tool-center loops.</p><div class="cam-grid"><label>Pocket depth (mm)<input id="pocket-depth" type="number" min="0.1" step="0.1"></label><label>Pass depth (mm)<input id="pocket-stepdown" type="number" min="0.1" step="0.1" value="1"></label><label>Tool diameter (mm)<input id="pocket-tool-diameter" type="number" min="0.1" step="0.1" value="3.175"></label><label>Overlap (%)<input id="pocket-overlap" type="number" min="0" max="95" step="1" value="50"></label><label>Safe Z (mm)<input id="pocket-safez" type="number" min="0.1" step="0.1" value="5"></label></div><details class="cam-rates" id="pocket-rates" open><summary hidden>Feeds &amp; speeds<span class="cam-rates-modified" hidden> · Modified</span></summary><div class="cam-grid"><label>Feed (mm/min)<input id="pocket-feed" type="number" min="1" step="1" value="800"></label><label>Plunge (mm/min)<input id="pocket-plunge" type="number" min="1" step="1" value="250"></label><label>Spindle RPM<input id="pocket-rpm" type="number" min="1" step="100" value="12000"></label></div></details><button id="preview-pocket" class="primary cam-button">Generate Toolpath</button></details>
       </div>
-      <div class="toolpath-card"><div class="toolpath-list-header"><strong>Generated toolpaths</strong><span id="toolpath-count">0 paths</span></div><div id="toolpath-list" class="toolpath-list"></div><button id="build-combined-nc" class="primary cam-button" disabled>Build final NC</button><div id="profile-status" class="profile-status">Choose an operation, set its parameters, then generate a toolpath preview.</div><textarea id="gcode-preview" class="gcode-preview" readonly hidden></textarea><button id="load-visualizer" class="cam-button" disabled>Load into Visualizer</button><button id="save-gcode" class="cam-button" disabled>Save G-code…</button></div>
-      <div class="section-title">DESIGN CHECKS</div><div class="check-item"><span class="check-icon">✓</span><div><strong>Top-side workspace</strong><small>No 3D relief or rotary machining</small></div></div><div class="check-item"><span class="check-icon muted">•</span><div><strong id="check-geometry">Waiting for vectors</strong><small>Import SVG or DXF to begin</small></div></div>
+      <details class="operation-section generated-toolpaths" id="generated-toolpaths">
+        <summary>Generated toolpaths <span id="toolpath-count">0 paths</span></summary>
+        <div id="toolpath-list" class="toolpath-list"></div>
+        <button type="button" id="open-cut-preview" class="cam-button" disabled>Cut preview</button>
+        <button id="build-combined-nc" class="primary cam-button" disabled>Build final NC</button>
+        <div id="profile-status" class="profile-status">Choose an operation, set its parameters, then generate a toolpath preview.</div>
+        <textarea id="gcode-preview" class="gcode-preview" readonly hidden></textarea>
+        <button id="load-visualizer" class="cam-button" disabled>Load into Visualizer</button>
+        <button id="save-gcode" class="cam-button" disabled>Save G-code…</button>
+      </details>
     </aside>
+    </div>
   </main>
+  <section class="registration-panel" id="registration-panel" role="tabpanel" aria-labelledby="registration-tab" hidden>
+    <div class="registration-content">
+      <h1>Carve Studio registration</h1>
+      <p class="registration-mode" id="registration-mode">Trial mode</p>
+      <p>Design parts and generate toolpaths in the trial. Register to import SVG and DXF drawings.</p>
+      <div class="registration-actions">
+        <a class="primary registration-purchase" id="purchase-link" href="https://buy.stripe.com/28EcN7csfcN00RB3v91ck01" rel="noopener noreferrer" target="_blank" hidden>Open Stripe checkout</a>
+        <button class="primary" id="copy-purchase-link" type="button">Copy checkout link</button>
+        <button id="toggle-purchase-qr" type="button" aria-expanded="false" aria-controls="purchase-qr">Show QR code</button>
+      </div>
+      <p class="hint" id="purchase-link-hint">Paste the checkout link into your browser to buy a license.</p>
+      <input id="purchase-link-copy" class="registration-input" aria-label="Stripe checkout URL" aria-describedby="purchase-link-hint" type="url" readonly>
+      <p class="hint" id="purchase-link-status" role="status"></p>
+      <figure id="purchase-qr" class="registration-qr" hidden>
+        <img src="data:image/png;base64,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" width="205" height="205" alt="QR code for the Carve Studio Stripe checkout">
+        <figcaption>Scan with your phone’s camera to open Stripe checkout.</figcaption>
+      </figure>
+      <form id="registration-form">
+        <p>Enter the code from your license email and the email address you used at checkout.</p>
+        <label for="registration-email">Email address</label>
+        <input id="registration-email" class="registration-input" type="email" autocomplete="email" maxlength="254" required>
+        <label for="registration-code">Registration code</label>
+        <input id="registration-code" class="registration-input" type="text" placeholder="N0JCG-…" autocomplete="off" spellcheck="false" maxlength="64" required>
+        <button id="activate-registration" class="primary" type="submit">Activate license</button>
+      </form>
+      <details id="offline-registration" class="offline-registration">
+        <summary>Activate offline</summary>
+        <div class="offline-steps">
+          <p>Generate a request on this computer. On a phone or computer with internet access, open the activation page and enter the request, purchase email, and registration code.</p>
+          <button type="button" id="create-offline-request">Generate activation request</button>
+          <div id="offline-request-actions" hidden>
+            <label for="offline-request">Activation request</label>
+            <input id="offline-request" class="registration-input" type="text" readonly>
+            <div class="registration-actions">
+              <button type="button" id="copy-offline-request">Copy request</button>
+              <button type="button" id="save-offline-request">Save request file…</button>
+            </div>
+          </div>
+          <label for="offline-portal-url">Activation page on your internet-connected device</label>
+          <input id="offline-portal-url" class="registration-input" type="url" readonly>
+          <button type="button" id="copy-offline-portal">Copy activation page link</button>
+          <form id="offline-response-form">
+            <label for="offline-response">Activation response</label>
+            <textarea id="offline-response" class="registration-input" rows="3" maxlength="8220" spellcheck="false" autocomplete="off" placeholder="CS2.…" required></textarea>
+            <label for="offline-response-file">Or load the response file</label>
+            <input id="offline-response-file" class="registration-input" type="file" accept=".txt,text/plain">
+            <button type="submit" class="primary" id="apply-offline-response">Activate offline</button>
+          </form>
+          <p id="offline-message" role="status" aria-live="polite"></p>
+        </div>
+      </details>
+      <p id="registration-message" role="status" aria-live="polite"></p>
+      <button id="return-to-design" type="button" hidden>Return to design</button>
+    </div>
+  </section>
+  <footer class="studio-footer">© 2026 BakStaaJ Designs LLC. All rights reserved.</footer>
   <input id="project-input" type="file" accept="application/json,.carve,.json" hidden>
-  <dialog id="new-project-dialog" class="new-project-dialog"><form method="dialog"><strong>Save current project?</strong><p>Your drawing will be cleared when the new project starts.</p><div class="dialog-actions"><button value="cancel">Cancel</button><button value="discard">Discard</button><button class="primary" value="save">Save</button></div></form></dialog>
+  <dialog id="new-project-dialog" class="new-project-dialog"><form method="dialog"><strong>Save current project?</strong><p>Your drawing will be cleared when the new project starts.</p><div class="dialog-actions"><button value="cancel">Cancel</button><button value="discard">Discard</button><button class="primary" value="save">Save</button></div></form></dialog>
+  <dialog id="tool-library-dialog" aria-labelledby="tool-library-title" class="new-project-dialog tool-library-dialog">
+    <div class="library-heading"><h2 id="tool-library-title">Tool library</h2><form method="dialog"><button aria-label="Close tool library">Close</button></form></div>
+    <label class="cam-label">Preset<select id="library-tools"></select></label>
+    <form id="library-tool-form">
+      <label class="cam-label">Tool name<input name="name" required maxlength="60"></label>
+      <label class="cam-label">Tool type<select name="type"><option value="endmill">Flat end mill</option><option value="drill">Drill bit</option><option value="vbit">V-bit</option></select></label>
+      <div class="cam-grid">
+        <label>Tool number<input name="number" type="number" min="1" max="999" step="1" required></label>
+        <label>Diameter (mm)<input name="diameter" type="number" min="0.01" max="10000" step="any" required></label>
+        <label id="library-angle-field" hidden>Included angle (°)<input name="angle" type="number" min="0.01" max="179.99" step="any" required disabled></label>
+        <label id="library-stepdown-field">Pass / peck depth (mm)<input name="stepdown" type="number" min="0.001" step="any" required></label>
+        <label>Feed (mm/min)<input name="feed" type="number" min="0.001" step="any" required></label>
+        <label>Plunge (mm/min)<input name="plunge" type="number" min="0.001" step="any" required></label>
+        <label>Spindle RPM<input name="rpm" type="number" min="1" step="1" required></label>
+      </div>
+      <p id="library-status" role="status"></p>
+      <div class="dialog-actions"><button id="remove-library-tool" class="danger-button" type="button" hidden>Remove tool</button><button class="primary" type="submit">Save tool</button></div>
+    </form>
+  </dialog>
+  <dialog id="cut-preview-dialog" class="cut-preview-dialog" aria-labelledby="cut-preview-title">
+    <header class="cut-preview-header">
+      <div><h2 id="cut-preview-title">Cut preview</h2><p id="cut-preview-stock"></p></div>
+      <form method="dialog"><button autofocus>Close</button></form>
+    </header>
+    <div class="cut-preview-controls">
+      <label for="cut-preview-operation">Show</label>
+      <select id="cut-preview-operation"></select>
+      <div class="cut-preview-views" role="group" aria-label="View angle">
+        <button type="button" data-cut-view="angled" aria-pressed="true">Angled</button>
+        <button type="button" data-cut-view="top" aria-pressed="false">Top</button>
+      </div>
+    </div>
+    <canvas id="cut-preview-canvas" aria-label="Simulated material remaining on the stock"></canvas>
+    <p id="cut-preview-status" role="status"></p>
+  </dialog>
 </body>
 </html>
