@@ -2,7 +2,7 @@ import ClipperLib from 'clipper-lib';
 import {normalizeVectorRings, VECTOR_SCALE as SCALE} from './closed-vector-geometry.js';
 import {deriveGrooveCenterlines} from './groove-centerline.js';
 
-const {Clipper, ClipperOffset, ClipType, EndType, JoinType, PolyFillType, PolyType} = ClipperLib;
+const {Clipper, ClipperOffset, ClipType, EndType, JoinType, PolyFillType, PolyTree, PolyType} = ClipperLib;
 const GEOMETRY_MARGIN = .02;
 const MAX_MOVES = 200_000;
 const length = (a,b) => Math.hypot(b.x-a.x,b.y-a.y);
@@ -89,8 +89,35 @@ function constantDepth(strokes,boundaries,depth) {
     path.map(({X,Y})=>({x:X/SCALE,y:Y/SCALE,z:depth})));
 }
 
-function vBitStrokes(components,depth,slope) {
-  return components.flatMap(component=>component.paths.map(path=>{
+function outsideFloor(paths,floor) {
+  if (!floor.length) return paths;
+  const toClipper = ({x,y}) => ({X:Math.round(x*SCALE),Y:Math.round(y*SCALE)});
+  const isolated = paths.filter(path => {
+    if (path.length!==1) return false;
+    const point = toClipper(path[0]);
+    let inside = false;
+    for (const ring of floor) {
+      const location = Clipper.PointInPolygon(point,ring);
+      if (location===-1) return false;
+      if (location===1) inside = !inside;
+    }
+    return !inside;
+  });
+  const clipper = new Clipper();
+  if (!clipper.AddPaths(paths.filter(path=>path.length>1).map(path=>path.map(toClipper)),PolyType.ptSubject,false)) {
+    return isolated;
+  }
+  clipper.AddPaths(floor,PolyType.ptClip,true);
+  const result = new PolyTree();
+  if (!clipper.Execute(ClipType.ctDifference,result,PolyFillType.pftNonZero,PolyFillType.pftEvenOdd)) {
+    throw Error('Could not separate the narrow groove details from the flat floor.');
+  }
+  return [...isolated,...Clipper.OpenPathsFromPolyTree(result).map(path=>
+    path.map(({X,Y})=>({x:X/SCALE,y:Y/SCALE})))];
+}
+
+function vBitStrokes(components,floor,depth,slope) {
+  return components.flatMap(component=>outsideFloor(component.paths,floor).map(path=>{
     const points = [path[0]];
     for (let i=1; i<path.length; i++) {
       const a=path[i-1], b=path[i];
@@ -127,7 +154,9 @@ export function planFlatBottomGroove(rings,{angle,depth,diameter,clearanceDiamet
   const clearing = cutterRadius ? raster(centers,clearanceDiameter/2) : [];
   const rest = remainingFloor(floor,centers,clearing,cutterRadius);
   const floorPaths = constantDepth(raster(rest,Math.min(.25,.08*slope)),rest,depth);
-  const groovePaths = vBitStrokes(deriveGrooveCenterlines(rings),depth,slope);
+  // The end mill and floor passes already cut this region to full depth.
+  // Only trace the centerline where the floor pinches out into narrow details.
+  const groovePaths = vBitStrokes(deriveGrooveCenterlines(rings),floor,depth,slope);
   const finishPaths = [...groovePaths,...floorPaths];
   if (!finishPaths.length) throw Error('No usable V-bit path could be derived for these outlines.');
   return {clearancePaths:constantDepth(clearing,centers,depth),finishPaths,floorPathCount:floorPaths.length};
