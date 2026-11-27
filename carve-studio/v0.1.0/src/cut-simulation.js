@@ -4,7 +4,7 @@ const positive = value => Number.isFinite(value) && value > 0;
 function readSegments(job) {
   const angle = job.tool?.angle ?? Number(job.gcode.match(/V-bit included angle ([.\d]+) degrees/i)?.[1]);
   const diameter = job.tool?.diameter ?? Number(job.gcode.match(/(?:actual drill diameter|tool diameter|cutter diameter) ([.\d]+) mm/i)?.[1]);
-  const cone = job.operation === 'vgroove';
+  const cone = job.operation === 'vgroove' || job.operation === 'vgroove-flat';
   const slope = cone && angle > 0 && angle < 180 ? Math.tan(angle * Math.PI / 360) : 0;
   const radius = positive(diameter) ? diameter / 2 : 0;
   const segments = [];

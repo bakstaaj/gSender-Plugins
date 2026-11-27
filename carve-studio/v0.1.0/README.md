@@ -34,6 +34,7 @@ In a plugin-capable gSender Edge build, open **Tools → Plugins → Install a p
 - Generate a peck-drilling preview from circle centers using the shared depth, peck depth, safe Z, plunge and spindle settings.
 - Use bundled fonts including Short Stack and Relief SingleLine, or import local TTF and OTF outline fonts from the Text panel. Imported font files are retained in the gSender profile across restarts.
 - Generate V Groove Profile paths from selected closed letter outlines. Both variable depth and fixed depth use the same connected centerline strokes. Relief SingleLine open strokes use fixed depth.
+- In **V Groove**, enable **Flat bottom** and choose a V-bit from the tool library. Set the floor depth and V-bit pass depth. An optional flat end mill clears broad areas before the V-bit finishes the sloped walls, narrow details, and remaining floor.
 - Generate a pocket preview for selected closed boundaries using nested inward tool-center offsets, a flat tool diameter, stepover, depth and pass depth; counters are preserved as uncut islands.
 - Optimize profiles by joining open vector endpoints within 0.02 mm and ordering contours by nearest travel start.
 

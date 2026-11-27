@@ -1,6 +1,7 @@
 import { file, gcode, navigation } from '@sienci/gsender-plugin-sdk';
 import { deriveGrooveCenterlines, flattenTextOutline, grooveCutPaths } from './groove-centerline.js';
 import { parseDxf } from './dxf-import.js';
+import { planFlatBottomGroove, writeFlatGrooveGcode } from './flat-bottom-groove.js';
 import { compensateProfile } from './profile-compensation.js';
 import { setupCutPreview } from './cut-preview.js';
 import { rectangularArray, circularArray, cornerOutline, cornerTargets, shapeCorners, arcThroughThreePoints } from './drawing-tools.js';
@@ -25,7 +26,7 @@ const svgNS='http://www.w3.org/2000/svg';
 const canvas=document.querySelector('#canvas'),root=document.querySelector('#view-root'),drawing=document.querySelector('#drawing');
 const stock={width:300,height:200,thickness:18},gridSettings={enabled:false,resolution:5};let stockManuallySet=false;
 const SESSION_STORAGE_KEY='carve-studio-session-v1';let sessionSaveTimer=null,currentProjectName='Untitled project';
-const operationDefaults=thickness=>({profile:{depth:thickness,stepdown:1,safeZ:5,feed:800,plunge:250,rpm:12000},drill:{depth:thickness,stepdown:1,safeZ:5,feed:800,plunge:250,rpm:12000},vgroove:{depth:thickness*.3,safeZ:5,feed:800,plunge:250,rpm:12000},pocket:{depth:thickness*.5,stepdown:1,safeZ:5,feed:800,plunge:250,rpm:12000}});const profileDefaults={scope:'selected',profileSide:'on',profileToolDiameter:0,tools:{},drillScope:'all',depth:3,stepdown:1,safeZ:5,feed:800,plunge:250,rpm:12000,optimizeMoves:true,profileThroughStock:true,profileTabCount:4,profileTabWidth:6,profileTabHeight:2,vgrooveAngle:90,vgrooveMaxDepth:3,vgrooveSingleLine:false,pocketToolDiameter:3.175,pocketStepover:1.27,pocketOverlap:50,operations:operationDefaults(18)};let profileSettings={...profileDefaults},generatedGcode='',profileContours=[],generatedOperation='',activeToolpathOperation='profile',toolpathJobs=[],nextToolpathId=1,finalGcode='';
+const operationDefaults=thickness=>({profile:{depth:thickness,stepdown:1,safeZ:5,feed:800,plunge:250,rpm:12000},drill:{depth:thickness,stepdown:1,safeZ:5,feed:800,plunge:250,rpm:12000},vgroove:{depth:thickness*.3,safeZ:5,feed:800,plunge:250,rpm:12000},pocket:{depth:thickness*.5,stepdown:1,safeZ:5,feed:800,plunge:250,rpm:12000}});const profileDefaults={scope:'selected',profileSide:'on',profileToolDiameter:0,tools:{},drillScope:'all',depth:3,stepdown:1,safeZ:5,feed:800,plunge:250,rpm:12000,optimizeMoves:true,profileThroughStock:true,profileTabCount:4,profileTabWidth:6,profileTabHeight:2,vgrooveAngle:90,vgrooveMaxDepth:3,vgrooveSingleLine:false,vgrooveFlatBottom:false,vgrooveFlatStepdown:1,vgrooveClearanceTool:null,pocketToolDiameter:3.175,pocketStepover:1.27,pocketOverlap:50,operations:operationDefaults(18)};let profileSettings={...profileDefaults},generatedGcode='',profileContours=[],generatedOperation='',activeToolpathOperation='profile',toolpathJobs=[],nextToolpathId=1,finalGcode='';
 let view={scale:1,tx:0,ty:0},activeTool='select',activePanel='selection',selectedIds=new Set(),selectedRegion=null,drag=null,drawStart=null,drawGesture=null,objects=[],nextId=1,customLayers=['Default'],activeLayer='Default',hiddenLayers=new Set(),undoStack=[],redoStack=[],transformEdit=null;
 const $=s=>document.querySelector(s);
 const registration = initRegistration(pluginManifest.version);
@@ -553,12 +554,70 @@ function profileStatus(message, error = false) {
   if (error) showWorkspaceError(message);
   else dismissWorkspaceError();
 }
-function toolpathLabel(operation){return({profile:'Profile',drill:'Drilling',vgroove:'V Groove',pocket:'Pocket'})[operation]||'Toolpath'}
+function toolpathLabel(operation){return({profile:'Profile',drill:'Drilling',vgroove:'V Groove','vgroove-flat':'Flat-bottom V Groove','vgroove-clearance':'V Groove Clearance',pocket:'Pocket'})[operation]||'Toolpath'}
 function renderToolpathList(){const list=$('#toolpath-list');if(!list)return;list.innerHTML=toolpathJobs.length?toolpathJobs.map((job,index)=>{const previousIsProfile=toolpathJobs[index-1]?.operation==='profile',nextIsProfile=toolpathJobs[index+1]?.operation==='profile',canMoveUp=index>0&&(job.operation!=='profile'||previousIsProfile),canMoveDown=index<toolpathJobs.length-1&&(job.operation==='profile'?nextIsProfile:!nextIsProfile);return`<div class="toolpath-row"><span class="toolpath-number">${index+1}</span><div class="toolpath-name-wrap"><input data-job-name="${job.id}" aria-label="Toolpath name" value="${escapeHtml(job.name)}"><small>${toolpathLabel(job.operation)}${job.tool?' · '+escapeHtml(job.tool.name):''} · ${job.gcode.split(/\r?\n/).filter(Boolean).length} lines</small></div><label class="toolpath-tool-number" title="Tool number">T<input type="number" min="1" step="1" data-job-tool="${job.id}" value="${Number(job.toolNumber)||1}" aria-label="Tool number"></label><button type="button" data-job-action="up" data-job-id="${job.id}" title="Move toolpath up" ${canMoveUp?'':'disabled'}>↑</button><button type="button" data-job-action="down" data-job-id="${job.id}" title="Move toolpath down" ${canMoveDown?'':'disabled'}>↓</button><button type="button" data-job-action="remove" data-job-id="${job.id}" title="Remove toolpath">×</button></div>`}).join(''):'<div class="toolpath-empty">Generate an operation preview to add it here.</div>';$('#build-combined-nc').disabled=$('#open-cut-preview').disabled=toolpathJobs.length===0;$('#toolpath-count').textContent=`${toolpathJobs.length} path${toolpathJobs.length===1?'':'s'}`;queueSessionSave()}
 function rememberToolpathChange(){undoStack.push(projectState());if(undoStack.length>100)undoStack.shift();redoStack=[];syncHistoryButtons()}
 function invalidateFinalNc(message='Toolpath list changed. Build the combined NC file again.'){finalGcode='';if(generatedOperation==='combined')clearProfilePreview(message)}
-function addToolpathJob(operation,gcode){const base=toolpathLabel(operation),ordinal=toolpathJobs.filter(job=>job.operation===operation).length+1,tool=selectedOperationTool(operation),job={id:nextToolpathId++,name:`${base} ${ordinal}`,operation,gcode,toolNumber:tool?.number||1,tool};rememberToolpathChange();const profileIndex=toolpathJobs.findIndex(item=>item.operation==='profile');if(operation==='profile'||profileIndex<0)toolpathJobs.push(job);else toolpathJobs.splice(profileIndex,0,job);invalidateFinalNc();renderToolpathList();$('#generated-toolpaths').open=true}
-function buildCombinedNc(){if(!toolpathJobs.length)throw Error('Generate at least one toolpath before building the final NC file.');const ordered=[...toolpathJobs.filter(job=>job.operation!=='profile'),...toolpathJobs.filter(job=>job.operation==='profile')],lines=['(Carve Studio combined NC file)','(Toolpaths are emitted in list order; profile paths run last.)','G21 G90 G17 G94'];const cutters=new Map();for(const [index,job] of ordered.entries()){const tool=Number(job.toolNumber);if(!Number.isInteger(tool)||tool<1)throw Error(`Enter a valid tool number for ${job.name}.`);const cutter=readTool(job.tool);const previous=cutters.get(tool);if(cutter&&previous&&!sameCutter(cutter,previous))throw Error('Tool number T'+tool+' is assigned to different cutters. Review the generated toolpath tool numbers.');if(cutter)cutters.set(tool,cutter);const safeName=String(job.name).replace(/[()\r\n]/g,' ').trim();lines.push('',`(Toolpath ${index+1}: ${safeName} · ${toolpathLabel(job.operation)})`,`M6 T${tool}`);const body=job.gcode.split(/\r?\n/).filter(line=>!/^\s*(?:M30|M2)\s*$/i.test(line)).join('\n').trim();if(body)lines.push(body)}lines.push('','M30');finalGcode=lines.join('\n')+'\n';generatedGcode=finalGcode;generatedOperation='combined';$('#gcode-preview').value=generatedGcode;$('#gcode-preview').hidden=false;$('#save-gcode').disabled=false;$('#load-visualizer').disabled=false;profileStatus(`Combined NC ready · ${ordered.length} toolpaths · profile runs last · M6 tool calls included. Verify tool assignments before machining.`)}
+function addToolpathJob(operation,gcode) {
+  addToolpathStages([{operation,gcode,tool:selectedOperationTool(operation)}]);
+}
+
+function addToolpathStages(stages) {
+  rememberToolpathChange();
+  let previousId;
+  for (const {operation,gcode,tool,toolChangeZ,requiresPrevious} of stages) {
+    const ordinal = toolpathJobs.filter(job=>job.operation===operation).length+1;
+    const job = {id:nextToolpathId++,name:`${toolpathLabel(operation)} ${ordinal}`,
+      operation,gcode,toolNumber:tool?.number||1,tool};
+    if (toolChangeZ) job.toolChangeZ = toolChangeZ;
+    if (requiresPrevious) job.requiresJobId = previousId;
+    const profileIndex = toolpathJobs.findIndex(item=>item.operation==='profile');
+    if (operation==='profile' || profileIndex<0) toolpathJobs.push(job);
+    else toolpathJobs.splice(profileIndex,0,job);
+    previousId = job.id;
+  }
+  invalidateFinalNc();
+  renderToolpathList();
+  $('#generated-toolpaths').open = true;
+}
+
+function composeToolpaths(jobs,heading) {
+  const lines = [heading,'G21 G90 G17 G94'];
+  const cutters = new Map(), emitted = new Set();
+  for (const [index,job] of jobs.entries()) {
+    if (job.requiresJobId && !emitted.has(job.requiresJobId)) {
+      throw Error(`Place the matching clearance toolpath before ${job.name}. Regenerate the groove if the clearance toolpath was removed.`);
+    }
+    const tool = Number(job.toolNumber);
+    if (!Number.isInteger(tool) || tool<1) throw Error(`Enter a valid tool number for ${job.name}.`);
+    const cutter = readTool(job.tool), previous = cutters.get(tool);
+    if (cutter && previous && !sameCutter(cutter,previous)) {
+      throw Error('Tool number T'+tool+' is assigned to different cutters. Review the generated toolpath tool numbers.');
+    }
+    if (cutter) cutters.set(tool,cutter);
+    const name = String(job.name).replace(/[()\r\n]/g,' ').trim();
+    lines.push('',`(Toolpath ${index+1}: ${name} · ${toolpathLabel(job.operation)})`);
+    if (Number.isFinite(job.toolChangeZ) && job.toolChangeZ>0) lines.push(`G0 Z${job.toolChangeZ.toFixed(3)}`);
+    lines.push(`M6 T${tool}`);
+    const body = job.gcode.split(/\r?\n/).filter(line=>!/^\s*(?:M30|M2)\s*$/i.test(line)).join('\n').trim();
+    if (body) lines.push(body);
+    emitted.add(job.id);
+  }
+  return [...lines,'','M30'].join('\n')+'\n';
+}
+
+function buildCombinedNc() {
+  if (!toolpathJobs.length) throw Error('Generate at least one toolpath before building the final NC file.');
+  const ordered = [...toolpathJobs.filter(job=>job.operation!=='profile'),...toolpathJobs.filter(job=>job.operation==='profile')];
+  finalGcode = composeToolpaths(ordered,'(Carve Studio combined NC file)\n(Toolpaths are emitted in list order; profile paths run last.)');
+  generatedGcode = finalGcode;
+  generatedOperation = 'combined';
+  $('#gcode-preview').value = generatedGcode;
+  $('#gcode-preview').hidden = false;
+  $('#save-gcode').disabled = false;
+  $('#load-visualizer').disabled = false;
+  profileStatus(`Combined NC ready · ${ordered.length} toolpaths · profile runs last · M6 tool calls included. Verify tool assignments before machining.`);
+}
 function remember(){undoStack.push(projectState());if(undoStack.length>100)undoStack.shift();redoStack=[];selectedRegion=null;clearProfilePreview(objects.length?'Drawing changed. Generate the profile preview again.':'');syncHistoryButtons()}
 function syncHistoryButtons(){$('#undo').disabled=undoStack.length===0;$('#redo').disabled=redoStack.length===0}
 function restoreState(s){clearPathDraft();stock.width=s.stock.width;stock.height=s.stock.height;stock.thickness=Math.max(.1,Number(s.stock.thickness)||18);stockManuallySet=typeof s.stock.manual==='boolean'?s.stock.manual:true;gridSettings.enabled=!!s.grid?.enabled;gridSettings.resolution=[.5,1,2,5,10,20].includes(Number(s.grid?.resolution))?Number(s.grid.resolution):5;objects=s.objects;selectedIds=new Set(Array.isArray(s.selected)?s.selected:Number.isFinite(s.selected)?[s.selected]:[]);selectedRegion=s.selectedRegion||null;nextId=s.nextId;customLayers=Array.isArray(s.layers)?s.layers:['Default'];activeLayer=s.activeLayer||'Default';hiddenLayers=new Set(Array.isArray(s.hiddenLayers)?s.hiddenLayers:[]);selectedIds=new Set([...selectedIds].filter(id=>{const o=objects.find(x=>x.id===id);return o&&!hiddenLayers.has(o.layer)}));const savedSettings=s.profileSettings||{},legacy={stepdown:savedSettings.stepdown,safeZ:savedSettings.safeZ,feed:savedSettings.feed,plunge:savedSettings.plunge,rpm:savedSettings.rpm},fallbackOps=operationDefaults(stock.thickness);for(const op of Object.keys(fallbackOps))for(const key of Object.keys(fallbackOps[op]))if(Number.isFinite(Number(legacy[key])))fallbackOps[op][key]=Number(legacy[key]);profileSettings={...profileDefaults,...savedSettings,operations:Object.fromEntries(Object.keys(fallbackOps).map(op=>[op,{...fallbackOps[op],...savedSettings.operations?.[op]}]))};const savedToolpaths=Array.isArray(s.toolpaths)?s.toolpaths:[];toolpathJobs=[...savedToolpaths.filter(job=>job.operation!=='profile'),...savedToolpaths.filter(job=>job.operation==='profile')].map(job=>({...job,toolNumber:Number(job.toolNumber)||1}));nextToolpathId=Number(s.nextToolpathId)||Math.max(0,...toolpathJobs.map(job=>Number(job.id)||0))+1;setProfileFields();if(s.uiValues){$('#text-content').value=s.uiValues.textContent??'';setTextFontSelection(s.uiValues.textFont||'anton',s.uiValues.textFontLabel);$('#text-size').value=s.uiValues.textSize||25;$('#offset-distance').value=s.uiValues.offsetDistance??2}restoreDrawingToolValues(s.uiValues?.drawingTools);renderToolpathList();clearProfilePreview();$('#stock-width').value=stock.width;$('#stock-height').value=stock.height;$('#stock-thickness').value=stock.thickness;$('#auto-stock-size').checked=!stockManuallySet;resizeBoard();fitView();redraw()}
@@ -762,7 +821,7 @@ function sameArea(a,b) {
 }
 
 function selectionChanged() {
-  const selectionDriven=generatedOperation==='vgroove' || generatedOperation==='pocket' ||
+  const selectionDriven=generatedOperation==='vgroove' || generatedOperation==='vgroove-flat' || generatedOperation==='pocket' ||
     (generatedOperation==='profile' && profileSettings.scope==='selected') ||
     (generatedOperation==='drill' && profileSettings.drillScope==='selected');
   if (selectionDriven && generatedGcode) clearProfilePreview('Selection changed. Generate the toolpath preview again.');
@@ -1055,6 +1114,17 @@ function renderToolSelectors() {
   $('#profile-tool-diameter').disabled = !!profileTool;
   $('#pocket-tool-diameter').disabled = !!selectedOperationTool('pocket');
   $('#vgroove-angle').disabled = !!selectedOperationTool('vgroove');
+  const flat = $('#vgroove-flat-bottom').checked;
+  $('#vgroove-depth-label').textContent = flat ? 'Flat depth (mm)' : 'Maximum depth (mm)';
+  $('#vgroove-flat-options').hidden = !flat;
+  $('#vgroove-singleline-options').hidden = flat;
+  const clearance = $('#vgroove-clearance-tool');
+  const saved = readTool(profileSettings.vgrooveClearanceTool);
+  const endmills = toolLibrary.tools.filter(tool=>tool.type==='endmill');
+  const matching = saved && endmills.some(tool=>JSON.stringify(tool)===JSON.stringify(saved));
+  clearance.replaceChildren(new Option('V-bit only',''),...endmills.map(tool=>new Option(toolLabel(tool),tool.id)));
+  if (saved && !matching) clearance.add(new Option('Saved · '+toolLabel(saved),'saved'));
+  clearance.value = saved ? (matching ? saved.id : 'saved') : '';
 }
 
 function applyToolPreset(op,value) {
@@ -1078,8 +1148,8 @@ function setProfileFields(){const ids={scope:'profile-scope',profileSide:'profil
     const tool = selectedOperationTool(op);
     if (tool) $('#'+id).value=tool[key];
   }
-for(const op of Object.keys(profileSettings.operations))for(const key of Object.keys(profileSettings.operations[op]))$('#'+operationInputId(op,key)).value=profileSettings.operations[op][key];$('#pocket-overlap').value=profileSettings.pocketOverlap??50;$('#vgroove-singleline').checked=profileSettings.vgrooveSingleLine===true;$('#optimize-moves').checked=profileSettings.optimizeMoves!==false;$('#profile-through-stock').checked=profileSettings.profileThroughStock!==false;renderToolSelectors()}
-function readProfileFields(){const operations={};for(const op of ['profile','drill','vgroove','pocket']){operations[op]={};for(const key of Object.keys(profileSettings.operations[op]))operations[op][key]=Number($('#'+operationInputId(op,key)).value)}const current=operations[activeToolpathOperation]||operations.profile,pocketStepover=Number($('#pocket-tool-diameter').value)*(1-Number($('#pocket-overlap').value)/100);return{scope:$('#profile-scope').value,profileSide:$('#profile-side').value,profileToolDiameter:Number($('#profile-tool-diameter').value),tools:profileSettings.tools,drillScope:$('#drill-scope').value,...current,depth:current.depth,stepdown:current.stepdown,safeZ:current.safeZ,feed:current.feed,plunge:current.plunge,rpm:current.rpm,operations,optimizeMoves:$('#optimize-moves').checked,profileThroughStock:$('#profile-through-stock').checked,profileTabCount:Number($('#profile-tab-count').value),profileTabWidth:Number($('#profile-tab-width').value),profileTabHeight:Number($('#profile-tab-height').value),vgrooveAngle:Number($('#vgroove-angle').value),vgrooveMaxDepth:operations.vgroove.depth,vgrooveSingleLine:$('#vgroove-singleline').checked,pocketToolDiameter:Number($('#pocket-tool-diameter').value),pocketOverlap:Number($('#pocket-overlap').value),pocketStepover}}
+for(const op of Object.keys(profileSettings.operations))for(const key of Object.keys(profileSettings.operations[op]))$('#'+operationInputId(op,key)).value=profileSettings.operations[op][key];$('#pocket-overlap').value=profileSettings.pocketOverlap??50;$('#vgroove-singleline').checked=profileSettings.vgrooveSingleLine===true;$('#vgroove-flat-bottom').checked=profileSettings.vgrooveFlatBottom===true;$('#vgroove-flat-stepdown').value=profileSettings.vgrooveFlatStepdown;$('#optimize-moves').checked=profileSettings.optimizeMoves!==false;$('#profile-through-stock').checked=profileSettings.profileThroughStock!==false;renderToolSelectors()}
+function readProfileFields(){const operations={};for(const op of ['profile','drill','vgroove','pocket']){operations[op]={};for(const key of Object.keys(profileSettings.operations[op]))operations[op][key]=Number($('#'+operationInputId(op,key)).value)}const current=operations[activeToolpathOperation]||operations.profile,pocketStepover=Number($('#pocket-tool-diameter').value)*(1-Number($('#pocket-overlap').value)/100);return{scope:$('#profile-scope').value,profileSide:$('#profile-side').value,profileToolDiameter:Number($('#profile-tool-diameter').value),tools:profileSettings.tools,drillScope:$('#drill-scope').value,...current,depth:current.depth,stepdown:current.stepdown,safeZ:current.safeZ,feed:current.feed,plunge:current.plunge,rpm:current.rpm,operations,optimizeMoves:$('#optimize-moves').checked,profileThroughStock:$('#profile-through-stock').checked,profileTabCount:Number($('#profile-tab-count').value),profileTabWidth:Number($('#profile-tab-width').value),profileTabHeight:Number($('#profile-tab-height').value),vgrooveAngle:Number($('#vgroove-angle').value),vgrooveMaxDepth:operations.vgroove.depth,vgrooveSingleLine:$('#vgroove-singleline').checked,vgrooveFlatBottom:$('#vgroove-flat-bottom').checked,vgrooveFlatStepdown:$('#vgroove-flat-stepdown').valueAsNumber,vgrooveClearanceTool:profileSettings.vgrooveClearanceTool,pocketToolDiameter:Number($('#pocket-tool-diameter').value),pocketOverlap:Number($('#pocket-overlap').value),pocketStepover}}
 function hasClosedGeometry(o){return isOutlinedGlyph(o)||['rect','circle','ellipse','polygon'].includes(o.kind)||(o.kind==='polyline'&&o.points?.length>2&&Math.hypot(o.points[0][0]-o.points.at(-1)[0],o.points[0][1]-o.points.at(-1)[1])<.05)||(o.kind==='path'&&(o.outlineClosed||/[zZ]\s*$/.test(o.d.trim())))}
 function isClosedVector(o){return hasClosedGeometry(o)||!!selectedRegion?.ids.includes(o.id)}
 function pocketContours(chosen) {
@@ -1095,15 +1165,15 @@ function pocketContours(chosen) {
   });
 }
 function optimizeGrooveOrder(chains,start={x:0,y:0}){const remaining=chains.map(c=>[...c]),ordered=[];let current=start;while(remaining.length){let best=null;for(let i=0;i<remaining.length;i++){const c=remaining[i],a=distance(current,c[0]),b=distance(current,c.at(-1)),d=Math.min(a,b);if(!best||d<best.d)best={i,d,reverse:b<a}}const c=remaining.splice(best.i,1)[0],path=best.reverse?c.reverse():c;ordered.push(path);current=path.at(-1)}for(let pass=0;pass<20;pass++){let change=null;for(let i=0;i<ordered.length-1;i++){const previous=i?ordered[i-1].at(-1):start;for(let j=i+1;j<ordered.length;j++){const next=j+1<ordered.length?ordered[j+1][0]:null,oldCost=distance(previous,ordered[i][0])+(next?distance(ordered[j].at(-1),next):0),newCost=distance(previous,ordered[j].at(-1))+(next?distance(ordered[i][0],next):0),saving=oldCost-newCost;if(saving>.01&&(!change||saving>change.saving))change={i,j,saving}}}if(!change)break;const segment=ordered.splice(change.i,change.j-change.i+1).reverse().map(c=>[...c].reverse());ordered.splice(change.i,0,...segment)}return ordered}
-function grooveOutlines(chosen) {
+function grooveOutlines(chosen, outlinesForItem = item=>[machiningOutline(item)]) {
   const byId=new Map(chosen.map(item=>[item.id,item]));
   const parts=selectedAreaParts().filter(part=>part.ids.every(id=>byId.has(id)));
   const regionIds=new Set(parts.flatMap(part=>part.ids));
   const regions=parts.map(part=>{
     if (part.type==='area') return part.contours;
-    return part.ids.map(id=>machiningOutline(byId.get(id)));
+    return part.ids.flatMap(id=>outlinesForItem(byId.get(id)));
   });
-  const loose=chosen.filter(item=>!regionIds.has(item.id)&&isClosedVector(item)).map(machiningOutline);
+  const loose=chosen.filter(item=>!regionIds.has(item.id)&&isClosedVector(item)).flatMap(outlinesForItem);
   return [...unionRegionContours(regions),...loose].filter(ring=>ring.length>=3);
 }
 
@@ -1120,6 +1190,60 @@ function machiningOutline(item) {
   return local.map(p=>({x:p.x+dx,y:stock.height-p.y-dy}));
 }
 
+function drawGroovePaths(layer,paths,className) {
+  for (const path of paths) {
+    const el = document.createElementNS(svgNS,path.length===1?'circle':'polyline');
+    if (path.length===1) {
+      el.setAttribute('cx',path[0].x);
+      el.setAttribute('cy',stock.height-path[0].y);
+      el.setAttribute('r',.15);
+    } else {
+      el.setAttribute('points',path.map(p=>`${p.x},${stock.height-p.y}`).join(' '));
+    }
+    el.setAttribute('class',className);
+    layer.append(el);
+  }
+}
+
+function generateFlatBottomGroove(chosen,settings,tool) {
+  if (!tool) throw Error('Select a V-bit from the tool library for a flat-bottom groove.');
+  if (chosen.some(object=>object.centerlineFont || !isClosedVector(object))) {
+    throw Error('Flat-bottom grooves need closed outlines. Select the letter outlines and their counters.');
+  }
+  const savedClearance = readTool(settings.vgrooveClearanceTool);
+  const clearance = savedClearance?.type==='endmill' ? savedClearance : null;
+  const depth = settings.vgrooveMaxDepth;
+  const {clearancePaths,finishPaths,floorPathCount} = planFlatBottomGroove(
+    grooveOutlines(chosen,item=>vectorRings(item,stock.height,geometryPoints)),
+    {depth,angle:tool.angle,diameter:tool.diameter,clearanceDiameter:clearance?.diameter});
+  const safeZ = settings.safeZ;
+  const stages = [];
+  if (clearancePaths.length) {
+    const gcode = writeFlatGrooveGcode(clearancePaths,{...clearance,safeZ,
+      comment:`(Carve Studio groove clearance - tool diameter ${clearance.diameter} mm; flat depth ${depth} mm)`});
+    stages.push({operation:'vgroove-clearance',gcode,tool:clearance,toolChangeZ:safeZ});
+  }
+  const finish = writeFlatGrooveGcode(finishPaths,{...settings,stepdown:settings.vgrooveFlatStepdown,
+    comment:`(Carve Studio flat-bottom V Groove - V-bit included angle ${tool.angle} degrees; flat depth ${depth} mm)`});
+  stages.push({operation:'vgroove-flat',gcode:finish,tool,toolChangeZ:safeZ,requiresPrevious:stages.length>0});
+  generatedGcode = composeToolpaths(stages.map(stage=>({...stage,toolNumber:stage.tool.number,
+    name:toolpathLabel(stage.operation)})),'(Carve Studio flat-bottom groove)');
+  profileSettings = settings;
+  generatedOperation = 'vgroove-flat';
+  profileContours = [...clearancePaths,...finishPaths];
+  const layer = $('#toolpath-preview');
+  layer.replaceChildren();
+  drawGroovePaths(layer,clearancePaths,'cam-pocket-path');
+  drawGroovePaths(layer,finishPaths,'cam-vgroove-path');
+  $('#gcode-preview').value = generatedGcode;
+  $('#save-gcode').disabled = false;
+  $('#load-visualizer').disabled = false;
+  const detail = clearancePaths.length ? 'End mill clears first, then the V-bit finishes.' :
+    floorPathCount ? 'V-bit clears and finishes the floor.' : 'The selected outlines stay shallower than the flat depth.';
+  profileStatus(`Flat-bottom V Groove ready · ${depth.toFixed(2)} mm. ${detail}`);
+  return stages;
+}
+
 function generateVGroove() {
   const s = readProfileFields();
   const {vgrooveAngle:angle,vgrooveMaxDepth:requestedDepth,vgrooveSingleLine:fixed,safeZ,feed,plunge,rpm} = s;
@@ -1129,6 +1253,7 @@ function generateVGroove() {
   const chosen = objects.filter(o => selectedIds.has(o.id) && !hiddenLayers.has(o.layer));
   if (!chosen.length) throw Error('Select closed letter outlines or CNC single-line text first.');
   const tool=selectedOperationTool('vgroove');
+  if (s.vgrooveFlatBottom) return generateFlatBottomGroove(chosen,s,tool);
   const tipDepth=tool ? tool.diameter/2/Math.tan(angle*Math.PI/360) : Infinity;
   const depth=Math.min(requestedDepth,tipDepth);
   const singleLine=chosen.some(o=>o.centerlineFont);
@@ -1180,16 +1305,7 @@ function generateVGroove() {
   generatedOperation = 'vgroove';
   const layer = $('#toolpath-preview');
   layer.replaceChildren();
-  for (const path of profileContours) {
-    const el = document.createElementNS(svgNS,path.length === 1 ? 'circle' : 'polyline');
-    if (path.length === 1) {
-      el.setAttribute('cx',path[0].x);
-      el.setAttribute('cy',stock.height-path[0].y);
-      el.setAttribute('r',.15);
-    } else el.setAttribute('points',path.map(p=>`${p.x},${stock.height-p.y}`).join(' '));
-    el.setAttribute('class','cam-vgroove-path');
-    layer.append(el);
-  }
+  drawGroovePaths(layer,profileContours,'cam-vgroove-path');
   $('#gcode-preview').value = generatedGcode;
   $('#save-gcode').disabled = false;
   $('#load-visualizer').disabled = false;
@@ -1256,13 +1372,13 @@ function generateDrilling(){const s=readProfileFields();if(![s.depth,s.stepdown,
 function generatePocket(){const s=readProfileFields();if(![s.depth,s.stepdown,s.safeZ,s.feed,s.plunge,s.rpm,s.pocketToolDiameter,s.pocketStepover].every(Number.isFinite)||s.depth<=0||s.stepdown<=0||s.safeZ<=0||s.feed<=0||s.plunge<=0||s.rpm<=0||s.pocketToolDiameter<=0||s.pocketStepover<=0||s.pocketStepover>s.pocketToolDiameter)throw Error('Enter positive pocket parameters; stepover must not exceed the tool diameter.');const chosen=objects.filter(o=>selectedIds.has(o.id)&&!hiddenLayers.has(o.layer));if(!chosen.some(isClosedVector))throw Error('Select one or more visible closed shapes to pocket, including their counter boundaries.');const contours=pocketContours(chosen),scale=1000,paths=contours.map(ring=>ring.slice(0,-1).map(p=>({X:Math.round(p.x*scale),Y:Math.round(p.y*scale)}))).filter(p=>p.length>=3);if(!paths.length)throw Error('No valid closed boundaries were found for pocketing.');const clipper=new ClipperLib.Clipper();clipper.AddPaths(paths,ClipperLib.PolyType.ptSubject,true);const normalized=new ClipperLib.Paths();if(!clipper.Execute(ClipperLib.ClipType.ctUnion,normalized,ClipperLib.PolyFillType.pftEvenOdd,ClipperLib.PolyFillType.pftEvenOdd)||!normalized.length)throw Error('Could not resolve the selected boundaries. Check for open or overlapping outlines.');const offsetter=new ClipperLib.ClipperOffset(2,.25);offsetter.AddPaths(normalized,ClipperLib.JoinType.jtRound,ClipperLib.EndType.etClosedPolygon);const loopLevels=[],maxOffsets=500,toolRadius=s.pocketToolDiameter/2;for(let i=0;i<maxOffsets;i++){const result=new ClipperLib.Paths(),inset=toolRadius+i*s.pocketStepover;offsetter.Execute(result,-inset*scale);if(!result.length)break;const loops=result.map(path=>{const points=path.map(p=>({x:p.X/scale,y:p.Y/scale}));if(points.length>2&&distance(points[0],points.at(-1))>1e-4)points.push({...points[0]});return{id:`pocket-${i}`,closed:true,points}}).filter(c=>c.points.length>=4);if(!loops.length)break;loopLevels.push(loops)}if(!loopLevels.length)throw Error('The tool does not fit inside the selected pocket area. Use a smaller tool or wider shape.');if(loopLevels.reduce((n,level)=>n+level.length,0)>5000)throw Error('Pocketing produced more than 5,000 clearing loops. Increase the tool diameter or stepover.');if(s.stepdown>s.depth)s.stepdown=s.depth;const passes=[];for(let d=Math.min(s.stepdown,s.depth);;d=Math.min(s.depth,d+s.stepdown)){passes.push(d);if(d>=s.depth-1e-9)break}profileSettings=s;const lines=['(Carve Studio pocket clearing)','(Nested offsets include cutter radius. Verify boundaries, stock zero and clearances.)',`(Tool diameter ${s.pocketToolDiameter.toFixed(3)} mm; stepover ${s.pocketStepover.toFixed(3)} mm.)`,`(Loops per depth: ${loopLevels.reduce((n,l)=>n+l.length,0)}; depth passes: ${passes.length}.)`,'G21 G90 G17 G94',`G0 Z${s.safeZ.toFixed(3)}`,`M3 S${Math.round(s.rpm)}`];let current={x:0,y:0};for(const depth of passes){for(let level=0;level<loopLevels.length;level++){const ordered=optimizeContourOrder(loopLevels[level],current);for(const contour of ordered){const start=contour.points[0];lines.push(`(Pocket pass depth ${depth.toFixed(3)} mm, inset ${(toolRadius+level*s.pocketStepover).toFixed(3)} mm)`,`G0 Z${s.safeZ.toFixed(3)}`,`G0 X${start.x.toFixed(3)} Y${start.y.toFixed(3)}`,`G1 Z-${depth.toFixed(3)} F${s.plunge.toFixed(1)}`);for(const p of contour.points.slice(1))lines.push(`G1 X${p.x.toFixed(3)} Y${p.y.toFixed(3)} F${s.feed.toFixed(1)}`);lines.push(`G0 Z${s.safeZ.toFixed(3)}`);current={...start}}}}lines.push('M5','M30');generatedGcode=lines.join('\n')+'\n';const preview=loopLevels.flat();profileContours=preview;generatedOperation='pocket';const layer=$('#toolpath-preview');layer.replaceChildren();for(const contour of preview){const el=document.createElementNS(svgNS,'polyline');el.setAttribute('points',contour.points.map(p=>`${p.x},${stock.height-p.y}`).join(' '));el.setAttribute('class','cam-pocket-path');layer.append(el)}$('#gcode-preview').value=generatedGcode;$('#gcode-preview').hidden=false;$('#save-gcode').disabled=false;$('#load-visualizer').disabled=false;profileStatus(`Pocket preview ready · ${preview.length} offset loops per depth · ${passes.length} depth passes · ${s.pocketStepover.toFixed(2)} mm stepover. Simulate before cutting.`)}
 $('#preview-profile').onclick=()=>{activeToolpathOperation='profile';try{generateProfile();addToolpathJob(generatedOperation,generatedGcode)}catch(e){clearProfilePreview();profileStatus(e.message,true)}};
 $('#preview-drill').onclick=()=>{activeToolpathOperation='drill';try{if(readProfileFields().depth>stock.thickness)throw Error('Drill depth cannot exceed stock thickness.');generateDrilling();addToolpathJob(generatedOperation,generatedGcode)}catch(e){clearProfilePreview();profileStatus(e.message,true)}};
-$('#preview-vgroove').onclick=()=>{activeToolpathOperation='vgroove';try{if(readProfileFields().vgrooveMaxDepth>stock.thickness)throw Error('V Groove maximum depth cannot exceed stock thickness.');generateVGroove();addToolpathJob(generatedOperation,generatedGcode)}catch(e){clearProfilePreview();profileStatus(e.message,true)}};
+$('#preview-vgroove').onclick=()=>{activeToolpathOperation='vgroove';try{if(readProfileFields().vgrooveMaxDepth>stock.thickness)throw Error('V Groove maximum depth cannot exceed stock thickness.');const stages=generateVGroove();if(stages)addToolpathStages(stages);else addToolpathJob(generatedOperation,generatedGcode)}catch(e){clearProfilePreview();profileStatus(e.message,true)}};
 $('#preview-pocket').onclick=()=>{activeToolpathOperation='pocket';try{if(readProfileFields().depth>stock.thickness)throw Error('Pocket depth cannot exceed stock thickness.');generatePocket();addToolpathJob(generatedOperation,generatedGcode)}catch(e){clearProfilePreview();profileStatus(e.message,true)}};
 $('#build-combined-nc').onclick=()=>{try{buildCombinedNc()}catch(error){profileStatus(error?.message||String(error),true)}};
 $('#toolpath-list').addEventListener('change',e=>{const nameInput=e.target.closest('[data-job-name]'),toolInput=e.target.closest('[data-job-tool]');if(!nameInput&&!toolInput)return;const id=Number((nameInput||toolInput).dataset.jobName??(nameInput||toolInput).dataset.jobTool),job=toolpathJobs.find(item=>item.id===id);if(!job)return;if(nameInput){const name=nameInput.value.trim();if(!name||name===job.name){nameInput.value=job.name;return}rememberToolpathChange();job.name=name}else{const toolNumber=Number(toolInput.value);if(!Number.isInteger(toolNumber)||toolNumber<1){toolInput.value=String(job.toolNumber||1);return}if(toolNumber===job.toolNumber)return;rememberToolpathChange();job.toolNumber=toolNumber}invalidateFinalNc();renderToolpathList()});
 $('#toolpath-list').addEventListener('click',e=>{const button=e.target.closest('[data-job-action]');if(!button)return;const index=toolpathJobs.findIndex(job=>job.id===Number(button.dataset.jobId));if(index<0)return;const action=button.dataset.jobAction;if(action==='up'&&index===0||action==='down'&&index===toolpathJobs.length-1)return;rememberToolpathChange();if(action==='remove')toolpathJobs.splice(index,1);else{const target=action==='up'?index-1:index+1;[toolpathJobs[index],toolpathJobs[target]]=[toolpathJobs[target],toolpathJobs[index]]}invalidateFinalNc();renderToolpathList()});
-$('#load-visualizer').onclick=async()=>{if(!generatedGcode)return;const button=$('#load-visualizer'),fileName=generatedOperation==='combined'?'carve-studio-combined.nc':generatedOperation==='drill'?'carve-studio-drilling.nc':generatedOperation==='vgroove'?'carve-studio-v-groove.nc':generatedOperation==='pocket'?'carve-studio-pocket.nc':'carve-studio-profile.nc';button.disabled=true;button.textContent='Loading…';try{await gcode.loadToVisualizer(generatedGcode,fileName);try{await navigation.navigateToCarve();profileStatus('Loaded into gSender and opened Carve for review. No job was started.')}catch(e){profileStatus(`Loaded into the visualizer, but could not open Carve: ${e?.message||e}. No job was started.`,true)}}catch(e){profileStatus(`Could not load G-code into the visualizer: ${e?.message||e}. Check plugin permissions.`,true)}finally{button.textContent='Load into Visualizer';button.disabled=!generatedGcode}};
-$('#save-gcode').onclick=async()=>{if(!generatedGcode)return;const button=$('#save-gcode'),fileName=generatedOperation==='combined'?'carve-studio-combined.nc':generatedOperation==='drill'?'carve-studio-drilling.nc':generatedOperation==='vgroove'?'carve-studio-v-groove.nc':generatedOperation==='pocket'?'carve-studio-pocket.nc':'carve-studio-profile.nc';button.disabled=true;try{const result=await file.openSaveDialog({content:generatedGcode,options:{defaultFileName:fileName,title:'Save Carve Studio G-code',filters:[{name:'G-code files',extensions:['nc','gcode','tap']}]}});if(result.success)profileStatus('G-code saved. Simulate it and verify setup before cutting.')}catch(e){profileStatus(`Could not save G-code: ${e?.message||e}`,true)}finally{button.disabled=!generatedGcode}};
+$('#load-visualizer').onclick=async()=>{if(!generatedGcode)return;const button=$('#load-visualizer'),fileName=generatedOperation==='combined'?'carve-studio-combined.nc':generatedOperation==='drill'?'carve-studio-drilling.nc':generatedOperation==='vgroove-flat'?'carve-studio-flat-bottom-groove.nc':generatedOperation==='vgroove'?'carve-studio-v-groove.nc':generatedOperation==='pocket'?'carve-studio-pocket.nc':'carve-studio-profile.nc';button.disabled=true;button.textContent='Loading…';try{await gcode.loadToVisualizer(generatedGcode,fileName);try{await navigation.navigateToCarve();profileStatus('Loaded into gSender and opened Carve for review. No job was started.')}catch(e){profileStatus(`Loaded into the visualizer, but could not open Carve: ${e?.message||e}. No job was started.`,true)}}catch(e){profileStatus(`Could not load G-code into the visualizer: ${e?.message||e}. Check plugin permissions.`,true)}finally{button.textContent='Load into Visualizer';button.disabled=!generatedGcode}};
+$('#save-gcode').onclick=async()=>{if(!generatedGcode)return;const button=$('#save-gcode'),fileName=generatedOperation==='combined'?'carve-studio-combined.nc':generatedOperation==='drill'?'carve-studio-drilling.nc':generatedOperation==='vgroove-flat'?'carve-studio-flat-bottom-groove.nc':generatedOperation==='vgroove'?'carve-studio-v-groove.nc':generatedOperation==='pocket'?'carve-studio-pocket.nc':'carve-studio-profile.nc';button.disabled=true;try{const result=await file.openSaveDialog({content:generatedGcode,options:{defaultFileName:fileName,title:'Save Carve Studio G-code',filters:[{name:'G-code files',extensions:['nc','gcode','tap']}]}});if(result.success)profileStatus('G-code saved. Simulate it and verify setup before cutting.')}catch(e){profileStatus(`Could not save G-code: ${e?.message||e}`,true)}finally{button.disabled=!generatedGcode}};
 $('#mirror-x').onclick=()=>mirrorSelection(true);$('#mirror-y').onclick=()=>mirrorSelection(false);$('#duplicate-mirror-x').onclick=()=>duplicateMirrored(true);$('#duplicate-mirror-y').onclick=()=>duplicateMirrored(false);
 const nodeEditor = setupNodeEditor({
   overlay: $('#node-overlay'),
@@ -1388,7 +1504,14 @@ $('#redo').onclick=()=>{if(!redoStack.length)return;undoStack.push(projectState(
 $('#save-project').onclick=saveProjectFile;
 $('#open-project').onclick=()=>$('#project-input').click();
 $('#project-input').onchange=async e=>{const f=e.target.files[0];if(!f)return;try{const data=JSON.parse(await f.text());if(data.format!=='carve-studio-project'||data.version!==1||!data.stock||!Array.isArray(data.objects))throw Error('This is not a supported Carve Studio project file.');remember();restoreState({stock:data.stock,grid:data.grid,objects:data.objects,selected:Array.isArray(data.selected)?data.selected:[],selectedRegion:data.selectedRegion,nextId:Number(data.nextId)||Math.max(1,...data.objects.map(o=>Number(o.id)||0))+1,layers:data.layers,activeLayer:data.activeLayer,hiddenLayers:data.hiddenLayers,profileSettings:data.profileSettings,toolpaths:data.toolpaths,nextToolpathId:data.nextToolpathId,uiValues:data.uiValues});setProjectName(f.name.replace(/\.[^.]+$/,''))}catch(err){alert(err.message)}e.target.value=''};
-for(const id of ['profile-scope','profile-side','profile-tool-diameter','drill-scope','profile-depth','profile-stepdown','profile-safez','profile-feed','profile-plunge','profile-rpm','drill-depth','drill-stepdown','drill-safez','drill-feed','drill-plunge','drill-rpm','profile-tab-count','profile-tab-width','profile-tab-height','optimize-moves','profile-through-stock','vgroove-angle','vgroove-max-depth','vgroove-singleline','vgroove-safez','vgroove-feed','vgroove-plunge','vgroove-rpm','pocket-depth','pocket-stepdown','pocket-safez','pocket-feed','pocket-plunge','pocket-rpm','pocket-tool-diameter','pocket-overlap'])$('#'+id).addEventListener('change',updateToolpathSettings);
+for(const id of ['profile-scope','profile-side','profile-tool-diameter','drill-scope','profile-depth','profile-stepdown','profile-safez','profile-feed','profile-plunge','profile-rpm','drill-depth','drill-stepdown','drill-safez','drill-feed','drill-plunge','drill-rpm','profile-tab-count','profile-tab-width','profile-tab-height','optimize-moves','profile-through-stock','vgroove-angle','vgroove-max-depth','vgroove-singleline','vgroove-flat-bottom','vgroove-flat-stepdown','vgroove-safez','vgroove-feed','vgroove-plunge','vgroove-rpm','pocket-depth','pocket-stepdown','pocket-safez','pocket-feed','pocket-plunge','pocket-rpm','pocket-tool-diameter','pocket-overlap'])$('#'+id).addEventListener('change',updateToolpathSettings);
+
+$('#vgroove-clearance-tool').addEventListener('change',event=>{
+  const value = event.target.value;
+  if (value==='saved') return;
+  profileSettings.vgrooveClearanceTool = toolLibrary.tools.find(tool=>tool.id===value && tool.type==='endmill') || null;
+  updateToolpathSettings();
+});
 
 function updateToolpathSettings() {
   profileSettings=readProfileFields();

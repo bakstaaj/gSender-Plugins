@@ -3,7 +3,7 @@ import {flattenTextOutline} from './groove-centerline.js';
 import {ellipticalArc, parseNodePath} from './node-editing.js';
 
 const {Clipper, ClipperOffset, ClipType, EndType, JoinType, PolyFillType, PolyTree, PolyType} = ClipperLib;
-const SCALE = 1000;
+export const VECTOR_SCALE = 1000;
 const CURVE_TOLERANCE = .008;
 const OFFSET_MITER_LIMIT = 20;
 
@@ -64,12 +64,12 @@ function clip(type, subject, clipPaths, result, fill = PolyFillType.pftNonZero) 
   if (!engine.Execute(type,result,fill,fill)) throw Error('Could not resolve the selected outlines.');
 }
 
-function normalize(rings) {
+export function normalizeVectorRings(rings) {
   const paths = rings.map(points => points.map(({x,y}) => {
     if (!Number.isFinite(x) || !Number.isFinite(y) || Math.abs(x)>1e8 || Math.abs(y)>1e8) {
       throw Error('A selected outline has invalid coordinates.');
     }
-    return {X:Math.round(x*SCALE),Y:Math.round(y*SCALE)};
+    return {X:Math.round(x*VECTOR_SCALE),Y:Math.round(y*VECTOR_SCALE)};
   })).filter(path => path.length>=3);
   const normalized = [];
   if (paths.length) clip(ClipType.ctUnion,paths,[],normalized,PolyFillType.pftEvenOdd);
@@ -79,7 +79,7 @@ function normalize(rings) {
 
 function componentsOf(tree) {
   const components = [];
-  const ring = node => node.Contour().map(({X,Y}) => [X/SCALE,Y/SCALE]);
+  const ring = node => node.Contour().map(({X,Y}) => [X/VECTOR_SCALE,Y/VECTOR_SCALE]);
   function visit(node) {
     for (const outer of node.Childs()) {
       components.push([ring(outer),...outer.Childs().map(ring)]);
@@ -92,7 +92,7 @@ function componentsOf(tree) {
 
 export function combineVectorRegions(operation, regions) {
   if (regions.length < 2) throw Error('Select at least two closed shapes.');
-  const [base,...others] = regions.map(normalize);
+  const [base,...others] = regions.map(normalizeVectorRings);
   const tree = new PolyTree();
   if (operation === 'weld') {
     clip(ClipType.ctUnion,[base,...others].flat(),[],tree);
@@ -116,9 +116,9 @@ export function combineVectorRegions(operation, regions) {
 export function offsetVectorRegion(rings, distance) {
   // Keep acute letter corners while bounding the extension at nearly parallel edges.
   const offset = new ClipperOffset(OFFSET_MITER_LIMIT);
-  offset.AddPaths(normalize(rings),JoinType.jtMiter,EndType.etClosedPolygon);
+  offset.AddPaths(normalizeVectorRings(rings),JoinType.jtMiter,EndType.etClosedPolygon);
   const paths = [];
-  offset.Execute(paths,distance*SCALE);
+  offset.Execute(paths,distance*VECTOR_SCALE);
   if (!paths.length) return [];
   const tree = new PolyTree();
   clip(ClipType.ctUnion,paths,[],tree);
