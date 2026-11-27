@@ -57,8 +57,25 @@ export function setupCutPreview(readStock, readJobs) {
   const status = document.getElementById('cut-preview-status');
   const stockLabel = document.getElementById('cut-preview-stock');
   const operation = document.getElementById('cut-preview-operation');
+  const viewport = document.getElementById('cut-preview-viewport');
+  const rotation = document.getElementById('cut-preview-rotation');
+  const rotationValue = document.getElementById('cut-preview-rotation-value');
   const views = [...dialog.querySelectorAll('[data-cut-view]')];
-  let angled = true, model, request = 0;
+  let angled = true, model, request = 0, dragX = null, dragAngle = 0;
+
+  function setRotation(value) {
+    const degrees = ((Math.round(value) % 360) + 360) % 360;
+    rotation.value = String(degrees);
+    rotationValue.value = degrees + '°';
+    rotationValue.textContent = degrees + '°';
+    const rect = viewport.getBoundingClientRect();
+    const radians = degrees * Math.PI / 180;
+    const width = canvas.clientWidth || rect.width, height = canvas.clientHeight || rect.height;
+    const rotatedWidth = Math.abs(width * Math.cos(radians)) + Math.abs(height * Math.sin(radians));
+    const rotatedHeight = Math.abs(height * Math.cos(radians)) + Math.abs(width * Math.sin(radians));
+    const scale = Math.min(1, rect.width / rotatedWidth, rect.height / rotatedHeight);
+    canvas.style.transform = `rotate(${degrees}deg) scale(${scale})`;
+  }
 
   function draw() {
     if (dialog.open && model) drawStock(canvas, model, angled);
@@ -105,15 +122,41 @@ export function setupCutPreview(readStock, readJobs) {
     update();
   });
   operation.addEventListener('change', update);
+  rotation.addEventListener('input', () => setRotation(Number(rotation.value)));
+  viewport.addEventListener('pointerdown', event => {
+    if (!angled || event.button !== 0) return;
+    dragX = event.clientX;
+    dragAngle = Number(rotation.value);
+    viewport.classList.add('is-dragging');
+    viewport.setPointerCapture(event.pointerId);
+  });
+  viewport.addEventListener('pointermove', event => {
+    if (dragX === null) return;
+    setRotation(dragAngle + (event.clientX - dragX) * 360 / Math.max(240, viewport.clientWidth));
+  });
+  const stopRotation = event => {
+    if (dragX === null) return;
+    dragX = null;
+    viewport.classList.remove('is-dragging');
+    if (viewport.hasPointerCapture(event.pointerId)) viewport.releasePointerCapture(event.pointerId);
+  };
+  viewport.addEventListener('pointerup', stopRotation);
+  viewport.addEventListener('pointercancel', stopRotation);
+  viewport.addEventListener('lostpointercapture', () => {dragX = null; viewport.classList.remove('is-dragging');});
   for (const button of views) {
     button.addEventListener('click', () => {
       const nextAngled = button.dataset.cutView === 'angled';
       if (angled === nextAngled) return;
       angled = nextAngled;
       for (const view of views) view.setAttribute('aria-pressed', String(view === button));
+      rotation.disabled = !angled;
+      if (!angled) canvas.style.transform = '';
+      else setRotation(Number(rotation.value));
       draw();
     });
   }
   dialog.addEventListener('close', () => {request++; model = null;});
-  new ResizeObserver(draw).observe(canvas);
+  new ResizeObserver(() => {setRotation(Number(rotation.value));draw();}).observe(viewport);
+  rotation.disabled = !angled;
+  setRotation(0);
 }
