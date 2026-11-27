@@ -6,6 +6,13 @@ const {Clipper, ClipperOffset, ClipType, EndType, JoinType, PolyFillType, PolyTy
 const GEOMETRY_MARGIN = .02;
 const MAX_MOVES = 200_000;
 const length = (a,b) => Math.hypot(b.x-a.x,b.y-a.y);
+const depthWord = value => (Math.floor(value*1000+1e-7)/1000).toFixed(3);
+
+export function flatGrooveDepthLimit(angle,diameter,stockThickness=Infinity) {
+  const bitDepth = diameter/(2*Math.tan(angle*Math.PI/360));
+  const maximum = Math.min(bitDepth,stockThickness);
+  return {maximum,ncDepth:Number(depthWord(maximum)),stockLimited:stockThickness<bitDepth};
+}
 
 function inset(paths,amount) {
   if (!paths.length) return [];
@@ -109,7 +116,9 @@ export function planFlatBottomGroove(rings,{angle,depth,diameter,clearanceDiamet
   const slope = Math.tan(angle*Math.PI/360);
   const radiusAtSurface = depth*slope;
   if (radiusAtSurface>diameter/2+1e-9) {
-    throw Error('The flat depth exceeds the cutting diameter of the selected V-bit.');
+    const {ncDepth} = flatGrooveDepthLimit(angle,diameter);
+    const requiredDiameter = Math.ceil(radiusAtSurface*2000-1e-7)/1000;
+    throw Error(`The selected ${angle}° V-bit with a ${diameter} mm cutting diameter allows up to ${ncDepth.toFixed(3)} mm flat depth. A ${depth.toFixed(3)} mm flat depth needs a cutting diameter of at least ${requiredDiameter.toFixed(3)} mm at the same angle.`);
   }
   const outline = normalizeVectorRings(rings);
   const floor = inset(outline,radiusAtSurface+GEOMETRY_MARGIN);
@@ -123,8 +132,6 @@ export function planFlatBottomGroove(rings,{angle,depth,diameter,clearanceDiamet
   if (!finishPaths.length) throw Error('No usable V-bit path could be derived for these outlines.');
   return {clearancePaths:constantDepth(clearing,centers,depth),finishPaths,floorPathCount:floorPaths.length};
 }
-
-const depthWord = value => (Math.floor(value*1000+1e-7)/1000).toFixed(3);
 
 export function writeFlatGrooveGcode(paths,{stepdown,safeZ,feed,plunge,rpm,comment}) {
   if (![stepdown,safeZ,feed,plunge,rpm].every(value=>Number.isFinite(value)&&value>0) ||

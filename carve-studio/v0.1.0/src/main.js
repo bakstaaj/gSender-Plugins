@@ -1,7 +1,7 @@
 import { file, gcode, navigation } from '@sienci/gsender-plugin-sdk';
 import { deriveGrooveCenterlines, flattenTextOutline, grooveCutPaths } from './groove-centerline.js';
 import { parseDxf } from './dxf-import.js';
-import { planFlatBottomGroove, writeFlatGrooveGcode } from './flat-bottom-groove.js';
+import { flatGrooveDepthLimit, planFlatBottomGroove, writeFlatGrooveGcode } from './flat-bottom-groove.js';
 import { compensateProfile } from './profile-compensation.js';
 import { setupCutPreview } from './cut-preview.js';
 import { rectangularArray, circularArray, cornerOutline, cornerTargets, shapeCorners, arcThroughThreePoints } from './drawing-tools.js';
@@ -1092,6 +1092,27 @@ function selectedOperationTool(op) {
 
 const rateFields = ['feed','plunge','rpm'];
 
+function updateFlatDepthGuidance() {
+  const tool = selectedOperationTool('vgroove-flat');
+  const field = $('#vgroove-flat-depth');
+  const guidance = $('#vgroove-flat-depth-guidance');
+  const correction = $('#vgroove-flat-use-max');
+  guidance.hidden = !tool;
+  field.max = stock.thickness;
+  field.removeAttribute('aria-invalid');
+  if (!tool) return;
+  const {maximum,ncDepth,stockLimited} = flatGrooveDepthLimit(tool.angle,tool.diameter,stock.thickness);
+  const formatted = ncDepth.toFixed(3);
+  const exceedsLimit = field.valueAsNumber>maximum+1e-9;
+  field.max = maximum;
+  if (exceedsLimit) field.setAttribute('aria-invalid','true');
+  $('#vgroove-flat-depth-limit').textContent = stockLimited
+    ? `Stock thickness limits flat depth to ${formatted} mm.`
+    : `Maximum flat depth for this V-bit is ${formatted} mm.`;
+  correction.hidden = !exceedsLimit || ncDepth<Number(field.min);
+  correction.textContent = `Use ${formatted} mm`;
+}
+
 function renderToolSelectors() {
   for (const [op,type] of Object.entries(OPERATION_TOOL_TYPES)) {
     const select = $('#'+op+'-tool');
@@ -1122,6 +1143,7 @@ function renderToolSelectors() {
   clearance.replaceChildren(new Option('V-bit only',''),...endmills.map(tool=>new Option(toolLabel(tool),tool.id)));
   if (saved && !matching) clearance.add(new Option('Saved · '+toolLabel(saved),'saved'));
   clearance.value = saved ? (matching ? saved.id : 'saved') : '';
+  updateFlatDepthGuidance();
 }
 
 function applyToolPreset(op,value) {
@@ -1521,6 +1543,16 @@ $('#vgroove-clearance-tool').addEventListener('change',event=>{
   profileSettings.vgrooveClearanceTool = toolLibrary.tools.find(tool=>tool.id===value && tool.type==='endmill') || null;
   updateToolpathSettings();
 });
+
+$('#vgroove-flat-depth').addEventListener('input',updateFlatDepthGuidance);
+$('#vgroove-flat-use-max').onclick=()=>{
+  const tool = selectedOperationTool('vgroove-flat');
+  if (!tool) return;
+  const {ncDepth} = flatGrooveDepthLimit(tool.angle,tool.diameter,stock.thickness);
+  $('#vgroove-flat-depth').value = ncDepth.toFixed(3);
+  dismissWorkspaceError();
+  updateToolpathSettings();
+};
 
 function updateToolpathSettings() {
   profileSettings=readProfileFields();

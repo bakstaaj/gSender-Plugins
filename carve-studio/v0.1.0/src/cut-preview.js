@@ -1,4 +1,4 @@
-import {simulateCut} from './cut-simulation.js';
+import {selectCutPreviewJobs, simulateCut} from './cut-simulation.js';
 
 const rgb = (r, g, b) => (255 << 24) | (b << 16) | (g << 8) | r;
 
@@ -67,7 +67,7 @@ export function setupCutPreview(readStock, readJobs) {
   async function update() {
     const item = ++request;
     const stock = readStock();
-    const jobs = readJobs().filter(job => !operation.value || String(job.id) === operation.value);
+    const {jobs, clearance, missingClearance} = selectCutPreviewJobs(readJobs(), operation.value);
     model = null;
     const context = canvas.getContext('2d');
     context.clearRect(0, 0, canvas.width, canvas.height);
@@ -82,6 +82,8 @@ export function setupCutPreview(readStock, readJobs) {
       draw();
       const count = model.count;
       const notes = [count + ' of ' + jobs.length + ' toolpaths shown'];
+      if (clearance) notes.push('Includes the matching end-mill clearance pass.');
+      if (missingClearance) notes.push('Matching clearance pass is missing. Regenerate the flat-bottom groove.');
       if (model.skipped.length) notes.push('Cutter geometry missing for ' + model.skipped.join(', ') + '. Choose a tool preset and regenerate to preview.');
       if (model.estimatedDrills.length) notes.push('Drawn hole diameter used for ' + model.estimatedDrills.join(', ') + '.');
       status.textContent = notes.join(' · ');

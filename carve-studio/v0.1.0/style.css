@@ -93,6 +93,10 @@ body{display:flex;flex-direction:column}
 #geometry-preview .vector,#geometry-preview .corner-target{stroke:#b45e1b;stroke-width:1.6px;vector-effect:non-scaling-stroke;fill:none}
 #geometry-preview .array-copy{stroke:#276da5;stroke-dasharray:4 3}
 #geometry-preview .subtract-target{stroke:#b45e1b;stroke-width:3}
+.flat-depth-guidance{margin:7px 0;color:#405467}
+.flat-depth-guidance button{display:block;margin-top:5px;font-size:12px;padding:4px 8px}
+.flat-depth-guidance button[hidden]{display:none}
+#vgroove-flat-depth[aria-invalid="true"]{border-color:#b84c43}
 #object-snap-marker path{fill:none;stroke:#095b9d;stroke-width:1.6;stroke-linejoin:round;vector-effect:non-scaling-stroke}
 #object-snap-marker .snap-halo{stroke:#fff;stroke-width:4}
 .path-actions{display:grid;gap:6px;margin-top:10px}

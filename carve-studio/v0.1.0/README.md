@@ -29,12 +29,12 @@ In a plugin-capable gSender Edge build, open **Tools → Plugins → Install a p
 - Zoom, pan, fit the stock to view and export the current drawing as SVG.
 - Create local tool presets and apply compatible cutters to Profile, Drilling, V Groove and Pocket. Generated paths retain the selected cutter and tool number.
 - Build a combined NC file in toolpath order with tool changes and profiles last. Save G-code or load it into the gSender visualizer.
-- Open **Generated toolpaths → Cut preview** to see estimated material removal in angled or top view for the whole job or one operation.
+- Open **Generated toolpaths → Cut preview** to see estimated material removal in angled or top view for the whole job or one operation. A flat-bottom finishing preview also shows its matching clearance pass.
 - Start a new project with a save / discard / cancel prompt when vectors are present. Profile toolpaths default to cutting through the stock thickness, with an option to use the explicit cut-depth value.
 - Generate a peck-drilling preview from circle centers using the shared depth, peck depth, safe Z, plunge and spindle settings.
 - Use bundled fonts including Short Stack and Relief SingleLine, or import local TTF and OTF outline fonts from the Text panel. Imported font files are retained in the gSender profile across restarts.
 - Generate V Groove Profile paths from selected closed letter outlines. Both variable depth and fixed depth use the same connected centerline strokes. Relief SingleLine open strokes use fixed depth.
-- Open **Flat-bottom V Groove** and choose a V-bit from the tool library. Set the floor depth and V-bit pass depth. An optional flat end mill clears broad areas before the V-bit finishes the sloped walls, narrow details, and remaining floor. This generator has its own cutter and feed settings.
+- Open **Flat-bottom V Groove** and choose a V-bit from the tool library. Set the floor depth and V-bit pass depth. The panel shows the usable depth limit for the selected cutter and stock. An optional flat end mill clears broad areas before the V-bit finishes the sloped walls, narrow details, and remaining floor.
 - Generate a pocket preview for selected closed boundaries using nested inward tool-center offsets, a flat tool diameter, stepover, depth and pass depth; counters are preserved as uncut islands.
 - Optimize profiles by joining open vector endpoints within 0.02 mm and ordering contours by nearest travel start.
 

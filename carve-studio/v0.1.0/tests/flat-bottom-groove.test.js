@@ -1,7 +1,7 @@
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
-import {planFlatBottomGroove,writeFlatGrooveGcode} from '../src/flat-bottom-groove.js';
-import {simulateCut} from '../src/cut-simulation.js';
+import {flatGrooveDepthLimit,planFlatBottomGroove,writeFlatGrooveGcode} from '../src/flat-bottom-groove.js';
+import {selectCutPreviewJobs,simulateCut} from '../src/cut-simulation.js';
 
 const rect = (x,y,w,h)=>[{x,y},{x:x+w,y},{x:x+w,y:y+h},{x,y:y+h}];
 const ring = [rect(6,6,42,26),rect(20,14,12,10)];
@@ -50,6 +50,31 @@ test('cut simulation shows a flat floor, a sloped wall, and intact material insi
   assert.equal(at(12,5),0);
 });
 
+test('the finishing preview includes the matching clearance and retains the flat floor', async () => {
+  const depth=2;
+  const {clearancePaths,finishPaths} = planFlatBottomGroove([rect(8,8,42,12)],
+    {angle:60,depth,diameter:3.175,clearanceDiameter:3});
+  const clearance = {id:1,operation:'vgroove-clearance',tool:{diameter:3},gcode:writeFlatGrooveGcode(clearancePaths,rates)};
+  const otherClearance = {...clearance,id:2,gcode:['G0 Z5', 'G0 X28 Y26', 'G1 Z-3'].join('\n')};
+  const finish = {id:3,requiresJobId:1,operation:'vgroove-flat',tool:{diameter:3.175,angle:60},
+    gcode:writeFlatGrooveGcode(finishPaths,rates)};
+  const selected = selectCutPreviewJobs([clearance,otherClearance,finish],'3');
+  assert.deepEqual(selected.jobs,[clearance,finish]);
+  assert.equal(selected.clearance,clearance);
+  const stock = {width:56,height:32,thickness:6};
+  const [combined,finishOnly] = await Promise.all([simulateCut(stock,selected.jobs),simulateCut(stock,[finish])]);
+  const at=(grid,x,y)=>grid.depths[Math.floor(y/grid.cellHeight)*grid.columns+Math.floor(x/grid.cellWidth)];
+  assert.equal(at(combined,28,16),2);
+  assert.equal(at(combined,28,14),2);
+  assert.ok(at(combined,28,8.7)>.8 && at(combined,28,8.7)<1.6);
+  assert.equal(at(combined,28,26),0);
+  assert.ok(at(finishOnly,28,16)<1);
+  assert.equal(selectCutPreviewJobs([otherClearance,finish],'3').missingClearance,true);
+  assert.deepEqual(selectCutPreviewJobs([clearance,finish],'1').jobs,[clearance]);
+  assert.deepEqual(selectCutPreviewJobs([clearance,{...finish,requiresJobId:undefined}],'3').jobs,
+    [{...finish,requiresJobId:undefined}]);
+});
+
 test('narrow strokes retain variable-depth cuts and an oversized end mill leaves V-bit-only clearing', () => {
   const narrow = planFlatBottomGroove([rect(0,0,25,1.5)],{angle:60,depth:2,diameter:6,clearanceDiameter:3});
   assert.equal(narrow.floorPathCount,0);
@@ -59,7 +84,21 @@ test('narrow strokes retain variable-depth cuts and an oversized end mill leaves
   assert.equal(small.clearancePaths.length,0);
   assert.ok(small.floorPathCount>0);
   assert.throws(()=>planFlatBottomGroove([rect(0,0,12,8)],{angle:90,depth:4,diameter:6}),
-    /exceeds the cutting diameter/);
+    /allows up to 3\.000 mm/);
+});
+
+test('a 60-degree, 3.175 mm V-bit reports a usable depth below the geometric limit', () => {
+  const options = {angle:60,diameter:3.175,clearanceDiameter:3};
+  const {maximum,ncDepth,stockLimited} = flatGrooveDepthLimit(options.angle,options.diameter,12);
+  assert.equal(stockLimited,false);
+  assert.equal(ncDepth,2.749);
+  assert.ok(maximum>ncDepth && maximum<2.75);
+  assert.throws(()=>planFlatBottomGroove(ring,{...options,depth:3}),
+    /allows up to 2\.749 mm.*at least 3\.465 mm/);
+  const result = planFlatBottomGroove(ring,{...options,depth:ncDepth});
+  assert.ok(result.clearancePaths.length && result.floorPathCount);
+  assert.equal(flatGrooveDepthLimit(options.angle,options.diameter,2.125).ncDepth,2.125);
+  assert.equal(flatGrooveDepthLimit(options.angle,options.diameter,2.125).stockLimited,true);
 });
 
 test('the post retracts before XY rapids and keeps cut depth within the pass limit', () => {

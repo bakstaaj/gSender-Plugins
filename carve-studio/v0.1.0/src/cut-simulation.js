@@ -72,6 +72,19 @@ function sweep(grid, {start, end, radius, slope}) {
   }
 }
 
+export function selectCutPreviewJobs(jobs, selectedId) {
+  if (!selectedId) return {jobs};
+  const selected = jobs.find(job => String(job.id) === selectedId);
+  if (!selected) return {jobs: []};
+
+  const clearance = jobs.find(job => job.id === selected.requiresJobId && job.operation === 'vgroove-clearance');
+  return {
+    jobs: clearance ? [clearance, selected] : [selected],
+    clearance,
+    missingClearance: Boolean(selected.requiresJobId && !clearance),
+  };
+}
+
 export async function simulateCut(stock, jobs, cancelled = () => false) {
   const {width, height, thickness} = stock;
   if (![width, height, thickness].every(positive)) throw Error('Enter valid stock dimensions.');

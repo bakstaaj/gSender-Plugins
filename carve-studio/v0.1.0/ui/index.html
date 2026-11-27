@@ -19,8 +19,8 @@
     "react/jsx-dev-runtime": "./vendor/react-jsx-dev-runtime.js"
   }
 }</script>
-  <script type="module" crossorigin src="./assets/index-PrCDcrrO.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-CTQvUDA9.css">
+  <script type="module" crossorigin src="./assets/index-CqHGP8-i.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-B-jBN2nY.css">
 </head>
 <body>
   <header class="topbar">
@@ -224,9 +224,13 @@
           <label class="cam-label">Clearance tool<select id="vgroove-clearance-tool"><option value="">V-bit only</option></select></label>
           <small class="optimize-hint">The optional clearance end mill cuts wide areas before the V-bit finishes.</small>
           <div class="cam-grid">
-            <label>Flat depth (mm)<input id="vgroove-flat-depth" type="number" min="0.1" step="0.1"></label>
+            <label>Flat depth (mm)<input id="vgroove-flat-depth" type="number" min="0.1" step="0.001" aria-describedby="vgroove-flat-depth-limit"></label>
             <label>V-bit pass depth (mm)<input id="vgroove-flat-stepdown" type="number" min="0.001" step="any" value="1"></label>
             <label>Safe Z (mm)<input id="vgroove-flat-safez" type="number" min="0.1" step="0.1" value="5"></label>
+          </div>
+          <div id="vgroove-flat-depth-guidance" class="flat-depth-guidance" hidden>
+            <small id="vgroove-flat-depth-limit"></small>
+            <button id="vgroove-flat-use-max" type="button" hidden>Use depth limit</button>
           </div>
           <details class="cam-rates" id="vgroove-flat-rates">
             <summary>V-bit feeds &amp; speeds<span class="cam-rates-modified" hidden> · Modified</span></summary>
