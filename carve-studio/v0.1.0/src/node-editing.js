@@ -222,7 +222,7 @@ function closestOnLine([a,b],target) {
   return length?Math.max(0,Math.min(1,((target[0]-a[0])*dx+(target[1]-a[1])*dy)/length)):0;
 }
 
-function ellipticalArc(start,end,[horizontal,vertical,rotation,large,sweep]) {
+export function ellipticalArc(start,end,[horizontal,vertical,rotation,large,sweep]) {
   let rx=Math.abs(horizontal), ry=Math.abs(vertical);
   if (!rx || !ry || samePoint(start,end)) return null;
   const angle=rotation*Math.PI/180, cos=Math.cos(angle), sin=Math.sin(angle);
@@ -241,6 +241,8 @@ function ellipticalArc(start,end,[horizontal,vertical,rotation,large,sweep]) {
   if(!sweep && span>0) span-=2*Math.PI;
   const midpoint=mix(start,end,.5);
   return {
+    span,
+    radius: Math.max(rx,ry),
     parameters: fraction=>[rx,ry,rotation,+(Math.abs(span*fraction)>Math.PI),sweep],
     pointAt(t) {
       const a=startAngle+span*t, x=rx*Math.cos(a)+cx, y=ry*Math.sin(a)+cy;

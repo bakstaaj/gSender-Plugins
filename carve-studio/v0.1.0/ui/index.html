@@ -19,8 +19,8 @@
     "react/jsx-dev-runtime": "./vendor/react-jsx-dev-runtime.js"
   }
 }</script>
-  <script type="module" crossorigin src="./assets/index-C5mlfujd.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-B-6LNYJd.css">
+  <script type="module" crossorigin src="./assets/index-BK0bnLAt.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-CTQvUDA9.css">
 </head>
 <body>
   <header class="topbar">
@@ -103,6 +103,19 @@
         <button id="apply-corners" type="button" class="primary" disabled>Apply to all corners</button>
         <p id="corner-status" class="profile-status" role="status"></p>
       </section>
+      <section id="join-panel" class="side-panel geometry-panel" hidden>
+        <div class="section-title">JOIN VECTORS</div>
+        <label class="cam-label">Maximum gap (mm)<input id="join-gap" type="number" min="0" step="any" value="0.35"></label>
+        <p class="hint">Connects endpoints on the same layer. Loops close automatically.</p>
+        <button id="apply-join" type="button" class="primary" disabled>Join selected vectors</button>
+        <p id="join-status" class="profile-status" role="status"></p>
+      </section>
+      <section id="subtract-panel" class="side-panel geometry-panel" hidden>
+        <div class="section-title">SUBTRACT</div>
+        <label class="cam-label">Shape to cut from<select id="subtract-target"></select></label>
+        <p class="hint">The highlighted shape is cut by the other selected shapes.</p>
+        <button id="apply-subtract" type="button" class="primary" disabled>Subtract selected shapes</button>
+      </section>
       <section id="node-panel" class="side-panel geometry-panel" hidden>
         <div class="section-title">NODE EDIT</div>
         <p id="node-status" class="hint">Click a vector to show its nodes.</p>
@@ -142,6 +155,11 @@
         <div class="tool-group" role="group" aria-label="Edit outlines">
           <button aria-label="Node Edit" class="tool" data-tool="nodes" data-panel="nodes" title="Edit vector nodes and curve handles"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16l6-8 8 6"/><path d="M3 14h4v4H3zM9 6h4v4H9zM17 12h4v4h-4z" fill="var(--panel, white)"/></svg></button>
           <button aria-label="Trim" class="tool text-tool" data-tool="trim" title="Trim outline segments between intersections">✂</button>
+          <button class="tool" id="join-vectors" data-panel="join" aria-label="Join Vectors" title="Join selected open vectors by their endpoints"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 19l5-7h8l5-7M10 15l3-3-3-3"/></svg></button>
+          <button class="tool" id="close-vectors" aria-label="Close Vector" title="Close each selected open outline with a straight segment" disabled><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 18V6h14v12"/><path d="M5 18h14" stroke-dasharray="2 2"/></svg></button>
+          <button class="tool" id="weld-vectors" aria-label="Weld" title="Weld selected closed shapes into their combined area" disabled><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h11v5h7v11H10v-5H3z"/></svg></button>
+          <button class="tool" id="subtract-vectors" data-panel="subtract" aria-label="Subtract" title="Cut the selected shapes from a chosen target" disabled><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h12v5h-5v11H3z"/><path d="M17 14h5"/></svg></button>
+          <button class="tool" id="intersect-vectors" aria-label="Intersect" title="Keep the area shared by all selected closed shapes" disabled><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4H3v13h4m3 3h11V7h-5" stroke-dasharray="2 2"/><path d="M9 8h6v8H9z" fill="currentColor" fill-opacity=".18"/></svg></button>
           <button class="tool" data-tool="corner" data-panel="corner" title="Corners (fillet, chamfer, or concave fillet)" aria-label="Corners"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20v-8a8 8 0 0 1 8-8h8"/><path d="M4 8V4h4" stroke-dasharray="1.5 2"/></svg></button>
           <button class="tool" data-panel="offset" id="offset-tool" title="Offset selected vectors" aria-label="Offset selected vectors" disabled><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1"/><rect x="8" y="8" width="8" height="8" rx=".5"/></svg></button>
         </div>

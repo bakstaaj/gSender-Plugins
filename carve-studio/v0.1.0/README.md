@@ -17,7 +17,10 @@ In a plugin-capable gSender Edge build, open **Tools → Plugins → Install a p
 - Import ASCII DXF LINE, CIRCLE, ARC and LWPOLYLINE entities, including curved polyline segments.
 - Draw lines, rectangles, circles, open and closed polylines, 3-point arcs, and text. Grid and object snapping assist drawing and placement.
 - Use **Node Edit** to move nodes and Bézier handles. Double-click an edge to insert a node, or select a node and press **Delete**.
+- Use **Join Vectors** to connect selected open vectors on the same layer within a maximum endpoint gap. Complete loops close automatically. Use **Close Vector** to connect the two ends of a selected outline with a straight segment.
+- **Weld** combines closed shapes, **Subtract** cuts the other selected shapes from a highlighted target, and **Intersect** keeps the area shared by all selected shapes. The results are editable polygon outlines.
 - Trim, offset, fillet, chamfer, and add inward fillets to outlines. Create rectangular and circular arrays from selected objects.
+- Offset closed outlines inward or outward with sharp joins. Compound outlines keep their inner cutouts.
 - Select, shift-select, drag, and delete vectors. Click an enclosed area to select it for machining.
 - Drag left-to-right to window-select fully enclosed objects; drag right-to-left to crossing-select objects touched by the box.
 - Duplicate and mirror selections across the stock's horizontal or vertical centerline, or set their X/Y position and bounding-box size numerically.

@@ -5,6 +5,8 @@ import { compensateProfile } from './profile-compensation.js';
 import { setupCutPreview } from './cut-preview.js';
 import { rectangularArray, circularArray, cornerOutline, cornerTargets, shapeCorners, arcThroughThreePoints } from './drawing-tools.js';
 import { setupNodeEditor } from './node-editor-ui.js';
+import { closeVectors, isOpenVectorCandidate, joinVectors } from './vector-joining.js';
+import { combineVectorRegions, offsetVectorRegion, vectorPathContours, vectorRings } from './closed-vector-geometry.js';
 import { buildSnapGeometry, intersectSegments, nearestSnap } from './object-snapping.js';
 import { initToolLibrary, OPERATION_TOOL_TYPES, readTool, sameCutter, toolLabel } from './tool-library.js';
 import { initRegistration } from './registration-ui.js';
@@ -31,7 +33,7 @@ const toolLibrary = initToolLibrary(renderToolSelectors);
 const textFontUrls={anton:antonFontUrl,oswald:oswaldFontUrl,bebas:bebasFontUrl,barlow:barlowFontUrl,alfa:alfaFontUrl,shortstack:shortStackFontUrl},textFontCache=new Map(),importedFontRecords=new Map();let pendingTextFontValue='',reliefSvgFontCache=null;
 
 const drawingToolFields = ['array-layout','array-columns','array-rows','array-pitch-x','array-pitch-y',
-  'array-count','array-sweep','array-center-x','array-center-y','array-radius','corner-mode','corner-size'];
+  'array-count','array-sweep','array-center-x','array-center-y','array-radius','corner-mode','corner-size','join-gap'];
 
 function drawingToolValues() {
   return Object.fromEntries(drawingToolFields.map(id=>[id,$('#'+id).value]));
@@ -103,6 +105,10 @@ function drawGeometryGhost(object) {
 function refreshDrawingTools(items=objects.filter(o=>selectedIds.has(o.id))) {
   $('#geometry-preview').replaceChildren();
   $('#array-tool').disabled = !items.length;
+  const openVectors = items.filter(object=>!hiddenLayers.has(object.layer) && isOpenVectorCandidate(object));
+  $('#apply-join').disabled = openVectors.length < 2;
+  $('#close-vectors').disabled = !openVectors.some(object=>object.kind!=='line');
+  refreshBooleanTools();
   if (activePanel === 'corner') {
     const mode = $('#corner-mode').value;
     $('#corner-size-label').textContent = mode==='chamfer'?'Setback (mm)':'Radius (mm)';
@@ -148,6 +154,7 @@ function applyDrawingArray() {
       const copy = arrayCopy(item,offset);
       copy.id = nextId++;
       if (copy.textGroupId) copy.textGroupId = group + copy.textGroupId;
+      if (copy.outlineGroupId) copy.outlineGroupId = group + copy.outlineGroupId;
       selectedIds.add(copy.id);
       objects.push(copy);
     }
@@ -217,6 +224,126 @@ function applyDrawingCorners(target) {
   }
 }
 
+function applyVectorJoining(close) {
+  const selected = objects.filter(object=>selectedIds.has(object.id) && !hiddenLayers.has(object.layer));
+  const status = $('#join-status');
+  status.textContent = '';
+  try {
+    const results = close ? closeVectors(selected,stock.height)
+      : joinVectors(selected,stock.height,$('#join-gap').valueAsNumber);
+    if (!results.length) {
+      throw Error(close ? 'Select an open outline with enough geometry to enclose an area.'
+        : 'No selected open endpoints are within the maximum gap on the same layer.');
+    }
+    const used = new Set(results.flatMap(result=>result.ids));
+    const replacements = new Map(results.map(({object})=>[object.id,object]));
+    remember();
+    objects = objects.flatMap(object=>used.has(object.id) ? (replacements.get(object.id) || []) : object);
+    selectedIds = new Set(replacements.keys());
+    dismissWorkspaceError();
+    if (close) setTool('select');
+    redraw();
+    if (!close) {
+      status.textContent = `Joined ${used.size} vectors into ${results.length} ${results.length===1?'outline':'outlines'}.`;
+      const skipped = selected.length-used.size;
+      if (skipped) status.textContent += ` ${skipped} selected ${skipped===1?'vector was':'vectors were'} left unchanged.`;
+    }
+  } catch (error) {
+    status.textContent = error.message;
+    showWorkspaceError(error.message);
+  }
+}
+
+function outlineGroup(object) {
+  return object.outlineGroupId || object.textGroupId;
+}
+
+function closedPolygonCopies(components,layer) {
+  return components.flatMap(rings=>{
+    const groupId = rings.length>1 ? 'outline-'+nextId : null;
+    return rings.map(points=>{
+      const object = {id:nextId++,kind:'polygon',points,layer};
+      if (groupId) object.outlineGroupId = groupId;
+      return object;
+    });
+  });
+}
+
+function booleanSelection() {
+  const ids = new Set(selectedIds);
+  // Shift-click exclusions are explicitly chosen shapes even when area selection
+  // represents them as cutouts in the highlight.
+  for (const part of selectedAreaParts()) {
+    for (const area of part.exclusions || []) for (const id of area.ids) ids.add(id);
+  }
+  const order = new Map([...ids].map((id,index)=>[id,index]));
+  const selected = objects.filter(object=>ids.has(object.id) && !hiddenLayers.has(object.layer))
+    .sort((a,b)=>order.get(a.id)-order.get(b.id));
+  const groups = new Map();
+  for (const object of selected) {
+    if (object.centerlineFont || !hasClosedGeometry(object)) return [];
+    const key = outlineGroup(object) || object.id;
+    if (!groups.has(key)) groups.set(key,[]);
+    groups.get(key).push(object);
+  }
+  return [...groups.values()];
+}
+
+function refreshBooleanTools() {
+  const operands = selectedIds.size ? booleanSelection() : [];
+  const available = operands.length >= 2;
+  for (const id of ['weld-vectors','subtract-vectors','intersect-vectors','apply-subtract']) {
+    $('#'+id).disabled = !available;
+  }
+  if (activePanel !== 'subtract') return;
+  const select = $('#subtract-target'), previous = select.value;
+  select.replaceChildren(...operands.map(group=>{
+    const object = group[0], bounds = boundsOf(group);
+    const kind = ({rect:'Rectangle',circle:'Circle',ellipse:'Ellipse',polygon:'Polygon',polyline:'Polyline',path:'Path'})[object.kind];
+    const label = group.length > 1 ? 'Outline' : kind;
+    const position = bounds ? ` · X ${bounds.minX.toFixed(1)}, Y ${bounds.minY.toFixed(1)}` : '';
+    return new Option(label+position,object.id);
+  }));
+  if (operands.some(group=>String(group[0].id)===previous)) select.value = previous;
+  select.disabled = !available;
+  const target = operands.find(group=>String(group[0].id)===select.value);
+  for (const object of target || []) {
+    const outline = elemFor(object);
+    outline.classList.add('subtract-target');
+    outline.removeAttribute('data-id');
+    $('#geometry-preview').append(outline);
+  }
+}
+
+function applyVectorBoolean(operation) {
+  try {
+    const operands = booleanSelection();
+    if (operands.length < 2) throw Error('Select at least two closed shapes for this operation.');
+    if (operation==='subtract') {
+      const index = operands.findIndex(group=>String(group[0].id)===$('#subtract-target').value);
+      if (index < 0) throw Error('Choose a shape to cut from.');
+      operands.unshift(operands.splice(index,1)[0]);
+    }
+    const regions = operands.map(group=>group.flatMap(object=>vectorRings(object,stock.height,geometryPoints)));
+    const components = combineVectorRegions(operation,regions);
+    if (!components.length) {
+      throw Error(operation==='intersect' ? 'The selected shapes share no area.'
+        : 'The cutters cover the entire target. There is no outline to keep.');
+    }
+    const consumed = new Set(operands.flat().map(object=>object.id));
+    const layer = operands[0][0].layer || activeLayer;
+    remember();
+    const replacements = closedPolygonCopies(components,layer);
+    objects = [...objects.filter(object=>!consumed.has(object.id)),...replacements];
+    selectedIds = new Set(replacements.map(object=>object.id));
+    dismissWorkspaceError();
+    setTool('select');
+    redraw();
+  } catch (error) {
+    showWorkspaceError(error.message);
+  }
+}
+
 function setupDrawingToolControls() {
   $('#array-tool').onclick = ()=>{setTool('select');setPanel('array')};
   $('#pick-array-center').onclick = ()=>{
@@ -227,9 +354,26 @@ function setupDrawingToolControls() {
   };
   $('#apply-array').onclick = applyDrawingArray;
   $('#apply-corners').onclick = ()=>applyDrawingCorners();
+  $('#join-vectors').onclick = ()=>{
+    setTool('select');
+    $('#join-status').textContent = '';
+    setPanel('join');
+  };
+  $('#apply-join').onclick = ()=>applyVectorJoining(false);
+  $('#close-vectors').onclick = ()=>applyVectorJoining(true);
+  $('#weld-vectors').onclick = ()=>applyVectorBoolean('weld');
+  $('#intersect-vectors').onclick = ()=>applyVectorBoolean('intersect');
+  $('#subtract-vectors').onclick = ()=>{
+    setTool('select');
+    $('#subtract-target').replaceChildren();
+    setPanel('subtract');
+  };
+  $('#subtract-target').onchange = ()=>refreshDrawingTools();
+  $('#apply-subtract').onclick = ()=>applyVectorBoolean('subtract');
   for (const id of drawingToolFields) {
     $('#'+id).addEventListener('input',()=>{
       if (id==='array-layout') setPickingArrayCenter(false);
+      if (id==='join-gap') $('#join-status').textContent = '';
       $('#corner-status').textContent = '';
       refreshDrawingTools();
       queueSessionSave();
@@ -362,7 +506,7 @@ function moveSelectionTo(point, event) {
   redraw();
 }
 function updateGrid(){if(!gridSettings.enabled)showSnapMarker(null);const step=gridSettings.resolution||5;$('#grid-pattern').setAttribute('width',step);$('#grid-pattern').setAttribute('height',step);$('#grid-pattern').setAttribute('x',-step/2);$('#grid-pattern').setAttribute('y',stock.height%step-step/2);$('#grid-dot').setAttribute('cx',step/2);$('#grid-dot').setAttribute('cy',step/2);$('#grid-dot').setAttribute('r',Math.min(step*.3,.9/Math.max(view.scale,.01)));$('#grid-overlay').setAttribute('visibility',gridSettings.enabled?'visible':'hidden');$('#grid-toggle').classList.toggle('active',gridSettings.enabled);$('#grid-toggle').setAttribute('aria-pressed',String(gridSettings.enabled));$('#grid-resolution').value=String(step)}
-function setPanel(name){if(name!=='array')setPickingArrayCenter(false);activePanel=name;for(const [panel,id] of Object.entries({stock:'stock-panel',layers:'layers-panel',selection:'selection-panel',offset:'offset-panel',text:'text-settings',array:'array-panel',corner:'corner-panel',path:'path-panel',nodes:'node-panel'}))$('#'+id).hidden=panel!==name;document.querySelectorAll('[data-panel]').forEach(button=>button.classList.toggle('panel-active',button.dataset.panel===name));refreshDrawingTools()}
+function setPanel(name){if(name!=='array')setPickingArrayCenter(false);activePanel=name;for(const [panel,id] of Object.entries({stock:'stock-panel',layers:'layers-panel',selection:'selection-panel',offset:'offset-panel',text:'text-settings',array:'array-panel',corner:'corner-panel',path:'path-panel',nodes:'node-panel',join:'join-panel',subtract:'subtract-panel'}))$('#'+id).hidden=panel!==name;document.querySelectorAll('[data-panel]').forEach(button=>button.classList.toggle('panel-active',button.dataset.panel===name));refreshDrawingTools()}
 function elemFor(o){const el=document.createElementNS(svgNS,o.kind);el.classList.add('vector');el.dataset.id=o.id;const h=stock.height;
   if(o.kind==='line'){el.setAttribute('x1',o.x1);el.setAttribute('y1',h-o.y1);el.setAttribute('x2',o.x2);el.setAttribute('y2',h-o.y2)}
   else if(o.kind==='rect'){el.setAttribute('x',Math.min(o.x1,o.x2));el.setAttribute('y',h-Math.max(o.y1,o.y2));el.setAttribute('width',Math.abs(o.x2-o.x1));el.setAttribute('height',Math.abs(o.y2-o.y1))}
@@ -672,10 +816,100 @@ function segmentHitsBox(a,b,r){let lo=0,hi=1,dx=b.x-a.x,dy=b.y-a.y;for(const [p,
 function geometryPoints(o,pathStep=null){if(o.kind==='line')return[{x:o.x1,y:o.y1},{x:o.x2,y:o.y2}];if(o.kind==='rect'){const x1=Math.min(o.x1,o.x2),x2=Math.max(o.x1,o.x2),y1=Math.min(o.y1,o.y2),y2=Math.max(o.y1,o.y2);return[{x:x1,y:y1},{x:x2,y:y1},{x:x2,y:y2},{x:x1,y:y2},{x:x1,y:y1}]}if(o.kind==='circle'||o.kind==='ellipse'){const rx=o.kind==='circle'?o.r:o.rx,ry=o.kind==='circle'?o.r:o.ry,steps=Math.max(72,Math.min(720,Math.ceil(2*Math.PI*Math.max(rx,ry)/.5)));return Array.from({length:steps+1},(_,i)=>{const a=i*Math.PI*2/steps;return{x:o.cx+rx*Math.cos(a),y:o.cy+ry*Math.sin(a)}})}if(o.points)return o.kind==='polygon'?[...o.points.map(([x,y])=>({x,y})),{x:o.points[0][0],y:o.points[0][1]}]:o.points.map(([x,y])=>({x,y}));if(o.kind==='path'){const el=drawing.querySelector(`[data-id="${o.id}"]`);try{const length=el.getTotalLength(),worldScale=Math.max(Math.abs(o.sx||1),Math.abs(o.sy||1)),steps=pathStep?Math.max(32,Math.min(12000,Math.ceil(length*worldScale/pathStep))):Math.max(32,Math.min(600,Math.ceil(length/3))),ctm=el.getScreenCTM(),inv=root.getScreenCTM().inverse();return Array.from({length:steps+1},(_,i)=>{const p=el.getPointAtLength(length*i/steps),svg=canvas.createSVGPoint();svg.x=p.x;svg.y=p.y;const q=svg.matrixTransform(ctm).matrixTransform(inv);return{x:q.x,y:stock.height-q.y}})}catch{}}
  return[]}
 function offsetOpenPoints(input,delta){const points=input.filter((p,i)=>!i||Math.hypot(p.x-input[i-1].x,p.y-input[i-1].y)>1e-6);if(points.length<2)return[];const normals=[];for(let i=1;i<points.length;i++){const dx=points[i].x-points[i-1].x,dy=points[i].y-points[i-1].y,len=Math.hypot(dx,dy);if(len<1e-9)continue;normals.push({x:-dy/len,y:dx/len})}if(normals.length!==points.length-1)return[];const result=[{x:points[0].x+normals[0].x*delta,y:points[0].y+normals[0].y*delta}];for(let i=1;i<points.length-1;i++){const a=normals[i-1],b=normals[i],sum={x:a.x+b.x,y:a.y+b.y},length=Math.hypot(sum.x,sum.y);if(length<1e-8){result.push({x:points[i].x+a.x*delta,y:points[i].y+a.y*delta},{x:points[i].x+b.x*delta,y:points[i].y+b.y*delta});continue}const unit={x:sum.x/length,y:sum.y/length},denom=unit.x*b.x+unit.y*b.y,miter=denom?delta/denom:Infinity;if(Math.abs(miter)>Math.abs(delta)*4){result.push({x:points[i].x+a.x*delta,y:points[i].y+a.y*delta},{x:points[i].x+b.x*delta,y:points[i].y+b.y*delta})}else result.push({x:points[i].x+unit.x*miter,y:points[i].y+unit.y*miter})}const end=points.at(-1),normal=normals.at(-1);result.push({x:end.x+normal.x*delta,y:end.y+normal.y*delta});return result}
-function offsetClosedPoints(points,delta){const scale=1000,path=points.slice();if(path.length>1&&Math.hypot(path[0].x-path.at(-1).x,path[0].y-path.at(-1).y)<1e-4)path.pop();const polygon=path.map(p=>({X:Math.round(p.x*scale),Y:Math.round(p.y*scale)}));if(polygon.length<3)return[];if(!ClipperLib.Clipper.Orientation(polygon))polygon.reverse();const offsetter=new ClipperLib.ClipperOffset(2,.25);offsetter.AddPath(polygon,ClipperLib.JoinType.jtRound,ClipperLib.EndType.etClosedPolygon);const output=new ClipperLib.Paths();offsetter.Execute(output,delta*scale);return output.map(ring=>ring.map(p=>[p.X/scale,p.Y/scale])).filter(ring=>ring.length>=3)}
-function offsetClosedContours(contours,delta){const scale=1000,paths=contours.map(points=>{const path=points.slice();if(path.length>1&&Math.hypot(path[0].x-path.at(-1).x,path[0].y-path.at(-1).y)<1e-4)path.pop();return path.map(p=>({X:Math.round(p.x*scale),Y:Math.round(p.y*scale)}))}).filter(path=>path.length>=3);if(!paths.length)return[];const union=new ClipperLib.Clipper(),normalized=new ClipperLib.Paths();union.AddPaths(paths,ClipperLib.PolyType.ptSubject,true);if(!union.Execute(ClipperLib.ClipType.ctUnion,normalized,ClipperLib.PolyFillType.pftEvenOdd,ClipperLib.PolyFillType.pftEvenOdd)||!normalized.length)return[];const offsetter=new ClipperLib.ClipperOffset(2,.25);offsetter.AddPaths(normalized,ClipperLib.JoinType.jtRound,ClipperLib.EndType.etClosedPolygon);const output=new ClipperLib.Paths();offsetter.Execute(output,delta*scale);return output.map(ring=>ring.map(p=>[p.X/scale,p.Y/scale])).filter(ring=>ring.length>=3)}
-function createRegionOffsetCopies(){const region=selectedRegion,selected=objects.filter(o=>selectedIds.has(o.id)&&!hiddenLayers.has(o.layer));if(selected.length<2)return false;let contours=region?.contours?.length&&region.ids?.length===selected.length&&region.ids.every(id=>selectedIds.has(id))?region.contours:null;if(!contours){const boundary=enclosedRegionCandidates().find(candidate=>candidate.ids.length===selected.length&&candidate.ids.every(id=>selectedIds.has(id)));if(boundary)contours=[boundary.points]}if(!contours)return false;const delta=Number($('#offset-distance').value);if(!Number.isFinite(delta)||Math.abs(delta)<1e-6)throw Error('Enter a non-zero offset distance.');const rings=offsetClosedContours(contours,delta);if(!rings.length)throw Error('That contraction collapses the selected enclosed area.');remember();const copies=rings.map(points=>({id:nextId++,kind:'polygon',points,layer:activeLayer}));objects.push(...copies);selectedIds=new Set(copies.map(o=>o.id));selectedRegion=null;redraw();$('#offset-status').textContent=`Created ${copies.length} continuous offset boundary${copies.length===1?'':' boundaries'} at ${delta>0?'+':''}${delta.toFixed(2)} mm.`;return true}
-function createOffsetCopies(){const distanceMm=Number($('#offset-distance').value);if(!Number.isFinite(distanceMm)||Math.abs(distanceMm)<1e-6)throw Error('Enter a non-zero offset distance.');const selected=objects.filter(o=>selectedIds.has(o.id)&&!hiddenLayers.has(o.layer));if(!selected.length)throw Error('Select one or more visible vectors to offset.');const copies=[];for(const o of selected){const points=geometryPoints(o),closed=['rect','circle','ellipse','polygon'].includes(o.kind)||(o.kind==='polyline'&&o.points?.length>2&&Math.hypot(o.points[0][0]-o.points.at(-1)[0],o.points[0][1]-o.points.at(-1)[1])<.05)||(o.kind==='path'&&/[zZ]\s*$/.test(o.d.trim()));if(o.kind==='path'&&(o.d.match(/[mM]/g)||[]).length>1)throw Error('Offset multi-contour SVG paths one contour at a time by selecting their individual vectors.');if(!points.length)continue;if(closed&&o.kind==='rect'){const b=boundsOf([o]),width=b.width+distanceMm*2,height=b.height+distanceMm*2;if(width<=0||height<=0)throw Error('That contraction would collapse the selected rectangle.');copies.push({...o,x1:b.minX-distanceMm,y1:b.minY-distanceMm,x2:b.maxX+distanceMm,y2:b.maxY+distanceMm});continue}if(closed&&(o.kind==='circle'||o.kind==='ellipse')){const rx=(o.kind==='circle'?o.r:o.rx)+distanceMm,ry=(o.kind==='circle'?o.r:o.ry)+distanceMm;if(rx<=0||ry<=0)throw Error('That contraction would collapse the selected circle or ellipse.');copies.push(o.kind==='circle'?{...o,r:rx}:{...o,rx,ry});continue}if(closed){const rings=offsetClosedPoints(points,distanceMm);for(const ring of rings)copies.push({id:nextId+copies.length,kind:'polygon',points:ring,layer:o.layer||'Default'});continue}const offset=offsetOpenPoints(points,distanceMm);if(offset.length>1){if(o.kind==='line')copies.push({...o,x1:offset[0].x,y1:offset[0].y,x2:offset.at(-1).x,y2:offset.at(-1).y});else copies.push({id:nextId+copies.length,kind:'polyline',points:offset.map(p=>[p.x,p.y]),layer:o.layer||'Default'})}}if(!copies.length)throw Error('No offset geometry could be created.');remember();for(const copy of copies)copy.id=nextId++;objects.push(...copies);selectedIds=new Set(copies.map(o=>o.id));selectedRegion=null;redraw();$('#offset-status').textContent=`Created ${copies.length} offset vector${copies.length===1?'':'s'} at ${distanceMm>0?'+':''}${distanceMm.toFixed(2)} mm.`}
+function nativeOffset(object,distance) {
+  if (object.kind==='rect') {
+    const b = boundsOf([object]);
+    if (b.width+2*distance<=0 || b.height+2*distance<=0) return null;
+    return {...object,x1:b.minX-distance,y1:b.minY-distance,x2:b.maxX+distance,y2:b.maxY+distance};
+  }
+  const rx = (object.r ?? object.rx)+distance, ry = (object.r ?? object.ry)+distance;
+  if (rx<=0 || ry<=0) return null;
+  return object.kind==='circle' ? {...object,r:rx} : {...object,rx,ry};
+}
+
+function preciseRegionRings(part, visible) {
+  const members = part.ids.map(id=>visible.get(id));
+  if (!members.length || members.some(object=>!object || !hasClosedGeometry(object))) return part.contours;
+  return [
+    ...members.flatMap(object=>vectorRings(object,stock.height,geometryPoints)),
+    ...(part.exclusions || []).flatMap(area=>preciseRegionRings(area,visible))
+  ];
+}
+
+function createOffsetCopies() {
+  const distance = $('#offset-distance').valueAsNumber;
+  if (!Number.isFinite(distance) || Math.abs(distance)<1e-6) throw Error('Enter a non-zero offset distance.');
+  const visible = new Map(objects.filter(object=>!hiddenLayers.has(object.layer)).map(object=>[object.id,object]));
+  const selected = [...visible.values()].filter(object=>selectedIds.has(object.id));
+  if (!selected.length) throw Error('Select one or more visible vectors to offset.');
+
+  const plans = [], covered = new Set(), groups = new Map();
+  let collapsed = 0;
+  function planClosed(rings,layer) {
+    const components = offsetVectorRegion(rings,distance);
+    if (components.length) plans.push({components,layer});
+    else collapsed++;
+  }
+
+  for (const part of selectedAreaParts()) {
+    if (!part.ids.every(id=>selectedIds.has(id) && visible.has(id))) continue;
+    const assembled = part.ids.length>1 && part.ids.some(id=>!hasClosedGeometry(visible.get(id)));
+    if (!assembled && !part.exclusions?.length) continue;
+    planClosed(preciseRegionRings(part,visible),activeLayer);
+    for (const id of part.ids) covered.add(id);
+  }
+
+  const open = selected.filter(object=>!covered.has(object.id) && !hasClosedGeometry(object));
+  if (open.length>1) {
+    for (const boundary of enclosedRegionCandidates(open)) {
+      if (boundary.ids.length<2 || boundary.ids.some(id=>covered.has(id))) continue;
+      planClosed([boundary.points],activeLayer);
+      for (const id of boundary.ids) covered.add(id);
+    }
+  }
+
+  for (const object of selected) {
+    if (covered.has(object.id)) continue;
+    const layer = object.layer || 'Default';
+    if (['rect','circle','ellipse'].includes(object.kind)) {
+      const copy = nativeOffset(object,distance);
+      if (copy) plans.push({copy});
+      else collapsed++;
+      continue;
+    }
+
+    const contours = object.kind==='path' ? vectorPathContours(object,stock.height)
+      : [{points:geometryPoints(object),closed:hasClosedGeometry(object)}];
+    for (const {points,closed} of contours) {
+      if (points.length<2) continue;
+      if (closed) {
+        const key = outlineGroup(object) || object.id;
+        if (!groups.has(key)) groups.set(key,{rings:[],layer});
+        groups.get(key).rings.push(points);
+        continue;
+      }
+      const offset = offsetOpenPoints(points,distance);
+      if (offset.length<2) continue;
+      const [first,last] = [offset[0],offset.at(-1)];
+      const copy = object.kind==='line' ? {...object,x1:first.x,y1:first.y,x2:last.x,y2:last.y}
+        : {kind:'polyline',points:offset.map(({x,y})=>[x,y]),layer};
+      plans.push({copy});
+    }
+  }
+  for (const {rings,layer} of groups.values()) planClosed(rings,layer);
+
+  if (!plans.length) throw Error(collapsed ? 'That contraction collapses the selected outlines.' : 'No offset geometry could be created.');
+  remember();
+  const copies = plans.flatMap(({copy,components,layer})=>copy ? [{...copy,id:nextId++}] : closedPolygonCopies(components,layer));
+  objects.push(...copies);
+  selectedIds = new Set(copies.map(object=>object.id));
+  redraw();
+  const status = $('#offset-status');
+  status.textContent = 'Created '+copies.length+' offset '+(copies.length===1?'vector':'vectors')+
+    ' at '+(distance>0?'+':'')+distance.toFixed(2)+' mm.';
+  if (collapsed) status.textContent += ' '+collapsed+' '+(collapsed===1?'outline collapsed.':'outlines collapsed.');
+}
+
 function pointPolylineDistance(point,points){let best=Infinity;for(let i=1;i<points.length;i++){const a=points[i-1],b=points[i],dx=b.x-a.x,dy=b.y-a.y,len2=dx*dx+dy*dy,t=len2?Math.max(0,Math.min(1,((point.x-a.x)*dx+(point.y-a.y)*dy)/len2)):0;best=Math.min(best,Math.hypot(point.x-a.x-t*dx,point.y-a.y-t*dy))}return best}
 function connectedSelectionIds(startId){const tolerance=.35,items=[];for(const o of objects){if(hiddenLayers.has(o.layer))continue;const points=geometryPoints(o);if(!points.length)continue;let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;for(const p of points){minX=Math.min(minX,p.x);minY=Math.min(minY,p.y);maxX=Math.max(maxX,p.x);maxY=Math.max(maxY,p.y)}items.push({o,points,minX,minY,maxX,maxY})}const start=items.find(item=>item.o.id===startId);if(!start)return new Set([startId]);const connected=new Set([startId]),queue=[start];while(queue.length){const current=queue.shift(),ends=[current.points[0],current.points.at(-1)];for(const candidate of items){if(connected.has(candidate.o.id))continue;const dx=Math.max(candidate.minX-current.maxX,0,current.minX-candidate.maxX),dy=Math.max(candidate.minY-current.maxY,0,current.minY-candidate.maxY);if(Math.hypot(dx,dy)>tolerance)continue;const candidateEnds=[candidate.points[0],candidate.points.at(-1)],touches=ends.some(p=>pointPolylineDistance(p,candidate.points)<=tolerance)||candidateEnds.some(p=>pointPolylineDistance(p,current.points)<=tolerance);if(touches){connected.add(candidate.o.id);queue.push(candidate)}}}return connected}
 function polygonArea(points){let area=0;for(let i=0,j=points.length-1;i<points.length;j=i++)area+=points[j].x*points[i].y-points[i].x*points[j].y;return Math.abs(area/2)}
@@ -683,11 +917,11 @@ function pointInsidePolygon(p,points){let inside=false;for(let i=0,j=points.leng
 function isOutlinedGlyph(object) {
   return object.kind==='path' && !!object.textGroupId && !!object.textFont && !object.centerlineFont;
 }
-function enclosedRegionCandidates(){const tolerance=.35,candidates=[],open=[];for(const o of objects){if(hiddenLayers.has(o.layer)||o.centerlineFont)continue;const pts=isOutlinedGlyph(o)?machiningOutline(o):geometryPoints(o);if(pts.length<2)continue;const close=Math.hypot(pts[0].x-pts.at(-1).x,pts[0].y-pts.at(-1).y)<=tolerance,primitiveClosed=['rect','circle','ellipse','polygon'].includes(o.kind)||(o.kind==='polyline'&&o.points?.length>2&&Math.hypot(o.points[0][0]-o.points.at(-1)[0],o.points[0][1]-o.points.at(-1)[1])<.05)||isOutlinedGlyph(o)||(o.kind==='path'&&(o.outlineClosed||/[zZ]\s*$/.test(o.d.trim())));if(primitiveClosed||close){const loop=close?pts.slice(0,-1):pts.slice();if(loop.length>=3&&polygonArea(loop)>1e-5)candidates.push({ids:[o.id],points:loop,area:polygonArea(loop)});continue}if(['line','polyline','path'].includes(o.kind))open.push({o,points:pts})}
+function enclosedRegionCandidates(source=objects){const tolerance=.35,candidates=[],open=[];for(const o of source){if(hiddenLayers.has(o.layer)||o.centerlineFont)continue;const pts=isOutlinedGlyph(o)?machiningOutline(o):geometryPoints(o);if(pts.length<2)continue;const close=Math.hypot(pts[0].x-pts.at(-1).x,pts[0].y-pts.at(-1).y)<=tolerance,primitiveClosed=['rect','circle','ellipse','polygon'].includes(o.kind)||(o.kind==='polyline'&&o.points?.length>2&&Math.hypot(o.points[0][0]-o.points.at(-1)[0],o.points[0][1]-o.points.at(-1)[1])<.05)||isOutlinedGlyph(o)||(o.kind==='path'&&(o.outlineClosed||/[zZ]\s*$/.test(o.d.trim())));if(primitiveClosed||close){const loop=close?pts.slice(0,-1):pts.slice();if(loop.length>=3&&polygonArea(loop)>1e-5)candidates.push({ids:[o.id],points:loop,area:polygonArea(loop)});continue}if(['line','polyline','path'].includes(o.kind))open.push({o,points:pts})}
  const nodes=[],nodeAt=p=>{let i=nodes.findIndex(n=>Math.hypot(n.x-p.x,n.y-p.y)<=tolerance);if(i<0){i=nodes.length;nodes.push({x:p.x,y:p.y,edges:[]})}return i},edges=[];for(const item of open){const a=nodeAt(item.points[0]),b=nodeAt(item.points.at(-1));if(a===b)continue;const e={id:item.o.id,a,b,points:item.points};edges.push(e);nodes[a].edges.push(e);nodes[b].edges.push(e)}const visited=new Set();for(const first of edges){if(visited.has(first.id))continue;const component=[],queue=[first];while(queue.length){const e=queue.pop();if(visited.has(e.id))continue;visited.add(e.id);component.push(e);for(const node of [e.a,e.b])for(const next of nodes[node].edges)if(!visited.has(next.id))queue.push(next)}const nodeIds=new Set(component.flatMap(e=>[e.a,e.b]));if(component.length<2||[...nodeIds].some(i=>nodes[i].edges.length!==2))continue;const used=new Set(),points=[];let edge=first,current=first.a,start=current,closed=false;for(let step=0;step<component.length;step++){if(used.has(edge.id))break;used.add(edge.id);const forward=edge.a===current,part=forward?edge.points:edge.points.slice().reverse();for(const p of part)if(!points.length||Math.hypot(points.at(-1).x-p.x,points.at(-1).y-p.y)>.001)points.push({...p});current=forward?edge.b:edge.a;if(current===start){closed=true;break}edge=nodes[current].edges.find(candidate=>!used.has(candidate.id));if(!edge)break}if(closed&&used.size===component.length&&points.length>3&&Math.hypot(points[0].x-points.at(-1).x,points[0].y-points.at(-1).y)<=tolerance){points.pop();const area=polygonArea(points);if(area>1e-5)candidates.push({ids:component.map(e=>e.id),points,area})}}
  return candidates}
-function textGlyphRegion(outer, containing, candidates) {
-  const groupsByVector=new Map(objects.map(object=>[object.id,object.textGroupId]));
+function groupedOutlineRegion(outer, containing, candidates) {
+  const groupsByVector=new Map(objects.map(object=>[object.id,outlineGroup(object)]));
   const group=groupsByVector.get(outer.ids[0]);
   if (!group) return null;
   const inGroup=candidate=>candidate.ids.every(id=>groupsByVector.get(id)===group);
@@ -698,7 +932,7 @@ function textGlyphRegion(outer, containing, candidates) {
   const counters=children.filter(candidate=>!children.some(parent=>parent.area>candidate.area &&
     pointInsidePolygon(candidate.points[0],parent.points)));
   return {
-    type:'glyph',ids:[...outer.ids,...counters.flatMap(counter=>counter.ids)],
+    type:'outline',ids:[...outer.ids,...counters.flatMap(counter=>counter.ids)],
     outerIds:outer.ids,outerContour:outer.points,contours:[outer.points,...counters.map(counter=>counter.points)],
   };
 }
@@ -707,7 +941,7 @@ function enclosedRegionAt(p) {
   const containing=candidates.filter(candidate=>pointInsidePolygon(p,candidate.points)).sort((a,b)=>a.area-b.area);
   const outer=containing[0];
   if (!outer) return null;
-  return textGlyphRegion(outer,containing,candidates) || {
+  return groupedOutlineRegion(outer,containing,candidates) || {
     type:'area',ids:outer.ids,outerIds:outer.ids,outerContour:outer.points,contours:[outer.points],exclusions:[],
   };
 }
@@ -771,8 +1005,17 @@ $('#file-input').onchange = async event => {
 };
 const stockChanged=e=>{const width=Math.max(1,Number($('#stock-width').value)||300),height=Math.max(1,Number($('#stock-height').value)||200),thickness=Math.max(.1,Number($('#stock-thickness').value)||18),oldThickness=stock.thickness;remember();if(thickness!==oldThickness){for(const[op,ratio]of Object.entries({profile:1,drill:1,vgroove:.3,pocket:.5})){const depth=profileSettings.operations[op].depth;if(Math.abs(depth-oldThickness*ratio)<.051)profileSettings.operations[op].depth=thickness*ratio}}stock.width=width;stock.height=height;stock.thickness=thickness;if(e.target.id==='stock-width'||e.target.id==='stock-height'){stockManuallySet=true;$('#auto-stock-size').checked=false}$('#stock-width').value=width;$('#stock-height').value=height;$('#stock-thickness').value=thickness;setProfileFields();resizeBoard();fitView();queueSessionSave()};$('#stock-width').onchange=stockChanged;$('#stock-height').onchange=stockChanged;$('#stock-thickness').onchange=stockChanged;$('#auto-stock-size').onchange=()=>{remember();stockManuallySet=!$('#auto-stock-size').checked;queueSessionSave()};
 $('#delete-selected').onclick=()=>{if(!selectedIds.size)return;remember();objects=objects.filter(o=>!selectedIds.has(o.id));selectedIds.clear();redraw()};
-$('#duplicate-selected').onclick=()=>{const originals=objects.filter(o=>selectedIds.has(o.id));if(!originals.length)return;remember();const copies=JSON.parse(JSON.stringify(originals));for(const o of copies){o.id=nextId++;shift(o,10,10)}objects.push(...copies);selectedIds=new Set(copies.map(o=>o.id));redraw()};
-$('#apply-offset').onclick=()=>{try{if(!createRegionOffsetCopies())createOffsetCopies()}catch(error){$('#offset-status').textContent='';showWorkspaceError(error?.message||String(error))}};
+function duplicateObjects(originals) {
+  const copies = structuredClone(originals);
+  const prefix = 'copy-'+nextId+'-';
+  for (const object of copies) {
+    object.id = nextId++;
+    if (object.outlineGroupId) object.outlineGroupId = prefix+object.outlineGroupId;
+  }
+  return copies;
+}
+$('#duplicate-selected').onclick=()=>{const originals=objects.filter(o=>selectedIds.has(o.id));if(!originals.length)return;remember();const copies=duplicateObjects(originals);for(const o of copies)shift(o,10,10);objects.push(...copies);selectedIds=new Set(copies.map(o=>o.id));redraw()};
+$('#apply-offset').onclick=()=>{try{createOffsetCopies()}catch(error){$('#offset-status').textContent='';showWorkspaceError(error?.message||String(error))}};
 const editGrid=$('.edit-grid');
 editGrid.addEventListener('focusin',()=>{if(transformEdit)return;const ids=[...selectedIds],items=objects.filter(o=>selectedIds.has(o.id)),bounds=boundsOf(items);if(!bounds)return;transformEdit={ids,objects:JSON.parse(JSON.stringify(objects)),bounds,undoRecorded:false}});
 editGrid.addEventListener('input',()=>{if(!transformEdit)return;const values=['edit-x','edit-y','edit-width','edit-height'].map(id=>$('#'+id).value.trim());if(values.some(value=>value===''))return;const [x,y,w,h]=values.map(Number);if(![x,y,w,h].every(Number.isFinite)||w<=0||h<=0)return;const source=transformEdit,baseline=source.objects,items=baseline.filter(o=>source.ids.includes(o.id)),b=source.bounds;if(!items.length)return;if(!source.undoRecorded){remember();source.undoRecorded=true}objects=JSON.parse(JSON.stringify(baseline));const liveItems=objects.filter(o=>source.ids.includes(o.id));if(liveItems.length===1&&liveItems[0].kind==='circle'){const o=liveItems[0],rx=w/2,ry=h/2;o.cx=x;o.cy=y;if(Math.abs(rx-ry)<1e-6){o.kind='circle';o.r=rx;delete o.rx;delete o.ry}else{o.kind='ellipse';o.rx=rx;o.ry=ry;delete o.r}}else{const positionUnchanged=Math.abs(x-b.minX)<.05&&Math.abs(y-b.minY)<.05;if(liveItems.length===1&&positionUnchanged&&liveItems[0].kind==='rect'){const o=liveItems[0];o.x1=b.minX;o.y1=b.minY;o.x2=b.minX+w;o.y2=b.minY+h}else if(liveItems.length===1&&positionUnchanged&&liveItems[0].kind==='line'){const o=liveItems[0],sx=o.x2<o.x1?-1:1,sy=o.y2<o.y1?-1:1;o.x2=o.x1+sx*w;o.y2=o.y1+sy*h}else transformItems(liveItems,b,{x,y,width:w,height:h})}redraw()});
@@ -781,7 +1024,7 @@ $('#center-on-stock').onclick=()=>{const items=objects.filter(o=>selectedIds.has
 function mirrorObjects(items,b,horizontal){for(const o of items){const point=(x,y)=>horizontal?[b.minX+b.maxX-x,y]:[x,b.minY+b.maxY-y];if(o.kind==='path'){const fx=horizontal?-1:1,fy=horizontal?1:-1,tx=horizontal?b.minX+b.maxX:0,ty=horizontal?0:2*stock.height-b.minY-b.maxY;o.dx=fx*((o.dx||0)+(o.ox||0))+tx;o.dy=fy*((o.dy||0)+(o.oy||0))+ty;o.ox=0;o.oy=0;o.sx=(o.sx||1)*fx;o.sy=(o.sy||1)*fy}else if(o.kind==='line'||o.kind==='rect'){[o.x1,o.y1]=point(o.x1,o.y1);[o.x2,o.y2]=point(o.x2,o.y2)}else if(o.kind==='circle'||o.kind==='ellipse'){[o.cx,o.cy]=point(o.cx,o.cy)}if(o.points)o.points=o.points.map(([x,y])=>point(x,y))}}
 function projectCenterBounds(){return{minX:0,maxX:stock.width,minY:0,maxY:stock.height}}
 function mirrorSelection(horizontal){const items=objects.filter(o=>selectedIds.has(o.id));if(!items.length)return;remember();mirrorObjects(items,projectCenterBounds(),horizontal);redraw()}
-function duplicateMirrored(horizontal){const originals=objects.filter(o=>selectedIds.has(o.id));if(!originals.length)return;remember();const copies=JSON.parse(JSON.stringify(originals));for(const o of copies)o.id=nextId++;objects.push(...copies);selectedIds=new Set(copies.map(o=>o.id));mirrorObjects(copies,projectCenterBounds(),horizontal);redraw()}
+function duplicateMirrored(horizontal){const originals=objects.filter(o=>selectedIds.has(o.id));if(!originals.length)return;remember();const copies=duplicateObjects(originals);objects.push(...copies);selectedIds=new Set(copies.map(o=>o.id));mirrorObjects(copies,projectCenterBounds(),horizontal);redraw()}
 function selectedOperationTool(op) {
   const tool = readTool(profileSettings.tools?.[op]);
   return tool?.type === OPERATION_TOOL_TYPES[op] ? tool : null;
@@ -837,7 +1080,8 @@ function setProfileFields(){const ids={scope:'profile-scope',profileSide:'profil
   }
 for(const op of Object.keys(profileSettings.operations))for(const key of Object.keys(profileSettings.operations[op]))$('#'+operationInputId(op,key)).value=profileSettings.operations[op][key];$('#pocket-overlap').value=profileSettings.pocketOverlap??50;$('#vgroove-singleline').checked=profileSettings.vgrooveSingleLine===true;$('#optimize-moves').checked=profileSettings.optimizeMoves!==false;$('#profile-through-stock').checked=profileSettings.profileThroughStock!==false;renderToolSelectors()}
 function readProfileFields(){const operations={};for(const op of ['profile','drill','vgroove','pocket']){operations[op]={};for(const key of Object.keys(profileSettings.operations[op]))operations[op][key]=Number($('#'+operationInputId(op,key)).value)}const current=operations[activeToolpathOperation]||operations.profile,pocketStepover=Number($('#pocket-tool-diameter').value)*(1-Number($('#pocket-overlap').value)/100);return{scope:$('#profile-scope').value,profileSide:$('#profile-side').value,profileToolDiameter:Number($('#profile-tool-diameter').value),tools:profileSettings.tools,drillScope:$('#drill-scope').value,...current,depth:current.depth,stepdown:current.stepdown,safeZ:current.safeZ,feed:current.feed,plunge:current.plunge,rpm:current.rpm,operations,optimizeMoves:$('#optimize-moves').checked,profileThroughStock:$('#profile-through-stock').checked,profileTabCount:Number($('#profile-tab-count').value),profileTabWidth:Number($('#profile-tab-width').value),profileTabHeight:Number($('#profile-tab-height').value),vgrooveAngle:Number($('#vgroove-angle').value),vgrooveMaxDepth:operations.vgroove.depth,vgrooveSingleLine:$('#vgroove-singleline').checked,pocketToolDiameter:Number($('#pocket-tool-diameter').value),pocketOverlap:Number($('#pocket-overlap').value),pocketStepover}}
-function isClosedVector(o){return isOutlinedGlyph(o)||['rect','circle','ellipse','polygon'].includes(o.kind)||(o.kind==='polyline'&&o.points?.length>2&&Math.hypot(o.points[0][0]-o.points.at(-1)[0],o.points[0][1]-o.points.at(-1)[1])<.05)||(o.kind==='path'&&(o.outlineClosed||/[zZ]\s*$/.test(o.d.trim())))||!!selectedRegion?.ids.includes(o.id)}
+function hasClosedGeometry(o){return isOutlinedGlyph(o)||['rect','circle','ellipse','polygon'].includes(o.kind)||(o.kind==='polyline'&&o.points?.length>2&&Math.hypot(o.points[0][0]-o.points.at(-1)[0],o.points[0][1]-o.points.at(-1)[1])<.05)||(o.kind==='path'&&(o.outlineClosed||/[zZ]\s*$/.test(o.d.trim())))}
+function isClosedVector(o){return hasClosedGeometry(o)||!!selectedRegion?.ids.includes(o.id)}
 function pocketContours(chosen) {
   return grooveOutlines(chosen).map(outline=>{
     const raw=distance(outline[0],outline.at(-1))>.001 ? [...outline,outline[0]] : outline;
