@@ -331,13 +331,8 @@
         <button type="button" data-cut-view="angled" aria-pressed="true">Angled</button>
         <button type="button" data-cut-view="top" aria-pressed="false">Top</button>
       </div>
-      <label class="cut-preview-rotation-label" for="cut-preview-rotation">Orbit view</label>
-      <input id="cut-preview-rotation" class="cut-preview-rotation" type="range" min="0" max="360" value="0" step="1" aria-label="Orbit around the stock">
-      <output id="cut-preview-rotation-value" for="cut-preview-rotation">0°</output>
     </div>
-    <div id="cut-preview-viewport" class="cut-preview-viewport">
-      <canvas id="cut-preview-canvas" aria-label="Simulated material remaining on the stock"></canvas>
-    </div>
+    <canvas id="cut-preview-canvas" aria-label="Simulated material remaining on the stock"></canvas>
     <p id="cut-preview-status" role="status"></p>
   </dialog>
   <script type="module" src="src/main.js"></script>
