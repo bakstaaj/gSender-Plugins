@@ -1,12 +1,14 @@
 import {selectCutPreviewJobs, simulateCut} from './cut-simulation.js';
 
 const rgb = (r, g, b) => (255 << 24) | (b << 16) | (g << 8) | r;
+const orbitGridCache = new WeakMap();
 
 function drawStock(canvas, grid, angled, orbit) {
-  const {width, height, thickness, columns, rows, cellWidth, cellHeight, depths} = grid;
+  const {width, height, thickness, columns, rows, depths} = grid;
   const {width: viewWidth, height: viewHeight} = canvas.getBoundingClientRect();
   if (!viewWidth || !viewHeight) return;
-  const ratio = Math.min(2, window.devicePixelRatio || 1, 1440 / viewWidth);
+  // Keep the preview lightweight: it is a visual guide, not a render-quality export.
+  const ratio = Math.min(1.25, window.devicePixelRatio || 1, 1100 / viewWidth);
   const w = Math.round(viewWidth * ratio), h = Math.round(viewHeight * ratio);
   canvas.width = w;
   canvas.height = h;
@@ -44,7 +46,26 @@ function drawStock(canvas, grid, angled, orbit) {
     x: centerX + (x * cosYaw + y * sinYaw - (minX+maxX)/2) * scale,
     y: centerY + ((x * sinYaw - y * cosYaw) * sinElevation + z * cosElevation - (minY+maxY)/2) * scale,
   });
-  const depthAt = (col, row) => depths[row * columns + col];
+  let orbitGrid=orbitGridCache.get(grid);
+  if (!orbitGrid) {
+    const renderStep = Math.max(1,Math.ceil(Math.max(columns,rows)/84));
+    const renderColumns = Math.ceil(columns/renderStep), renderRows = Math.ceil(rows/renderStep);
+    const renderDepths = new Float32Array(renderColumns*renderRows);
+    for (let row=0;row<renderRows;row++) for (let col=0;col<renderColumns;col++) {
+      let deepest=0;
+      for (let y=row*renderStep;y<Math.min(rows,(row+1)*renderStep);y++) {
+        for (let x=col*renderStep;x<Math.min(columns,(col+1)*renderStep);x++) {
+          deepest=Math.max(deepest,depths[y*columns+x]);
+        }
+      }
+      renderDepths[row*renderColumns+col]=deepest;
+    }
+    orbitGrid={columns:renderColumns,rows:renderRows,depths:renderDepths};
+    orbitGridCache.set(grid,orbitGrid);
+  }
+  const {columns:renderColumns,rows:renderRows,depths:renderDepths}=orbitGrid;
+  const cellWidth=width/renderColumns,cellHeight=height/renderRows;
+  const depthAt = (col, row) => renderDepths[row * renderColumns + col];
   const fillFace = (points,color) => {
     ctx.fillStyle = color;
     ctx.beginPath();
@@ -53,8 +74,8 @@ function drawStock(canvas, grid, angled, orbit) {
     ctx.closePath();
     ctx.fill();
   };
-  const cells = Array.from({length:rows*columns},(_,index)=>{
-    const col=index%columns,row=Math.floor(index/columns),x=col*cellWidth,y=row*cellHeight;
+  const cells = Array.from({length:renderRows*renderColumns},(_,index)=>{
+    const col=index%renderColumns,row=Math.floor(index/renderColumns),x=col*cellWidth,y=row*cellHeight;
     return {col,row,x,y,depth:depthAt(col,row),cameraDepth:-x*sinYaw+y*cosYaw};
   }).sort((a,b)=>b.cameraDepth-a.cameraDepth);
   for (const {col,row,x,y,depth} of cells) {
@@ -64,9 +85,9 @@ function drawStock(canvas, grid, angled, orbit) {
     const base=Math.max(.42,.96-.28*depth/thickness);
     fillFace([p00,p10,p11,p01],`rgb(${231*base+grain}, ${194*base+grain}, ${145*base+grain})`);
 
-    const rightDepth=col+1<columns?depthAt(col+1,row):thickness;
+    const rightDepth=col+1<renderColumns?depthAt(col+1,row):thickness;
     if (rightDepth>depth+.04) fillFace([p10,project(x+cellWidth,y,rightDepth),project(x+cellWidth,y+cellHeight,rightDepth),p11],'#956b45');
-    const lowerDepth=row+1<rows?depthAt(col,row+1):thickness;
+    const lowerDepth=row+1<renderRows?depthAt(col,row+1):thickness;
     if (lowerDepth>depth+.04) fillFace([p01,p11,project(x+cellWidth,y+cellHeight,lowerDepth),project(x,y+cellHeight,lowerDepth)],'#815c3b');
   }
 }
@@ -91,8 +112,13 @@ export function setupCutPreview(readStock, readJobs) {
     draw();
   }
 
+  let drawFrame = 0;
   function draw() {
-    if (dialog.open && model) drawStock(canvas, model, angled, Number(rotation.value));
+    if (drawFrame || !dialog.open || !model) return;
+    drawFrame = requestAnimationFrame(() => {
+      drawFrame = 0;
+      if (dialog.open && model) drawStock(canvas, model, angled, Number(rotation.value));
+    });
   }
 
   async function update() {
@@ -164,11 +190,15 @@ export function setupCutPreview(readStock, readJobs) {
       angled = nextAngled;
       for (const view of views) view.setAttribute('aria-pressed', String(view === button));
       rotation.disabled = !angled;
-      if (angled) draw();
       draw();
     });
   }
-  dialog.addEventListener('close', () => {request++; model = null;});
+  dialog.addEventListener('close', () => {
+    request++;
+    model = null;
+    if (drawFrame) cancelAnimationFrame(drawFrame);
+    drawFrame = 0;
+  });
   new ResizeObserver(draw).observe(viewport);
   rotation.disabled = !angled;
   setOrbit(0);
