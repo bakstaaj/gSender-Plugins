@@ -1,6 +1,6 @@
 const STORAGE_KEY = 'carve-studio-tools-v1';
 const TOOL_TYPES = {endmill:'Flat end mill',drill:'Drill bit',vbit:'V-bit'};
-export const OPERATION_TOOL_TYPES = {profile:'endmill',drill:'drill',vgroove:'vbit',pocket:'endmill'};
+export const OPERATION_TOOL_TYPES = {profile:'endmill',drill:'drill',vgroove:'vbit','vgroove-flat':'vbit',pocket:'endmill'};
 
 export function readTool(input) {
   if (!input || typeof input.id !== 'string' || !input.id || input.id === 'saved' ||
