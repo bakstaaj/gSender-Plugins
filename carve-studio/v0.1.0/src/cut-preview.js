@@ -2,7 +2,7 @@ import {selectCutPreviewJobs, simulateCut} from './cut-simulation.js';
 
 const rgb = (r, g, b) => (255 << 24) | (b << 16) | (g << 8) | r;
 
-function drawStock(canvas, grid, angled) {
+function drawStock(canvas, grid, angled, orbit) {
   const {width, height, thickness, columns, rows, cellWidth, cellHeight, depths} = grid;
   const {width: viewWidth, height: viewHeight} = canvas.getBoundingClientRect();
   if (!viewWidth || !viewHeight) return;
@@ -11,44 +11,64 @@ function drawStock(canvas, grid, angled) {
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext('2d');
-  const image = ctx.createImageData(w, h);
-  const pixels = new Uint32Array(image.data.buffer);
-
-  const shear = angled ? .36 : 0, tilt = angled ? .60 : 1, vertical = angled ? .82 : 0;
-  const spanX = width + shear * height, spanY = tilt * height + vertical * thickness;
-  const scale = Math.min(w * .88 / spanX, h * .83 / spanY);
-  const offsetX = (w - spanX * scale) / 2, offsetY = (h - spanY * scale) / 2;
-  const depthAt = (col, row) => depths[row * columns + col];
-  const brush = (left, right, top, bottom, color) => {
-    for (let y = Math.max(0, top); y < Math.min(h, bottom); y++) {
-      pixels.fill(color, y * w + left, y * w + right);
+  if (!angled) {
+    const image = ctx.createImageData(w, h);
+    const pixels = new Uint32Array(image.data.buffer);
+    const scale = Math.min(w * .88 / width, h * .83 / height);
+    const cellPixelsX = width / columns * scale, cellPixelsY = height / rows * scale;
+    const offsetX = (w - width * scale) / 2, offsetY = (h - height * scale) / 2;
+    for (let row=0; row<rows; row++) for (let col=0; col<columns; col++) {
+      const depth = depths[row * columns + col];
+      const shade = Math.max(.48, 1 - .35 * depth / thickness);
+      const color = rgb(231 * shade, 194 * shade, 145 * shade);
+      const left = Math.floor(offsetX + col * cellPixelsX), right = Math.ceil(offsetX + (col + 1) * cellPixelsX);
+      const top = Math.floor(offsetY + row * cellPixelsY), bottom = Math.ceil(offsetY + (row + 1) * cellPixelsY);
+      for (let y=top; y<bottom; y++) pixels.fill(color, y * w + left, y * w + right);
     }
-  };
-
-  // Draw columns from the far edge forward. Uncut foreground columns occlude deeper surfaces.
-  for (let row = rows - 1; row >= 0; row--) {
-    const y = (rows - row - 1) * cellHeight;
-    const rowX = offsetX + y * shear * scale, rowY = offsetY + y * tilt * scale;
-    const rowHeight = Math.max(1, tilt * cellHeight * scale);
-    for (let col = columns - 1; col >= 0; col--) {
-      const depth = depthAt(col, row);
-      if (depth >= thickness - .0005) continue;
-      const x = col * cellWidth;
-      const left = Math.floor(rowX + x * scale);
-      const right = Math.ceil(rowX + (x + cellWidth + shear * cellHeight) * scale);
-      const top = rowY + depth * vertical * scale;
-      const bottom = Math.ceil(rowY + thickness * vertical * scale + rowHeight);
-      const grain = 3 * Math.sin(y * .64 + .8 * Math.sin(x * .027)) + 1.7 * Math.sin(y * 2.2 + x * .019);
-      const dx = (depthAt(Math.min(col + 1, columns - 1), row) - depthAt(Math.max(col - 1, 0), row)) / (2 * cellWidth);
-      const dy = (depthAt(col, Math.min(row + 1, rows - 1)) - depthAt(col, Math.max(row - 1, 0))) / (2 * cellHeight);
-      const light = (dx * .37 - dy * .58 + .73) / Math.hypot(dx, dy, 1);
-      const shadow = Math.max(0, Math.min(1, light / .73));
-      const base = .55 + .45 * shadow - .28 * depth / thickness;
-      if (angled) brush(left, right, Math.floor(top), bottom, rgb(138 + grain * 2, 99 + grain, 61 + grain));
-      brush(left, right, Math.floor(top), Math.ceil(top + rowHeight), rgb(231 * base + grain, 194 * base + grain, 145 * base + grain));
-    }
+    ctx.putImageData(image,0,0);
+    return;
   }
-  ctx.putImageData(image, 0, 0);
+
+  const yaw = orbit * Math.PI / 180, elevation = Math.PI / 5;
+  const cosYaw = Math.cos(yaw), sinYaw = Math.sin(yaw);
+  const cosElevation = Math.cos(elevation), sinElevation = Math.sin(elevation);
+  const projectedCorners = [0,width].flatMap(x=>[0,height].flatMap(y=>[0,thickness].map(z=>({
+    x:x*cosYaw+y*sinYaw,
+    y:(x*sinYaw-y*cosYaw)*sinElevation+z*cosElevation,
+  }))));
+  const minX=Math.min(...projectedCorners.map(point=>point.x)), maxX=Math.max(...projectedCorners.map(point=>point.x));
+  const minY=Math.min(...projectedCorners.map(point=>point.y)), maxY=Math.max(...projectedCorners.map(point=>point.y));
+  const scale = Math.min(w * .88 / (maxX-minX), h * .83 / (maxY-minY));
+  const centerX = w / 2, centerY = h / 2;
+  const project = (x,y,z) => ({
+    x: centerX + (x * cosYaw + y * sinYaw - (minX+maxX)/2) * scale,
+    y: centerY + ((x * sinYaw - y * cosYaw) * sinElevation + z * cosElevation - (minY+maxY)/2) * scale,
+  });
+  const depthAt = (col, row) => depths[row * columns + col];
+  const fillFace = (points,color) => {
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.moveTo(points[0].x,points[0].y);
+    for (const point of points.slice(1)) ctx.lineTo(point.x,point.y);
+    ctx.closePath();
+    ctx.fill();
+  };
+  const cells = Array.from({length:rows*columns},(_,index)=>{
+    const col=index%columns,row=Math.floor(index/columns),x=col*cellWidth,y=row*cellHeight;
+    return {col,row,x,y,depth:depthAt(col,row),cameraDepth:-x*sinYaw+y*cosYaw};
+  }).sort((a,b)=>b.cameraDepth-a.cameraDepth);
+  for (const {col,row,x,y,depth} of cells) {
+    const p00=project(x,y,depth),p10=project(x+cellWidth,y,depth);
+    const p11=project(x+cellWidth,y+cellHeight,depth),p01=project(x,y+cellHeight,depth);
+    const grain=3*Math.sin(y*.64+.8*Math.sin(x*.027))+1.7*Math.sin(y*2.2+x*.019);
+    const base=Math.max(.42,.96-.28*depth/thickness);
+    fillFace([p00,p10,p11,p01],`rgb(${231*base+grain}, ${194*base+grain}, ${145*base+grain})`);
+
+    const rightDepth=col+1<columns?depthAt(col+1,row):thickness;
+    if (rightDepth>depth+.04) fillFace([p10,project(x+cellWidth,y,rightDepth),project(x+cellWidth,y+cellHeight,rightDepth),p11],'#956b45');
+    const lowerDepth=row+1<rows?depthAt(col,row+1):thickness;
+    if (lowerDepth>depth+.04) fillFace([p01,p11,project(x+cellWidth,y+cellHeight,lowerDepth),project(x,y+cellHeight,lowerDepth)],'#815c3b');
+  }
 }
 
 export function setupCutPreview(readStock, readJobs) {
@@ -63,22 +83,16 @@ export function setupCutPreview(readStock, readJobs) {
   const views = [...dialog.querySelectorAll('[data-cut-view]')];
   let angled = true, model, request = 0, dragX = null, dragAngle = 0;
 
-  function setRotation(value) {
+  function setOrbit(value) {
     const degrees = ((Math.round(value) % 360) + 360) % 360;
     rotation.value = String(degrees);
     rotationValue.value = degrees + '°';
     rotationValue.textContent = degrees + '°';
-    const rect = viewport.getBoundingClientRect();
-    const radians = degrees * Math.PI / 180;
-    const width = canvas.clientWidth || rect.width, height = canvas.clientHeight || rect.height;
-    const rotatedWidth = Math.abs(width * Math.cos(radians)) + Math.abs(height * Math.sin(radians));
-    const rotatedHeight = Math.abs(height * Math.cos(radians)) + Math.abs(width * Math.sin(radians));
-    const scale = Math.min(1, rect.width / rotatedWidth, rect.height / rotatedHeight);
-    canvas.style.transform = `rotate(${degrees}deg) scale(${scale})`;
+    draw();
   }
 
   function draw() {
-    if (dialog.open && model) drawStock(canvas, model, angled);
+    if (dialog.open && model) drawStock(canvas, model, angled, Number(rotation.value));
   }
 
   async function update() {
@@ -122,7 +136,7 @@ export function setupCutPreview(readStock, readJobs) {
     update();
   });
   operation.addEventListener('change', update);
-  rotation.addEventListener('input', () => setRotation(Number(rotation.value)));
+  rotation.addEventListener('input', () => setOrbit(Number(rotation.value)));
   viewport.addEventListener('pointerdown', event => {
     if (!angled || event.button !== 0) return;
     dragX = event.clientX;
@@ -132,7 +146,7 @@ export function setupCutPreview(readStock, readJobs) {
   });
   viewport.addEventListener('pointermove', event => {
     if (dragX === null) return;
-    setRotation(dragAngle + (event.clientX - dragX) * 360 / Math.max(240, viewport.clientWidth));
+    setOrbit(dragAngle + (event.clientX - dragX) * 360 / Math.max(240, viewport.clientWidth));
   });
   const stopRotation = event => {
     if (dragX === null) return;
@@ -150,13 +164,12 @@ export function setupCutPreview(readStock, readJobs) {
       angled = nextAngled;
       for (const view of views) view.setAttribute('aria-pressed', String(view === button));
       rotation.disabled = !angled;
-      if (!angled) canvas.style.transform = '';
-      else setRotation(Number(rotation.value));
+      if (angled) draw();
       draw();
     });
   }
   dialog.addEventListener('close', () => {request++; model = null;});
-  new ResizeObserver(() => {setRotation(Number(rotation.value));draw();}).observe(viewport);
+  new ResizeObserver(draw).observe(viewport);
   rotation.disabled = !angled;
-  setRotation(0);
+  setOrbit(0);
 }
