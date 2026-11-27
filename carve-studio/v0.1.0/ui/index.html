@@ -19,7 +19,7 @@
     "react/jsx-dev-runtime": "./vendor/react-jsx-dev-runtime.js"
   }
 }</script>
-  <script type="module" crossorigin src="./assets/index-B9LUAw7_.js"></script>
+  <script type="module" crossorigin src="./assets/index-Bc5lI81A.js"></script>
   <link rel="stylesheet" crossorigin href="./assets/index-B-jBN2nY.css">
 </head>
 <body>
@@ -51,6 +51,12 @@
         <label class="text-field-label" for="text-content">Text<input id="text-content" type="text" maxlength="120" placeholder="Enter text"></label>
         <label class="text-field-label" for="text-font">Font<select id="text-font"><optgroup label="Included fonts"><option value="anton">Anton · bold</option><option value="oswald">Oswald · condensed</option><option value="bebas">Bebas Neue · tall</option><option value="barlow">Barlow Condensed · black</option><option value="alfa">Alfa Slab One · slab</option><option value="shortstack">Short Stack · rounded</option></optgroup><optgroup label="CNC engraving"><option value="relief">Relief SingleLine · CNC</option></optgroup><optgroup id="imported-font-options" label="Imported fonts" hidden></optgroup></select></label>
         <small class="optimize-hint">Relief SingleLine is designed for CNC engraving; other fonts create outlined letters.</small>
+        <label class="text-field-label" for="text-placement">Placement<select id="text-placement"><option value="straight">Straight</option><option value="curve">On selected curve</option></select></label>
+        <div id="text-curve-options" hidden>
+          <small class="optimize-hint">Select one open vector first, then choose Text. Text follows the vector direction.</small>
+          <label class="text-field-label" for="text-curve-alignment">Alignment<select id="text-curve-alignment"><option value="center" selected>Center</option><option value="start">Start</option><option value="end">End</option></select></label>
+          <div class="field-row"><label for="text-curve-offset">Offset from curve</label><div class="input-unit"><input id="text-curve-offset" type="number" step="0.5" value="0"><span>mm</span></div></div>
+        </div>
         <div class="field-row"><label for="text-size">Height</label><div class="input-unit"><input id="text-size" type="number" min="2" max="500" step="1" value="25"><span>mm</span></div></div>
         <button id="place-text" class="text-place-button">Place text</button>
         <button id="import-font-button" class="font-import-button" type="button">Import new font</button><input id="font-file-input" type="file" accept=".ttf,.otf,font/ttf,font/otf" hidden><small id="font-import-status" class="optimize-hint" aria-live="polite">Import a TTF or OTF font to add it to this gSender profile.</small>
