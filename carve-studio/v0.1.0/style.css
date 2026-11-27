@@ -99,6 +99,11 @@ body{display:flex;flex-direction:column}
 #drawing-preview .draft-vertex{fill:#fff;stroke:#b45e1b;stroke-width:1.5;vector-effect:non-scaling-stroke}
 #drawing-preview .draft-first-vertex{fill:#fff0da}
 .drawing-live-preview.draft-confirmed{stroke-dasharray:none}
+#node-overlay{pointer-events:none}
+.node-guide{stroke:#28567c;stroke-width:1;stroke-dasharray:3 2;vector-effect:non-scaling-stroke}
+.node-handle{pointer-events:all;cursor:move;fill:#fff;stroke:#214d72;stroke-width:1.5;vector-effect:non-scaling-stroke}
+.node-handle.active{fill:#f9ad55;stroke:#7d3b10}
+#delete-node{width:100%;margin-top:8px}
 .cut-preview-dialog{width:min(1040px,calc(100vw - 32px));max-height:calc(100vh - 24px);padding:20px;color:#243144;background:#fff;border:1px solid #d7dee7;border-radius:12px;box-shadow:0 18px 60px #14203155;color-scheme:light}
 .cut-preview-dialog::backdrop{background:#18243199}
 .cut-preview-header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;margin-bottom:14px}

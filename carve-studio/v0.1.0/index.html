@@ -88,6 +88,15 @@
         <button id="apply-corners" type="button" class="primary" disabled>Apply to all corners</button>
         <p id="corner-status" class="profile-status" role="status"></p>
       </section>
+      <section id="node-panel" class="side-panel geometry-panel" hidden>
+        <div class="section-title">NODE EDIT</div>
+        <p id="node-status" class="hint">Click a vector to show its nodes.</p>
+        <div class="cam-grid">
+          <label class="cam-label">X (mm)<input id="node-x" type="number" step="any" disabled></label>
+          <label class="cam-label">Y (mm)<input id="node-y" type="number" step="any" disabled></label>
+        </div>
+        <button id="delete-node" type="button" disabled>Delete node</button>
+      </section>
       <section id="path-panel" class="side-panel geometry-panel" hidden>
         <div class="section-title" id="path-title"></div>
         <p id="path-status" class="hint" role="status"></p>
@@ -116,6 +125,7 @@
           <button aria-label="Text" class="tool text-tool" data-tool="text" data-panel="text" title="Place block text using the font and height controls">T</button>
         </div>
         <div class="tool-group" role="group" aria-label="Edit outlines">
+          <button aria-label="Node Edit" class="tool" data-tool="nodes" data-panel="nodes" title="Edit vector nodes and curve handles"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 16l6-8 8 6"/><path d="M3 14h4v4H3zM9 6h4v4H9zM17 12h4v4h-4z" fill="var(--panel, white)"/></svg></button>
           <button aria-label="Trim" class="tool text-tool" data-tool="trim" title="Trim outline segments between intersections">✂</button>
           <button class="tool" data-tool="corner" data-panel="corner" title="Corners (fillet, chamfer, or concave fillet)" aria-label="Corners"><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20v-8a8 8 0 0 1 8-8h8"/><path d="M4 8V4h4" stroke-dasharray="1.5 2"/></svg></button>
           <button class="tool" data-panel="offset" id="offset-tool" title="Offset selected vectors" aria-label="Offset selected vectors" disabled><svg class="tool-icon" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="1"/><rect x="8" y="8" width="8" height="8" rx=".5"/></svg></button>
@@ -145,7 +155,7 @@
       <div class="canvas-wrap" id="canvas-wrap">
         <svg id="canvas" xmlns="http://www.w3.org/2000/svg" role="application" aria-label="Top view drawing canvas" tabindex="-1">
           <defs><pattern id="grid-pattern" width="5" height="5" patternUnits="userSpaceOnUse"><circle id="grid-dot" cx="0" cy="0" r=".35" fill="#53667b" fill-opacity="1"/></pattern></defs>
-          <g id="view-root"><rect id="board-shadow"/><rect id="board"/><rect id="grid-overlay" fill="url(#grid-pattern)" visibility="hidden" pointer-events="none"/><path id="region-highlight" class="region-highlight" fill-rule="evenodd" visibility="hidden" pointer-events="none"/><g id="drawing"></g><g id="region-cutouts" pointer-events="none"></g><g id="drawing-preview" pointer-events="none"></g><g id="geometry-preview"></g><g id="toolpath-preview" pointer-events="none"></g><rect id="selection-box" class="selection-box window" visibility="hidden" pointer-events="none"/><circle id="selection-center" class="selection-center-handle" visibility="hidden"/><g id="object-snap-marker" visibility="hidden" pointer-events="none" aria-hidden="true"><path class="snap-halo" d="M0-6l6 6-6 6-6-6zM-2 0h4M0-2v4"/><path d="M0-6l6 6-6 6-6-6zM-2 0h4M0-2v4"/></g></g>
+          <g id="view-root"><rect id="board-shadow"/><rect id="board"/><rect id="grid-overlay" fill="url(#grid-pattern)" visibility="hidden" pointer-events="none"/><path id="region-highlight" class="region-highlight" fill-rule="evenodd" visibility="hidden" pointer-events="none"/><g id="drawing"></g><g id="region-cutouts" pointer-events="none"></g><g id="drawing-preview" pointer-events="none"></g><g id="geometry-preview"></g><g id="toolpath-preview" pointer-events="none"></g><rect id="selection-box" class="selection-box window" visibility="hidden" pointer-events="none"/><circle id="selection-center" class="selection-center-handle" visibility="hidden"/><g id="node-overlay" aria-hidden="true"></g><g id="object-snap-marker" visibility="hidden" pointer-events="none" aria-hidden="true"><path class="snap-halo" d="M0-6l6 6-6 6-6-6zM-2 0h4M0-2v4"/><path d="M0-6l6 6-6 6-6-6zM-2 0h4M0-2v4"/></g></g>
         </svg>
         <div class="coord-readout" id="coordinates">X 0.0&nbsp;&nbsp; Y 0.0 mm</div>
       </div>

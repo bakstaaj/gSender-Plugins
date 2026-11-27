@@ -16,6 +16,7 @@ In a plugin-capable gSender Edge build, open **Tools → Plugins → Install a p
 - Import SVG paths, lines, rectangles, circles, ellipses, polylines and polygons.
 - Import ASCII DXF LINE, CIRCLE, ARC and LWPOLYLINE entities, including curved polyline segments.
 - Draw lines, rectangles, circles, open and closed polylines, 3-point arcs, and text. Grid and object snapping assist drawing and placement.
+- Use **Node Edit** to move nodes and Bézier handles. Double-click an edge to insert a node, or select a node and press **Delete**.
 - Trim, offset, fillet, chamfer, and add inward fillets to outlines. Create rectangular and circular arrays from selected objects.
 - Select, shift-select, drag, and delete vectors. Click an enclosed area to select it for machining.
 - Drag left-to-right to window-select fully enclosed objects; drag right-to-left to crossing-select objects touched by the box.
