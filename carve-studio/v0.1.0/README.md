@@ -27,7 +27,7 @@ In a plugin-capable gSender Edge build, open **Tools → Plugins → Install a p
 - Duplicate and mirror selections across the stock's horizontal or vertical centerline, or set their X/Y position and bounding-box size numerically.
 - Use Delete, Ctrl+A and Ctrl+D for common selection actions.
 - Undo and redo edits; save and reopen versioned `.carve` project files.
-- Zoom, pan, fit the stock to view and export the current drawing as SVG.
+- Zoom around the mouse pointer, pan, fit the stock to view and export the current drawing as SVG.
 - Create local tool presets and apply compatible cutters to Profile, Drilling, V Groove and Pocket. Generated paths retain the selected cutter and tool number.
 - Build a combined NC file in toolpath order with tool changes and profiles last. Save G-code or load it into the gSender visualizer.
 - Open **Generated toolpaths → Cut preview** to see estimated material removal in angled or top view for the whole job or one operation. A flat-bottom finishing preview also shows its matching clearance pass.
