@@ -12,7 +12,7 @@ In a plugin-capable gSender Edge build, open **Tools → Plugins → Install a p
 
 - Set the stock width and height in millimeters.
 - Set stock thickness, or use the first-import auto-size mode to size width and height from the imported vector bounds plus 10% total margin.
-- Choose the NC XY origin from any stock corner, edge midpoint, or center in the Stock panel. G-code coordinates are translated so the selected point is X0/Y0; Z0 remains the stock surface. The origin is saved with the project.
+- Choose an NC XY origin from a clearly labeled stock corner, edge midpoint, or center in the Stock panel, or choose **Manual point on design** and click any point on the drawing. The chosen point becomes X0/Y0; Z0 remains the stock surface. The origin is saved with the project.
 - Create layers, switch the active drawing layer, and hide or show layers; hidden layers stay out of selection, SVG export and toolpath generation.
 - Import SVG paths, lines, rectangles, circles, ellipses, polylines and polygons.
 - Import ASCII DXF LINE, CIRCLE, ARC and LWPOLYLINE entities, including curved polyline segments.

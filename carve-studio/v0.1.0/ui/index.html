@@ -19,8 +19,8 @@
     "react/jsx-dev-runtime": "./vendor/react-jsx-dev-runtime.js"
   }
 }</script>
-  <script type="module" crossorigin src="./assets/index-CR3USoUZ.js"></script>
-  <link rel="stylesheet" crossorigin href="./assets/index-CMPl1AcQ.css">
+  <script type="module" crossorigin src="./assets/index-BJ_iqIML.js"></script>
+  <link rel="stylesheet" crossorigin href="./assets/index-5Ie8P578.css">
 </head>
 <body>
   <header class="topbar">
@@ -66,8 +66,10 @@
       <div class="field-row"><label for="stock-height">Height</label><div class="input-unit"><input id="stock-height" type="number" min="1" value="200"><span>mm</span></div></div>
       <div class="field-row"><label for="stock-thickness">Thickness</label><div class="input-unit"><input id="stock-thickness" type="number" min="0.1" step="0.1" value="18"><span>mm</span></div></div>
       <label class="optimize-toggle"><input id="auto-stock-size" type="checkbox" checked> Auto-size from first import (+10%)</label>
-      <label class="cam-label" for="nc-origin">NC XY origin<select id="nc-origin"><option value="lower-left">Lower-left corner</option><option value="lower-center">Lower-center</option><option value="lower-right">Lower-right corner</option><option value="center-left">Center-left</option><option value="center">Stock center</option><option value="center-right">Center-right</option><option value="upper-left">Upper-left corner</option><option value="upper-center">Upper-center</option><option value="upper-right">Upper-right corner</option></select></label>
-      <small class="optimize-hint">Sets X0/Y0 for generated NC. Z0 stays on the stock surface.</small>
+      <label class="cam-label" for="nc-origin">NC XY origin (X0/Y0)<select id="nc-origin"><optgroup label="Stock reference (not part)"><option value="lower-left">Stock lower-left corner</option><option value="lower-center">Stock lower-center</option><option value="lower-right">Stock lower-right corner</option><option value="center-left">Stock center-left</option><option value="center">Stock center</option><option value="center-right">Stock center-right</option><option value="upper-left">Stock upper-left corner</option><option value="upper-center">Stock upper-center</option><option value="upper-right">Stock upper-right corner</option></optgroup><option value="manual">Manual point on design</option></select></label>
+      <small class="optimize-hint">Stock presets place X0/Y0 on the stock. Or choose Manual and click a point on the drawing. Z0 stays on the stock surface.</small>
+      <button id="place-nc-origin" type="button" aria-pressed="false">Place origin on design</button>
+      <small id="nc-origin-position" class="optimize-hint" aria-live="polite">Origin is set by the selected stock reference point.</small>
       </section>
       <section id="layers-panel" class="side-panel" hidden><div class="section-title layer-title">LAYERS <button class="quiet" id="add-layer">＋</button></div>
       <div id="layers" class="layers"></div>
