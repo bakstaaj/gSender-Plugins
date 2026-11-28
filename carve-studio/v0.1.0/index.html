@@ -234,6 +234,20 @@
           <button id="preview-vgroove-flat" class="primary cam-button">Generate Toolpath</button>
         </details>
         <details class="operation-section"><summary>Pocket</summary><label class="cam-label">Tool<select id="pocket-tool"><option value="">Manual settings</option></select></label><p>Clears the inside of selected closed shapes using nested tool-center loops.</p><div class="cam-grid"><label>Pocket depth (mm)<input id="pocket-depth" type="number" min="0.1" step="0.1"></label><label>Pass depth (mm)<input id="pocket-stepdown" type="number" min="0.1" step="0.1" value="1"></label><label>Tool diameter (mm)<input id="pocket-tool-diameter" type="number" min="0.1" step="0.1" value="3.175"></label><label>Overlap (%)<input id="pocket-overlap" type="number" min="0" max="95" step="1" value="50"></label><label>Safe Z (mm)<input id="pocket-safez" type="number" min="0.1" step="0.1" value="5"></label></div><details class="cam-rates" id="pocket-rates" open><summary hidden>Feeds &amp; speeds<span class="cam-rates-modified" hidden> · Modified</span></summary><div class="cam-grid"><label>Feed (mm/min)<input id="pocket-feed" type="number" min="1" step="1" value="800"></label><label>Plunge (mm/min)<input id="pocket-plunge" type="number" min="1" step="1" value="250"></label><label>Spindle RPM<input id="pocket-rpm" type="number" min="1" step="100" value="12000"></label></div></details><button id="preview-pocket" class="primary cam-button">Generate Toolpath</button></details>
+        <details class="operation-section"><summary>V-bit Inlay</summary>
+          <p>Creates a female V-carved pocket and a matching mirrored plug from the selected closed lettering or shapes. Save and cut each half on its own stock setup.</p>
+          <label class="cam-label">V-bit<select id="inlay-tool"><option value="">Select a V-bit</option></select></label>
+          <div class="cam-grid">
+            <label>Pocket depth (mm)<input id="inlay-depth" type="number" min="0.1" step="0.1" value="3"></label>
+            <label>Glue gap (mm)<input id="inlay-gap" type="number" min="0.02" step="0.01" value="0.1"></label>
+            <label>Pass depth (mm)<input id="inlay-stepdown" type="number" min="0.1" step="0.1" value="1"></label>
+            <label>Plug border (mm)<input id="inlay-border" type="number" min="1" step="1" value="6"></label>
+            <label>Safe Z (mm)<input id="inlay-safez" type="number" min="0.1" step="0.1" value="5"></label>
+          </div>
+          <small class="optimize-hint">Feed, plunge, and spindle speed come from the selected V-bit in the tool library.</small>
+          <small class="optimize-hint">The pocket V-cuts the selected shapes to a flat floor. The mirrored plug V-cuts the surrounding field, leaving raised inlay shapes. The plug border is a rectangular machining boundary; profile it separately to free the plug.</small>
+          <button id="preview-inlay" class="primary cam-button">Generate Inlay Pair</button>
+        </details>
       </div>
       <details class="operation-section generated-toolpaths" id="generated-toolpaths">
         <summary>Generated toolpaths <span id="toolpath-count">0 paths</span></summary>
