@@ -1,6 +1,6 @@
 const STORAGE_KEY = 'carve-studio-tools-v1';
 const TOOL_TYPES = {endmill:'Flat end mill',drill:'Drill bit',vbit:'V-bit'};
-export const OPERATION_TOOL_TYPES = {profile:'endmill',drill:'drill',vgroove:'vbit','vgroove-flat':'vbit',pocket:'endmill'};
+export const OPERATION_TOOL_TYPES = {profile:'endmill',drill:'drill',slot:'endmill',vgroove:'vbit','vgroove-flat':'vbit',pocket:'endmill'};
 const DEFAULT_TOOLS = [
   {id:'carve-studio-default-t1',name:'1mm FLAT END MILL',type:'endmill',number:1,diameter:1,angle:null,stepdown:.1,feed:30,plunge:10,rpm:10000},
   {id:'carve-studio-default-t2',name:'2mm FLAT END MILL',type:'endmill',number:2,diameter:2,angle:null,stepdown:.1,feed:30,plunge:10,rpm:10000},

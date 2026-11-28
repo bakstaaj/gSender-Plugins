@@ -3,6 +3,7 @@ export function operationDefaults(thickness) {
   return {
     profile:{...rates,depth:thickness,stepdown:1},
     drill:{...rates,depth:thickness,stepdown:1},
+    slot:{...rates,depth:thickness*.5,stepdown:1},
     vgroove:{...rates,depth:thickness*.3},
     'vgroove-flat':{...rates,depth:thickness*.3,stepdown:1},
     pocket:{...rates,depth:thickness*.5,stepdown:1}
