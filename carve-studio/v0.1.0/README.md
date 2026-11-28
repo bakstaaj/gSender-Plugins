@@ -28,7 +28,7 @@ In a plugin-capable gSender Edge build, open **Tools → Plugins → Install a p
 - Use Delete, Ctrl+A and Ctrl+D for common selection actions.
 - Undo and redo edits; save and reopen versioned `.carve` project files.
 - Zoom around the mouse pointer up to 1000%, pan, fit the stock to view and export the current drawing as SVG.
-- Create local tool presets and apply compatible cutters to Profile, Drilling, V Groove and Pocket. Generated paths retain the selected cutter and tool number.
+- Start with the 14 included tool presets: six flat end mills (1–6 mm), six drill bits (1–6 mm), and the 60° and 90° V-bits. Their feed, plunge, pass-depth and spindle settings are prefilled and editable in the Tool library. Create more local presets and apply compatible cutters to Profile, Drilling, V Groove and Pocket. Generated paths retain the selected cutter and tool number.
 - Build a combined NC file in toolpath order with tool changes and profiles last. Save G-code or load it into the gSender visualizer.
 - Open **Generated toolpaths → Cut preview** to see estimated material removal in angled or top view for the whole job or one operation. A flat-bottom finishing preview also shows its matching clearance pass.
 - Start a new project with a save / discard / cancel prompt when vectors are present. Profile toolpaths default to cutting through the stock thickness, with an option to use the explicit cut-depth value.

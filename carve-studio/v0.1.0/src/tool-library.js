@@ -1,6 +1,22 @@
 const STORAGE_KEY = 'carve-studio-tools-v1';
 const TOOL_TYPES = {endmill:'Flat end mill',drill:'Drill bit',vbit:'V-bit'};
 export const OPERATION_TOOL_TYPES = {profile:'endmill',drill:'drill',vgroove:'vbit','vgroove-flat':'vbit',pocket:'endmill'};
+const DEFAULT_TOOLS = [
+  {id:'carve-studio-default-t1',name:'1mm FLAT END MILL',type:'endmill',number:1,diameter:1,angle:null,stepdown:.1,feed:30,plunge:10,rpm:10000},
+  {id:'carve-studio-default-t2',name:'2mm FLAT END MILL',type:'endmill',number:2,diameter:2,angle:null,stepdown:.1,feed:30,plunge:10,rpm:10000},
+  {id:'carve-studio-default-t3',name:'3mm FLAT END MILL',type:'endmill',number:3,diameter:3,angle:null,stepdown:.2,feed:50,plunge:20,rpm:10000},
+  {id:'carve-studio-default-t4',name:'4mm FLAT END MILL',type:'endmill',number:4,diameter:4,angle:null,stepdown:.2,feed:50,plunge:20,rpm:10000},
+  {id:'carve-studio-default-t5',name:'5mm FLAT END MILL',type:'endmill',number:5,diameter:5,angle:null,stepdown:.5,feed:75,plunge:30,rpm:10000},
+  {id:'carve-studio-default-t6',name:'6mm FLAT END MILL',type:'endmill',number:6,diameter:6,angle:null,stepdown:.5,feed:75,plunge:30,rpm:10000},
+  {id:'carve-studio-default-t11',name:'1mm DRILL BIT',type:'drill',number:11,diameter:1,angle:null,stepdown:.25,feed:10,plunge:5,rpm:10000},
+  {id:'carve-studio-default-t12',name:'2mm DRILL BIT',type:'drill',number:12,diameter:2,angle:null,stepdown:.25,feed:10,plunge:5,rpm:10000},
+  {id:'carve-studio-default-t13',name:'3mm DRILL BIT',type:'drill',number:13,diameter:3,angle:null,stepdown:.5,feed:20,plunge:10,rpm:10000},
+  {id:'carve-studio-default-t14',name:'4mm DRILL BIT',type:'drill',number:14,diameter:4,angle:null,stepdown:.5,feed:50,plunge:25,rpm:10000},
+  {id:'carve-studio-default-t15',name:'5mm DRILL BIT',type:'drill',number:15,diameter:5,angle:null,stepdown:.5,feed:50,plunge:25,rpm:10000},
+  {id:'carve-studio-default-t16',name:'6mm DRILL BIT',type:'drill',number:16,diameter:6,angle:null,stepdown:1,feed:50,plunge:25,rpm:10000},
+  {id:'carve-studio-default-t20',name:'60 DEG 3.175mm',type:'vbit',number:20,diameter:3.175,angle:60,stepdown:null,feed:100,plunge:50,rpm:10000},
+  {id:'carve-studio-default-t21',name:'90 DEG 12.7MM',type:'vbit',number:21,diameter:12.7,angle:90,stepdown:null,feed:1500,plunge:500,rpm:10000}
+];
 
 export function readTool(input) {
   if (!input || typeof input.id !== 'string' || !input.id || input.id === 'saved' ||
@@ -41,6 +57,17 @@ export function initToolLibrary(onChange) {
     if (Array.isArray(saved)) tools = saved.map(readTool).filter(Boolean);
   } catch {
     // The manual settings are always available.
+  }
+  let seeded = false;
+  for (const tool of DEFAULT_TOOLS) {
+    if (tools.some(existing=>existing.number===tool.number)) continue;
+    tools.push({...tool});
+    seeded = true;
+  }
+  tools.sort((a,b)=>a.number-b.number);
+  if (seeded) {
+    try { localStorage.setItem(STORAGE_KEY,JSON.stringify(tools)); }
+    catch { /* Keep the bundled presets available for this session. */ }
   }
 
   function updateType() {
