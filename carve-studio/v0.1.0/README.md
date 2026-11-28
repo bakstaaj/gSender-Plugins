@@ -37,7 +37,7 @@ In a plugin-capable gSender Edge build, open **Tools → Plugins → Install a p
 - Generate V Groove Profile paths from selected closed letter outlines. Both variable depth and fixed depth use the same connected centerline strokes. Relief SingleLine open strokes use fixed depth.
 - Open **Flat-bottom V Groove** and choose a V-bit from the tool library. Set the floor depth and V-bit pass depth. The panel shows the usable depth limit for the selected cutter and stock. An optional flat end mill clears broad areas before the V-bit finishes the sloped walls, narrow details, and remaining floor.
 - Generate a pocket preview for selected closed boundaries using nested inward tool-center offsets, a flat tool diameter, stepover, depth and pass depth; counters are preserved as uncut islands.
-- Generate a V-bit inlay pair from selected closed outlines: a V-carved female pocket and a mirrored V-carved background plug with an adjustable glue gap. Feed, plunge and RPM use the selected V-bit's library values. Save each half as its own NC file; set up matching stock and work zero for each, then profile the plug's rectangular boundary separately.
+- Generate a V-bit inlay pair from selected closed outlines: a V-carved female pocket and a mirrored V-carved background plug with an adjustable glue gap. Open or single-line vectors in a mixed selection are ignored; a selection containing only open or single-line strokes is rejected. Feed, plunge and RPM use the selected V-bit's library values. Save each half as its own NC file; set up matching stock and work zero for each, then profile the plug's rectangular boundary separately.
 - Optimize profiles by joining open vector endpoints within 0.02 mm and ordering contours by nearest travel start.
 
 ## Trial and registration
